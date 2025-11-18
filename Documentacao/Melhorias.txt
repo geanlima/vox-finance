@@ -1,0 +1,12 @@
+✨ adicionar notificações
+✨ colocar Firebase (auth, crashlytics, analytics)
+✨ sincronizar com nuvem
+✨ criar dashboard web
+✨ gerar relatórios PDF
+✨ usar IA para interpretar gastos
+✨ categorizar despesas automaticamente
+✨ criar widget na Home do Android
+✨ exportar CSV
+✨ migrar para multiplataforma web/windows
+✨ ou publicar na Play Store
+✨ Lancamento de contas a pagar

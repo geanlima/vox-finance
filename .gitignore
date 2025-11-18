@@ -1,0 +1,84 @@
+#############################
+# Flutter / Dart
+#############################
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+flutter_export_environment.sh
+
+# Generated plugin registrant
+flutter_generated_plugin_registrant.dart
+
+# Flutter specific files
+ios/Flutter/flutter_export_environment.sh
+**/Generated.xcconfig
+
+#############################
+# IDE / Editor
+#############################
+
+# VS Code
+.vscode/
+.history/
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+.idea/
+
+#############################
+# Android
+#############################
+# Gradle
+.gradle/
+**/local.properties
+**/key.properties
+**/gradle-wrapper.jar
+**/captures/
+**/outputs/
+android/.gradle/
+android/build/
+
+# NDK (pesado)
+android/app/.cxx/
+
+# Signing keys
+*.jks
+*.keystore
+
+#############################
+# iOS / macOS (por segurança)
+#############################
+ios/Pods/
+ios/Runner/GeneratedPluginRegistrant.*
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/Pods/
+macos/Flutter/ephemeral/
+
+#############################
+# Web
+#############################
+web/.dart_tool/
+web/.firebase/
+
+#############################
+# Logs / Cache / Temp
+#############################
+*.log
+*.tmp
+*.temp
+*.DS_Store
+*.lock
+pubspec.lock
+
+#############################
+# Isar (arquivos gerados)
+#############################
+**/*.isar
+**/*.isar.lock
+
+# Arquivos de schema gerados (pode manter se quiser)
+# uncomment se preferir ignorar tudo relacionado
