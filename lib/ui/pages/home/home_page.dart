@@ -5,11 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
 
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/service/categorias_service.dart';
-import 'package:vox_finance/ui/widgets/resumo_dia_card.dart';
+import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/sevice/isar_service.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
+import 'package:vox_finance/ui/widgets/resumo_dia_card.dart';
 import 'package:vox_finance/ui/widgets/lancamento_list.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
@@ -26,7 +27,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _imagePicker = ImagePicker();
   final List<Lancamento> _lancamentos = [];
-  final _isarService = IsarService();
+
+  /// Agora é um DbService de verdade, não mais “Isar”
+  final _dbService = DbService();
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateHoraFormat = DateFormat('dd/MM/yyyy HH:mm');
@@ -51,7 +54,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarDoBanco() async {
-    final lista = await _isarService.getLancamentosByDay(_dataSelecionada);
+    final lista = await _dbService.getLancamentosByDay(_dataSelecionada);
     setState(() {
       _lancamentos
         ..clear()
@@ -59,9 +62,8 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  bool _mesmoDia(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
+  bool _mesmoDia(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   // --------- totais / filtros ---------
 
@@ -304,7 +306,6 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                     const SizedBox(height: 12),
-
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Pagamento de fatura de cartão'),
@@ -315,7 +316,6 @@ class _HomePageState extends State<HomePage> {
                         });
                       },
                     ),
-
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Já está pago'),
@@ -330,7 +330,6 @@ class _HomePageState extends State<HomePage> {
                         });
                       },
                     ),
-
                     const SizedBox(height: 12),
                     InkWell(
                       onTap: () async {
@@ -418,25 +417,40 @@ class _HomePageState extends State<HomePage> {
                                     ? 'Sem descrição'
                                     : descricaoController.text.trim();
 
-                            final lanc = existente ?? Lancamento();
+                            final categoria = CategoriaService.fromDescricao(
+                              descricao,
+                            );
 
-                            lanc
-                              ..valor = valor
-                              ..descricao = descricao
-                              ..formaPagamento = formaSelecionada!
-                              ..dataHora = dataLancamento
-                              ..pagamentoFatura = pagamentoFatura
-                              ..categoria = CategoriaService.fromDescricao(
-                                descricao,
-                              )
-                              ..pago = pago
-                              ..dataPagamento =
-                                  pago
-                                      ? (existente?.dataPagamento ??
-                                          DateTime.now())
-                                      : null;
+                            // monta o objeto para salvar
+                            final Lancamento lanc =
+                                ehEdicao
+                                    ? existente.copyWith(
+                                      valor: valor,
+                                      descricao: descricao,
+                                      formaPagamento: formaSelecionada!,
+                                      dataHora: dataLancamento,
+                                      pagamentoFatura: pagamentoFatura,
+                                      categoria: categoria,
+                                      pago: pago,
+                                      dataPagamento:
+                                          pago
+                                              ? (existente.dataPagamento ??
+                                                  DateTime.now())
+                                              : null,
+                                    )
+                                    : Lancamento(
+                                      valor: valor,
+                                      descricao: descricao,
+                                      formaPagamento: formaSelecionada!,
+                                      dataHora: dataLancamento,
+                                      pagamentoFatura: pagamentoFatura,
+                                      categoria: categoria,
+                                      pago: pago,
+                                      dataPagamento:
+                                          pago ? DateTime.now() : null,
+                                    );
 
-                            await _isarService.salvarLancamento(lanc);
+                            await _dbService.salvarLancamento(lanc);
                             await _carregarDoBanco();
 
                             Navigator.pop(context);
@@ -481,8 +495,8 @@ class _HomePageState extends State<HomePage> {
       },
     );
 
-    if (confirmar == true) {
-      await _isarService.deleteLancamento(lanc.id);
+    if (confirmar == true && lanc.id != null) {
+      await _dbService.deletarLancamento(lanc.id!);
       await _carregarDoBanco();
     }
   }

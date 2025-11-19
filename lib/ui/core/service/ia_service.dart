@@ -1,7 +1,7 @@
-import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/core/service/categorias_service.dart';
-import 'package:vox_finance/ui/data/sevice/isar_service.dart';
+import 'package:vox_finance/ui/data/sevice/db_service.dart';
 
 class IAInterpretacao {
   final double? valor;
@@ -18,20 +18,15 @@ class IAInterpretacao {
 }
 
 class IAService {
-  final IsarService _isarService;
+  final DbService _dbService;
 
-  // 👇 aceita o IsarService, mas é opcional (se não passar, cria um novo)
-  IAService([IsarService? isarService])
-    : _isarService = isarService ?? IsarService();
+  IAService([DbService? dbService]) : _dbService = dbService ?? DbService();
 
-  // ============================================================
-  //  INTERPRETAÇÃO DE TEXTO LIVRE (VOZ / OCR)
-  // ============================================================
+  // ================= INTERPRETAÇÃO ==================
 
   static IAInterpretacao interpretarTextoLivre(String texto) {
     final lower = texto.toLowerCase();
 
-    // Valor (primeiro número do texto)
     final match = RegExp(r'(\d+[.,]?\d*)').firstMatch(lower);
     double? valor;
     if (match != null) {
@@ -40,7 +35,6 @@ class IAService {
       valor = double.tryParse(v);
     }
 
-    // Descrição
     var desc = lower;
     if (match != null) {
       desc = desc.replaceFirst(match.group(1)!, '');
@@ -75,68 +69,55 @@ class IAService {
     );
   }
 
-  // ============================================================
-  //  CONTAS A PAGAR – CRIAÇÃO DE REGISTROS
-  // ============================================================
+  // ================= CONTAS A PAGAR ==================
 
-  /// Conta simples (sem parcelamento)
   Future<void> salvarContaSimples({
     required String descricao,
     required double valor,
     required DateTime dataVencimento,
   }) async {
-    final isar = await _isarService.db;
+    final conta = ContaPagar(
+      descricao: descricao,
+      valor: valor,
+      dataVencimento: dataVencimento,
+      pago: false,
+      dataPagamento: null,
+      parcelaNumero: null,
+      parcelaTotal: null,
+      grupoParcelas: 'SIMP_${DateTime.now().microsecondsSinceEpoch}',
+    );
 
-    final conta =
-        ContaPagar()
-          ..descricao = descricao
-          ..valor = valor
-          ..dataVencimento = dataVencimento
-          ..pago = false
-          ..dataPagamento = null
-          ..parcelaNumero = null
-          ..parcelaTotal = null
-          ..grupoParcelas =
-              'SIMP_${DateTime.now().microsecondsSinceEpoch.toString()}';
-
-    await isar.writeTxn(() async {
-      await isar.contaPagars.put(conta);
-    });
+    await _dbService.salvarContaPagar(conta);
   }
 
-  /// Cria várias parcelas de uma compra (ex: 10x)
   Future<void> salvarContasParceladas({
     required String descricao,
     required double valorTotal,
     required DateTime primeiraDataVencimento,
     required int quantidadeParcelas,
   }) async {
-    final isar = await _isarService.db;
-
-    final grupo = 'PARC_${DateTime.now().microsecondsSinceEpoch.toString()}';
+    final grupo = 'PARC_${DateTime.now().microsecondsSinceEpoch}';
     final valorParcela = valorTotal / quantidadeParcelas;
 
-    await isar.writeTxn(() async {
-      for (var i = 0; i < quantidadeParcelas; i++) {
-        final venc = DateTime(
-          primeiraDataVencimento.year,
-          primeiraDataVencimento.month + i,
-          primeiraDataVencimento.day,
-        );
+    for (var i = 0; i < quantidadeParcelas; i++) {
+      final venc = DateTime(
+        primeiraDataVencimento.year,
+        primeiraDataVencimento.month + i,
+        primeiraDataVencimento.day,
+      );
 
-        final conta =
-            ContaPagar()
-              ..descricao = descricao
-              ..valor = valorParcela
-              ..dataVencimento = venc
-              ..pago = false
-              ..dataPagamento = null
-              ..parcelaNumero = i + 1
-              ..parcelaTotal = quantidadeParcelas
-              ..grupoParcelas = grupo;
+      final conta = ContaPagar(
+        descricao: descricao,
+        valor: valorParcela,
+        dataVencimento: venc,
+        pago: false,
+        dataPagamento: null,
+        parcelaNumero: i + 1,
+        parcelaTotal: quantidadeParcelas,
+        grupoParcelas: grupo,
+      );
 
-        await isar.contaPagars.put(conta);
-      }
-    });
+      await _dbService.salvarContaPagar(conta);
+    }
   }
 }

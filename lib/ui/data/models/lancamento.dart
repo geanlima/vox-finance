@@ -1,84 +1,102 @@
-import 'package:isar/isar.dart';
-import 'package:flutter/material.dart';
+import 'package:vox_finance/ui/core/enum/categoria.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
-part 'lancamento.g.dart';
-
-@collection
 class Lancamento {
-  Id id = Isar.autoIncrement;
-
-  /// Valor do lançamento
-  late double valor;
-
-  /// Descrição (ex: "Mercado", "Uber", "Almoço")
-  late String descricao;
-
-  /// Forma de pagamento
-  @enumerated
-  late FormaPagamento formaPagamento;
-
-  /// Data de referência (pode ser data planejada ou de pagamento)
-  late DateTime dataHora;
-
-  /// true quando é pagamento de fatura de cartão
-  bool pagamentoFatura = false;
-
-  /// Se o lançamento já foi pago ou ainda está pendente
-  bool pago = true;
-
-  /// Data em que foi pago (se pago == true)
+  int? id;
+  double valor;
+  String descricao;
+  FormaPagamento formaPagamento;
+  DateTime dataHora;
+  bool pagamentoFatura;
+  bool pago;
   DateTime? dataPagamento;
+  Categoria categoria;
+  String? grupoParcelas;
+  int? parcelaNumero;
+  int? parcelaTotal;
 
-  /// Categoria (obrigatória para o Isar; use "outros" como fallback)
-  @enumerated
-  late Categoria categoria;
+  Lancamento({
+    this.id,
+    required this.valor,
+    required this.descricao,
+    required this.formaPagamento,
+    required this.dataHora,
+    this.pagamentoFatura = false,
+    this.pago = true,
+    this.dataPagamento,
+    required this.categoria,
+    this.grupoParcelas,
+    this.parcelaNumero,
+    this.parcelaTotal,
+  });
 
-  /// Se veio de um grupo de parcelas (conta parcelada / lançamento futuro)
-  String? grupoParcelas; // identificador do grupo
-  int? parcelaNumero;    // número da parcela
-  int? parcelaTotal;     // total de parcelas
-}
-
-enum Categoria {
-  mercado,
-  transporte,
-  lazer,
-  alimentacao,
-  saude,
-  contas,
-  outros,
-}
-
-enum FormaPagamento { credito, debito, dinheiro, pix, boleto }
-
-extension FormaPagamentoExt on FormaPagamento {
-  String get label {
-    switch (this) {
-      case FormaPagamento.credito:
-        return 'Crédito';
-      case FormaPagamento.debito:
-        return 'Débito';
-      case FormaPagamento.dinheiro:
-        return 'Dinheiro';
-      case FormaPagamento.pix:
-        return 'Pix';
-      case FormaPagamento.boleto:
-        return 'Boleto';
-    }
+  Lancamento copyWith({
+    int? id,
+    double? valor,
+    String? descricao,
+    FormaPagamento? formaPagamento,
+    DateTime? dataHora,
+    bool? pagamentoFatura,
+    bool? pago,
+    DateTime? dataPagamento,
+    Categoria? categoria,
+    String? grupoParcelas,
+    int? parcelaNumero,
+    int? parcelaTotal,
+  }) {
+    return Lancamento(
+      id: id ?? this.id,
+      valor: valor ?? this.valor,
+      descricao: descricao ?? this.descricao,
+      formaPagamento: formaPagamento ?? this.formaPagamento,
+      dataHora: dataHora ?? this.dataHora,
+      pagamentoFatura: pagamentoFatura ?? this.pagamentoFatura,
+      pago: pago ?? this.pago,
+      dataPagamento: dataPagamento ?? this.dataPagamento,
+      categoria: categoria ?? this.categoria,
+      grupoParcelas: grupoParcelas ?? this.grupoParcelas,
+      parcelaNumero: parcelaNumero ?? this.parcelaNumero,
+      parcelaTotal: parcelaTotal ?? this.parcelaTotal,
+    );
   }
 
-  IconData get icon {
-    switch (this) {
-      case FormaPagamento.credito:
-        return Icons.credit_card;
-      case FormaPagamento.debito:
-        return Icons.atm;
-      case FormaPagamento.dinheiro:
-        return Icons.attach_money;
-      case FormaPagamento.pix:
-        return Icons.pix;
-      case FormaPagamento.boleto:
-        return Icons.receipt_long;
-    }
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'valor': valor,
+      'descricao': descricao,
+      'forma_pagamento': formaPagamento.index,
+      'data_hora': dataHora.millisecondsSinceEpoch,
+      'pagamento_fatura': pagamentoFatura ? 1 : 0,
+      'pago': pago ? 1 : 0,
+      'data_pagamento': dataPagamento?.millisecondsSinceEpoch,
+      'categoria': categoria.index,
+      'grupo_parcelas': grupoParcelas,
+      'parcela_numero': parcelaNumero,
+      'parcela_total': parcelaTotal,
+      // ehReceita não vai para o banco (se quiser, cria coluna depois)
+    };
+  }
+
+  factory Lancamento.fromMap(Map<String, Object?> map) {
+    return Lancamento(
+      id: map['id'] as int?,
+      valor: (map['valor'] as num).toDouble(),
+      descricao: map['descricao'] as String,
+      formaPagamento: FormaPagamento.values[(map['forma_pagamento'] as int)],
+      dataHora: DateTime.fromMillisecondsSinceEpoch(map['data_hora'] as int),
+      pagamentoFatura: (map['pagamento_fatura'] as int) == 1,
+      pago: (map['pago'] as int) == 1,
+      dataPagamento:
+          map['data_pagamento'] == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(
+                map['data_pagamento'] as int,
+              ),
+      categoria: Categoria.values[(map['categoria'] as int)],
+      grupoParcelas: map['grupo_parcelas'] as String?,
+      parcelaNumero: map['parcela_numero'] as int?,
+      parcelaTotal: map['parcela_total'] as int?,
+    );
   }
 }

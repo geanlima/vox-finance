@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
 
 class LancamentoList extends StatelessWidget {
   final List<Lancamento> lancamentos;
@@ -32,6 +33,10 @@ class LancamentoList extends StatelessWidget {
         final lanc = lancamentos[index];
         final isFatura = lanc.pagamentoFatura;
 
+        // 👇 Status baseado no campo pago
+        final statusTexto = lanc.pago ? 'Pago' : 'Pendente';
+        final statusCor = lanc.pago ? Colors.green : Colors.orange;
+
         return Card(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
@@ -42,13 +47,15 @@ class LancamentoList extends StatelessWidget {
               currency.format(lanc.valor),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: isFatura ? Colors.red : null, // 👈 vermelho
+                color: isFatura ? Colors.red : null,
               ),
             ),
             subtitle: Text(
               '${lanc.descricao}'
               '${isFatura ? ' (Pagamento de fatura)' : ''}\n'
+              'Status: $statusTexto\n'
               '${dateHoraFormat.format(lanc.dataHora)}',
+              style: TextStyle(color: statusCor),
             ),
             isThreeLine: true,
             trailing: Row(

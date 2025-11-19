@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
+import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 
 class ContaPagarForm extends StatefulWidget {
@@ -16,6 +16,7 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
   final _formKey = GlobalKey<FormState>();
   final _descricaoController = TextEditingController();
   final _valorController = TextEditingController();
+  final _dbService = DbService();
   DateTime _dataVencimento = DateTime.now();
 
   final _dateFormat = DateFormat('dd/MM/yyyy');
@@ -51,13 +52,17 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
     }
   }
 
-  void _salvar() {
+  void _salvar() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final desc = _descricaoController.text.trim();
+
+    // trata o valor digitado (12,34 / 12.34)
     final valorStr = _valorController.text
         .trim()
         .replaceAll('.', '')
         .replaceAll(',', '.');
+
     final valor = double.tryParse(valorStr);
 
     if (valor == null || valor <= 0) {
@@ -67,14 +72,40 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
       return;
     }
 
-    final conta = widget.contaExistente ?? ContaPagar();
+    // garante que você tem uma data de vencimento válida
+    final dataVencimento = _dataVencimento; // sua variável de estado
 
-    conta
-      ..descricao = _descricaoController.text.trim()
-      ..valor = valor
-      ..dataVencimento = _dataVencimento;
+    // se for edição, reaproveita o objeto;
+    // se for novo, cria um com todos os campos obrigatórios
+    final bool ehEdicao = widget.contaExistente != null;
 
-    Navigator.pop(context, conta);
+    ContaPagar conta;
+    if (ehEdicao) {
+      conta = widget.contaExistente!;
+      conta
+        ..descricao = desc
+        ..valor = valor
+        ..dataVencimento = dataVencimento;
+      // grupoParcelas e demais campos são mantidos
+    } else {
+      final grupo = 'SIMP_${DateTime.now().microsecondsSinceEpoch}';
+
+      conta = ContaPagar(
+        descricao: desc,
+        valor: valor,
+        dataVencimento: dataVencimento,
+        pago: false,
+        dataPagamento: null,
+        parcelaNumero: 1,
+        parcelaTotal: 1,
+        grupoParcelas: grupo,
+      );
+    }
+
+    await _dbService.salvarContaPagar(conta);
+
+    if (!mounted) return;
+    Navigator.pop(context, true);
   }
 
   @override

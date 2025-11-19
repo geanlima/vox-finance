@@ -44,7 +44,7 @@ class VoxFinanceApp extends StatelessWidget {
             '/grafico-mensal': (_) => const GraficoMensalPage(),
             '/config-grafico': (_) => const ConfigGraficoPage(),
             '/contas-pagar': (_) => const ContasPagarPage(),
-            '/lancamentos-futuros': (_) => const LancamentoFuturoPage(),
+            '/lancamentos-futuros': (_) => const LancamentosFuturosPage(),
           },
         );
       },

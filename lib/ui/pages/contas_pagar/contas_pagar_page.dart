@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
-import 'package:vox_finance/ui/data/sevice/isar_service.dart';
+import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
 
@@ -39,7 +39,7 @@ class ContasPagarPage extends StatefulWidget {
 }
 
 class _ContasPagarPageState extends State<ContasPagarPage> {
-  final _isarService = IsarService();
+  final _isarService = DbService();
   late final IAService _iaService;
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
@@ -68,24 +68,18 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
     final mapa = <String, List<ContaPagar>>{};
 
     for (final conta in todasParcelas) {
-      final grupo = conta.grupoParcelas ?? 'SEM_GRUPO_${conta.id}';
+      // grupoParcelas agora é obrigatório (String, não-nulo)
+      final grupo = conta.grupoParcelas;
       mapa.putIfAbsent(grupo, () => []).add(conta);
     }
 
     final resumos = <ContaPagarResumo>[];
 
     mapa.forEach((grupo, parcelas) {
-      // ordena por número da parcela, caindo para dataVencimento se não tiver número
+      // ordena por número da parcela, tratando null
       parcelas.sort((a, b) {
-        final pa = a.parcelaNumero;
-        final pb = b.parcelaNumero;
-
-        if (pa == null && pb == null) {
-          return a.dataVencimento.compareTo(b.dataVencimento);
-        }
-        if (pa == null) return -1;
-        if (pb == null) return 1;
-
+        final pa = a.parcelaNumero ?? 0; // ou 999999, se quiser mandar pro fim
+        final pb = b.parcelaNumero ?? 0;
         return pa.compareTo(pb);
       });
 
