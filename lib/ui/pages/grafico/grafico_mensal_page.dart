@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/enum/grafico_visao_inicial.dart';
 import 'package:vox_finance/ui/core/service/preferencias_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/sevice/isar_service.dart';
+import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-
-
 
 enum GraficoNivel { ano, mes, dia }
 
@@ -20,7 +19,7 @@ class GraficoMensalPage extends StatefulWidget {
 }
 
 class _GraficoMensalPageState extends State<GraficoMensalPage> {
-  final _isarService = IsarService();
+  final _isarService = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
   /// nível atual do gráfico (ano / mês / dia)
@@ -57,7 +56,12 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
 
   /// Lê a configuração (ano/mês/dia) e carrega o nível inicial.
   Future<void> _carregarPreferencias() async {
-    _visaoInicial = await PreferenciasService.carregarVisao();
+    try {
+      _visaoInicial =
+          await PreferenciasService.carregarVisao();
+    } catch (_) {
+      _visaoInicial = GraficoVisaoInicial.ano;
+    }
 
     switch (_visaoInicial) {
       case GraficoVisaoInicial.ano:
@@ -74,7 +78,9 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
         break;
     }
 
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   // =================== CARREGAMENTO DE DADOS ===================
@@ -89,17 +95,21 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
     });
 
     final inicio = DateTime(_anoSelecionado, 1, 1);
-    final fim = DateTime(_anoSelecionado + 1, 1, 1)
-        .subtract(const Duration(seconds: 1));
+    final fim = DateTime(
+      _anoSelecionado + 1,
+      1,
+      1,
+    ).subtract(const Duration(seconds: 1));
 
     final lancamentos = await _isarService.getLancamentosByPeriodo(inicio, fim);
 
     final mapa = <int, double>{};
-    for (final l in lancamentos) {
+    for (final Lancamento l in lancamentos) {
       final mes = l.dataHora.month;
       mapa.update(mes, (atual) => atual + l.valor, ifAbsent: () => l.valor);
     }
 
+    if (!mounted) return;
     setState(() {
       _totaisPorMes = mapa;
       _carregando = false;
@@ -121,11 +131,12 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
     final lancamentos = await _isarService.getLancamentosByPeriodo(inicio, fim);
 
     final mapa = <int, double>{};
-    for (final l in lancamentos) {
+    for (final Lancamento l in lancamentos) {
       final dia = l.dataHora.day;
       mapa.update(dia, (atual) => atual + l.valor, ifAbsent: () => l.valor);
     }
 
+    if (!mounted) return;
     setState(() {
       _totaisPorDia = mapa;
       _carregando = false;
@@ -140,13 +151,14 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
     });
 
     final inicio = DateTime(_anoSelecionado, _mesSelecionado, _diaSelecionado);
-    final fim =
-        inicio.add(const Duration(days: 1)).subtract(const Duration(seconds: 1));
+    final fim = inicio
+        .add(const Duration(days: 1))
+        .subtract(const Duration(seconds: 1));
 
     final lancamentos = await _isarService.getLancamentosByPeriodo(inicio, fim);
 
     final mapa = <FormaPagamento, double>{};
-    for (final l in lancamentos) {
+    for (final Lancamento l in lancamentos) {
       mapa.update(
         l.formaPagamento,
         (atual) => atual + l.valor,
@@ -154,6 +166,7 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
       );
     }
 
+    if (!mounted) return;
     setState(() {
       _totaisPorForma = mapa;
       _carregando = false;
@@ -165,22 +178,16 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
   void _voltarNivel() {
     switch (_nivel) {
       case GraficoNivel.dia:
-        // do dia volta para o mês
         _carregarMes();
         break;
-
       case GraficoNivel.mes:
         if (_visaoInicial == GraficoVisaoInicial.ano) {
-          // se começou em ano, volta para o ano
           _carregarAno();
         } else {
-          // se a visão inicial era mês ou dia, sair da tela de gráfico
           Navigator.pop(context);
         }
         break;
-
       case GraficoNivel.ano:
-        // no nível ano sempre sai da tela de gráfico
         Navigator.pop(context);
         break;
     }
@@ -231,15 +238,12 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
         title: Text(titulo),
         leading: Builder(
           builder: (context) {
-            // Quando nível for ANO: mostra o menu (3 barras) → Drawer
             if (_nivel == GraficoNivel.ano) {
               return IconButton(
                 icon: const Icon(Icons.menu),
                 onPressed: () => Scaffold.of(context).openDrawer(),
               );
             }
-
-            // Em MÊS ou DIA: seta de voltar (volta nível)
             return IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: _voltarNivel,
@@ -255,9 +259,10 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
             _buildHeaderFiltro(),
             const SizedBox(height: 16),
             Expanded(
-              child: _carregando
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildChartAtual(),
+              child:
+                  _carregando
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildChartAtual(),
             ),
           ],
         ),
@@ -270,13 +275,18 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
       case GraficoNivel.ano:
         return 'Gastos por mês ($_anoSelecionado)';
       case GraficoNivel.mes:
-        final mesNome = DateFormat('MMMM', 'pt_BR')
-            .format(DateTime(_anoSelecionado, _mesSelecionado, 1));
+        final mesNome = DateFormat(
+          'MMMM',
+          'pt_BR',
+        ).format(DateTime(_anoSelecionado, _mesSelecionado, 1));
         return 'Gastos por dia - '
             '${mesNome[0].toUpperCase()}${mesNome.substring(1)} $_anoSelecionado';
       case GraficoNivel.dia:
-        final data =
-            DateTime(_anoSelecionado, _mesSelecionado, _diaSelecionado);
+        final data = DateTime(
+          _anoSelecionado,
+          _mesSelecionado,
+          _diaSelecionado,
+        );
         return 'Gastos por forma - ${DateFormat('dd/MM/yyyy').format(data)}';
     }
   }
@@ -293,8 +303,7 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
             ),
             Text(
               'Ano $_anoSelecionado',
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             IconButton(
               icon: const Icon(Icons.chevron_right),
@@ -304,8 +313,10 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
         );
 
       case GraficoNivel.mes:
-        final mesNome = DateFormat('MMMM', 'pt_BR')
-            .format(DateTime(_anoSelecionado, _mesSelecionado, 1));
+        final mesNome = DateFormat(
+          'MMMM',
+          'pt_BR',
+        ).format(DateTime(_anoSelecionado, _mesSelecionado, 1));
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -337,13 +348,15 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
         );
 
       case GraficoNivel.dia:
-        final data =
-            DateTime(_anoSelecionado, _mesSelecionado, _diaSelecionado);
+        final data = DateTime(
+          _anoSelecionado,
+          _mesSelecionado,
+          _diaSelecionado,
+        );
         return Center(
           child: Text(
             DateFormat('dd/MM/yyyy').format(data),
-            style:
-                const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
         );
     }
@@ -367,23 +380,23 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
       return const Center(child: Text('Nenhum lançamento neste ano.'));
     }
 
-    final grupos = _totaisPorMes.entries
-        .map(
-          (e) => BarChartGroupData(
-            x: e.key,
-            barRods: [
-              BarChartRodData(
-                toY: e.value,
-                borderRadius: BorderRadius.circular(4),
+    final grupos =
+        _totaisPorMes.entries
+            .map(
+              (e) => BarChartGroupData(
+                x: e.key,
+                barRods: [
+                  BarChartRodData(
+                    toY: e.value,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ],
               ),
-            ],
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.x.compareTo(b.x));
+            )
+            .toList()
+          ..sort((a, b) => a.x.compareTo(b.x));
 
-    final maxValor =
-        _totaisPorMes.values.reduce((a, b) => a > b ? a : b);
+    final maxValor = _totaisPorMes.values.reduce((a, b) => a > b ? a : b);
 
     return BarChart(
       BarChartData(
@@ -398,8 +411,10 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
               reservedSize: 26,
               getTitlesWidget: (value, meta) {
                 final mes = value.toInt();
-                final nomeMes = DateFormat('MMM', 'pt_BR')
-                    .format(DateTime(_anoSelecionado, mes, 1));
+                final nomeMes = DateFormat(
+                  'MMM',
+                  'pt_BR',
+                ).format(DateTime(_anoSelecionado, mes, 1));
                 return Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
@@ -448,23 +463,23 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
       return const Center(child: Text('Nenhum lançamento neste mês.'));
     }
 
-    final grupos = _totaisPorDia.entries
-        .map(
-          (e) => BarChartGroupData(
-            x: e.key,
-            barRods: [
-              BarChartRodData(
-                toY: e.value,
-                borderRadius: BorderRadius.circular(4),
+    final grupos =
+        _totaisPorDia.entries
+            .map(
+              (e) => BarChartGroupData(
+                x: e.key,
+                barRods: [
+                  BarChartRodData(
+                    toY: e.value,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ],
               ),
-            ],
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.x.compareTo(b.x));
+            )
+            .toList()
+          ..sort((a, b) => a.x.compareTo(b.x));
 
-    final maxValor =
-        _totaisPorDia.values.reduce((a, b) => a > b ? a : b);
+    final maxValor = _totaisPorDia.values.reduce((a, b) => a > b ? a : b);
 
     return BarChart(
       BarChartData(
@@ -540,10 +555,7 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
         BarChartGroupData(
           x: i,
           barRods: [
-            BarChartRodData(
-              toY: valor,
-              borderRadius: BorderRadius.circular(4),
-            ),
+            BarChartRodData(toY: valor, borderRadius: BorderRadius.circular(4)),
           ],
         ),
       );
@@ -553,8 +565,7 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
       return const Center(child: Text('Nenhum valor nas formas usadas.'));
     }
 
-    final maxValor =
-        _totaisPorForma.values.reduce((a, b) => a > b ? a : b);
+    final maxValor = _totaisPorForma.values.reduce((a, b) => a > b ? a : b);
 
     return BarChart(
       BarChartData(
@@ -576,7 +587,7 @@ class _GraficoMensalPageState extends State<GraficoMensalPage> {
                 return Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    forma.label,
+                    forma.name,
                     style: const TextStyle(fontSize: 10),
                     textAlign: TextAlign.center,
                   ),

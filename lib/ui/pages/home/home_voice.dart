@@ -3,7 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-import '../../data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/categorias_service.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
 
 /// Abre o bottom sheet de voz e retorna o texto reconhecido
 Future<String?> mostrarBottomSheetVoz({
@@ -67,7 +69,7 @@ Future<String?> mostrarBottomSheetVoz({
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    color: Colors.grey.shade200,
+                    color: Colors.grey,
                   ),
                   child: Align(
                     alignment: Alignment.centerLeft,
@@ -85,7 +87,6 @@ Future<String?> mostrarBottomSheetVoz({
                     TextButton(
                       onPressed: () async {
                         await parar();
-                        // ignore: use_build_context_synchronously
                         Navigator.pop(context, null);
                       },
                       child: const Text('Cancelar'),
@@ -172,13 +173,19 @@ Lancamento? interpretarComandoVoz(String texto) {
     descricao = descricao[0].toUpperCase() + descricao.substring(1);
   }
 
-  final lanc =
-      Lancamento()
-        ..valor = valor
-        ..descricao = descricao
-        ..formaPagamento = forma
-        ..dataHora = DateTime.now()
-        ..pagamentoFatura = pagamentoFatura;
+  // Categoria baseada na descrição (igual no HomePage)
+  final categoria = CategoriaService.fromDescricao(descricao);
 
-  return lanc;
+  return Lancamento(
+    valor: valor,
+    descricao: descricao,
+    formaPagamento: forma,
+    dataHora: DateTime.now(),
+    pagamentoFatura: pagamentoFatura,
+    categoria: categoria,
+    // se no seu modelo tiver `pago`/`dataPagamento` com default, pode omitir;
+    // se forem required, ajuste aqui:
+    pago: true,
+    dataPagamento: DateTime.now(),
+  );
 }

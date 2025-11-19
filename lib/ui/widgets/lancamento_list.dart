@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
 
 class LancamentoList extends StatelessWidget {
   final List<Lancamento> lancamentos;
@@ -42,7 +43,7 @@ class LancamentoList extends StatelessWidget {
               currency.format(lanc.valor),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: isFatura ? Colors.red : null, // 👈 vermelho
+                color: isFatura ? Colors.red : null,
               ),
             ),
             subtitle: Text(
