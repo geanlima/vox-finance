@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/pages/lancamento_futuro/lancamento_futuro_form.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/widgets/lancamento_futuro_tile.dart';
+// ajuste o caminho se for diferente:
 
 class LancamentosFuturosPage extends StatefulWidget {
   const LancamentosFuturosPage({super.key});
@@ -13,7 +15,7 @@ class LancamentosFuturosPage extends StatefulWidget {
 }
 
 class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
-  final _dbService = DbService(); // antes: _isarService
+  final _dbService = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
   late Future<List<Lancamento>> _futureLancamentos;
@@ -22,7 +24,6 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   @override
   void initState() {
     super.initState();
-    // não precisa aguardar aqui
     _carregarDados();
   }
 
@@ -30,11 +31,8 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
     final hoje = DateTime.now();
 
     // último dia do mês atual
-    final fimDoMes = DateTime(
-      hoje.year,
-      hoje.month + 1,
-      1,
-    ).subtract(const Duration(days: 1));
+    final fimDoMes = DateTime(hoje.year, hoje.month + 1, 1)
+        .subtract(const Duration(days: 1));
 
     setState(() {
       _futureLancamentos = _dbService.getLancamentosFuturosAte(fimDoMes);
@@ -43,17 +41,64 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   }
 
   Future<void> _marcarComoPago(Lancamento lanc, bool pago) async {
-    // no modelo SQLite o id é int?, então usamos !
     if (lanc.id == null) return;
 
     await _dbService.marcarLancamentoComoPago(lanc.id!, pago);
     await _carregarDados();
   }
 
+  Future<void> _novoLancamentoFuturo() async {
+    final hoje = DateTime.now();
+    final dataInicial = DateTime(hoje.year, hoje.month, hoje.day)
+        .add(const Duration(days: 1)); // amanhã
+
+    final resultado = await Navigator.push<Lancamento>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LancamentoFormPage(
+          dataInicial: dataInicial,
+          isFuturo: true,
+        ),
+      ),
+    );
+
+    if (resultado != null) {
+      await _dbService.salvarLancamento(resultado);
+      await _carregarDados();
+    }
+  }
+
+  Future<void> _editarLancamento(Lancamento lanc) async {
+    final resultado = await Navigator.push<Lancamento>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LancamentoFormPage(
+          lancamento: lanc,
+          isFuturo: lanc.dataHora.isAfter(DateTime.now()),
+        ),
+      ),
+    );
+
+    if (resultado != null) {
+      await _dbService.salvarLancamento(resultado);
+      await _carregarDados();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Lançamentos Futuros')),
+      appBar: AppBar(
+        title: const Text('Lançamentos Futuros'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context), // 👈 voltar
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _novoLancamentoFuturo,           // 👈 incluir
+        child: const Icon(Icons.add),
+      ),
       body: Column(
         children: [
           // Cabeçalho com total
@@ -121,6 +166,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
                       return LancamentoFuturoTile(
                         lancamento: lanc,
                         onAlterarPago: (pago) => _marcarComoPago(lanc, pago),
+                        onTap: () => _editarLancamento(lanc), // 👈 editar
                       );
                     },
                   ),

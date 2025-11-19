@@ -6,11 +6,13 @@ import 'package:vox_finance/ui/data/models/lancamento.dart';
 class LancamentoFuturoTile extends StatelessWidget {
   final Lancamento lancamento;
   final ValueChanged<bool> onAlterarPago;
+  final VoidCallback? onTap;
 
   LancamentoFuturoTile({
     super.key,
     required this.lancamento,
     required this.onAlterarPago,
+    this.onTap,
   });
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
@@ -32,12 +34,17 @@ class LancamentoFuturoTile extends StatelessWidget {
           if (v != null) onAlterarPago(v);
         },
       ),
-      title: Text(descricao, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        descricao,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       subtitle: Text(_dateFormat.format(data)),
       trailing: Text(
         _currency.format(valor),
         style: TextStyle(color: corValor, fontWeight: FontWeight.bold),
       ),
+      onTap: onTap,
     );
   }
 }
