@@ -424,7 +424,7 @@ class _HomePageState extends State<HomePage> {
                             // monta o objeto para salvar
                             final Lancamento lanc =
                                 ehEdicao
-                                    ? existente!.copyWith(
+                                    ? existente.copyWith(
                                       valor: valor,
                                       descricao: descricao,
                                       formaPagamento: formaSelecionada!,

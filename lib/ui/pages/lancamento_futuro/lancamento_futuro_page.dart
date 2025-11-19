@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/lancamento_futuro_form.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/widgets/lancamento_futuro_tile.dart';
 // ajuste o caminho se for diferente:
@@ -31,8 +32,11 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
     final hoje = DateTime.now();
 
     // último dia do mês atual
-    final fimDoMes = DateTime(hoje.year, hoje.month + 1, 1)
-        .subtract(const Duration(days: 1));
+    final fimDoMes = DateTime(
+      hoje.year,
+      hoje.month + 1,
+      1,
+    ).subtract(const Duration(days: 1));
 
     setState(() {
       _futureLancamentos = _dbService.getLancamentosFuturosAte(fimDoMes);
@@ -49,38 +53,47 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
 
   Future<void> _novoLancamentoFuturo() async {
     final hoje = DateTime.now();
-    final dataInicial = DateTime(hoje.year, hoje.month, hoje.day)
-        .add(const Duration(days: 1)); // amanhã
 
-    final resultado = await Navigator.push<Lancamento>(
+    // você pode usar hoje ou amanhã como data inicial, como preferir
+    final dataInicial = DateTime(hoje.year, hoje.month, hoje.day);
+
+    final result = await Navigator.push<LancamentoFormResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => LancamentoFormPage(
-          dataInicial: dataInicial,
-          isFuturo: true,
-        ),
+        builder:
+            (_) => LancamentoFormPage(dataInicial: dataInicial, isFuturo: true),
       ),
     );
 
-    if (resultado != null) {
-      await _dbService.salvarLancamento(resultado);
+    if (result != null) {
+      if (result.qtdParcelas <= 1) {
+        await _dbService.salvarLancamento(result.lancamentoBase);
+      } else {
+        await _dbService.salvarLancamentosParceladosFuturos(
+          result.lancamentoBase,
+          result.qtdParcelas,
+        );
+      }
+
       await _carregarDados();
     }
   }
 
   Future<void> _editarLancamento(Lancamento lanc) async {
-    final resultado = await Navigator.push<Lancamento>(
+    final resultado = await Navigator.push<LancamentoFormResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => LancamentoFormPage(
-          lancamento: lanc,
-          isFuturo: lanc.dataHora.isAfter(DateTime.now()),
-        ),
+        builder:
+            (_) => LancamentoFormPage(
+              lancamento: lanc,
+              isFuturo: lanc.dataHora.isAfter(DateTime.now()),
+            ),
       ),
     );
 
     if (resultado != null) {
-      await _dbService.salvarLancamento(resultado);
+      // para edição de um só, vamos manter simples: salva só esse
+      await _dbService.salvarLancamento(resultado.lancamentoBase);
       await _carregarDados();
     }
   }
@@ -96,7 +109,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _novoLancamentoFuturo,           // 👈 incluir
+        onPressed: _novoLancamentoFuturo, // 👈 incluir
         child: const Icon(Icons.add),
       ),
       body: Column(

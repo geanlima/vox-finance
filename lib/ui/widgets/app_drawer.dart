@@ -106,8 +106,8 @@ class AppDrawer extends StatelessWidget {
       selectedTileColor: colors.primary.withOpacity(0.08),
       onTap: () {
         Navigator.pop(context);
-        if (!selected) {
-          Navigator.pushReplacementNamed(context, route);
+        if (ModalRoute.of(context)?.settings.name != route) {
+          Navigator.pushNamed(context, route);
         }
       },
     );
