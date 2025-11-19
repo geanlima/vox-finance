@@ -1,4 +1,4 @@
-import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/enum/categoria.dart';
 
 class CategoriaService {
   /// Regra simples (pode virar IA depois)
