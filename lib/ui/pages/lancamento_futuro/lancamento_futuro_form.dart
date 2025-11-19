@@ -1,9 +1,12 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
 
 class LancamentoFormPage extends StatefulWidget {
   final Lancamento? lancamento;
@@ -25,8 +28,11 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _descricaoController = TextEditingController();
   final _valorController = TextEditingController();
+  final _qtdParcelasController = TextEditingController(text: '1');
+
   late DateTime _data;
   bool _pago = false;
+  bool _parcelado = false;
 
   late FormaPagamento _formaPagamento;
   late Categoria _categoria;
@@ -45,11 +51,15 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
       _pago = l.pago;
       _formaPagamento = l.formaPagamento;
       _categoria = l.categoria;
+      _parcelado = (l.parcelaTotal ?? 1) > 1;
+      _qtdParcelasController.text = (l.parcelaTotal ?? 1).toString();
     } else {
       _data = widget.dataInicial ?? DateTime.now();
       _pago = false;
       _formaPagamento = FormaPagamento.values.first;
       _categoria = Categoria.values.first;
+      _parcelado = false;
+      _qtdParcelasController.text = '1';
     }
   }
 
@@ -57,6 +67,7 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
   void dispose() {
     _descricaoController.dispose();
     _valorController.dispose();
+    _qtdParcelasController.dispose();
     super.dispose();
   }
 
@@ -67,14 +78,12 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );
-
     if (selecionada != null) {
       setState(() => _data = selecionada);
     }
   }
 
   String _labelEnum(Object e) {
-    // converte Enum.Algo em "Algo"
     final s = e.toString();
     final idx = s.indexOf('.');
     return idx >= 0 ? s.substring(idx + 1) : s;
@@ -86,9 +95,15 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
     final valor =
         double.tryParse(_valorController.text.replaceAll(',', '.')) ?? 0.0;
 
+    int qtdParcelas = 1;
+    if (_parcelado) {
+      qtdParcelas = int.tryParse(_qtdParcelasController.text.trim()) ?? 1;
+      if (qtdParcelas < 2) qtdParcelas = 2;
+    }
+
     final agora = DateTime.now();
 
-    final lanc = Lancamento(
+    final base = Lancamento(
       id: widget.lancamento?.id,
       valor: valor,
       descricao: _descricaoController.text.trim(),
@@ -100,10 +115,15 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
       categoria: _categoria,
       grupoParcelas: widget.lancamento?.grupoParcelas,
       parcelaNumero: widget.lancamento?.parcelaNumero,
-      parcelaTotal: widget.lancamento?.parcelaTotal,
+      parcelaTotal: _parcelado ? qtdParcelas : 1,
     );
 
-    Navigator.pop(context, lanc);
+    final result = LancamentoFormResult(
+      lancamentoBase: base,
+      qtdParcelas: qtdParcelas,
+    );
+
+    Navigator.pop(context, result); // 👈 DEVOLVE O RESULT
   }
 
   @override
@@ -149,7 +169,6 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
               ),
               const SizedBox(height: 16),
 
-              // Forma de pagamento
               DropdownButtonFormField<FormaPagamento>(
                 value: _formaPagamento,
                 decoration: const InputDecoration(
@@ -159,22 +178,19 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
                 items:
                     FormaPagamento.values
                         .map(
-                          (f) => DropdownMenuItem<FormaPagamento>(
+                          (f) => DropdownMenuItem(
                             value: f,
                             child: Text(_labelEnum(f)),
                           ),
                         )
                         .toList(),
                 onChanged: (v) {
-                  if (v != null) {
-                    setState(() => _formaPagamento = v);
-                  }
+                  if (v != null) setState(() => _formaPagamento = v);
                 },
               ),
 
               const SizedBox(height: 16),
 
-              // Categoria
               DropdownButtonFormField<Categoria>(
                 value: _categoria,
                 decoration: const InputDecoration(
@@ -184,16 +200,14 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
                 items:
                     Categoria.values
                         .map(
-                          (c) => DropdownMenuItem<Categoria>(
+                          (c) => DropdownMenuItem(
                             value: c,
                             child: Text(_labelEnum(c)),
                           ),
                         )
                         .toList(),
                 onChanged: (v) {
-                  if (v != null) {
-                    setState(() => _categoria = v);
-                  }
+                  if (v != null) setState(() => _categoria = v);
                 },
               ),
 
@@ -208,16 +222,50 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
                   child: Text(_dateFormat.format(_data)),
                 ),
               ),
+
+              const SizedBox(height: 16),
+
+              SwitchListTile(
+                title: const Text('Lançamento parcelado?'),
+                value: _parcelado,
+                onChanged: (v) {
+                  setState(() => _parcelado = v);
+                },
+              ),
+              if (_parcelado) ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _qtdParcelasController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Quantidade de parcelas',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (!_parcelado) return null;
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Informe a quantidade de parcelas';
+                    }
+                    final n = int.tryParse(value.trim());
+                    if (n == null || n < 2) {
+                      return 'Informe pelo menos 2 parcelas';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+
               const SizedBox(height: 16),
               CheckboxListTile(
                 title: const Text('Já está pago?'),
                 value: _pago,
                 onChanged: (v) {
-                  if (v != null) {
-                    setState(() => _pago = v);
-                  }
+                  if (v != null) setState(() => _pago = v);
                 },
               ),
+
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,

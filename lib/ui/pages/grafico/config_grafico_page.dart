@@ -1,10 +1,7 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
-import 'package:vox_finance/ui/core/enum/grafico_visao_inicial.dart';
-import 'package:vox_finance/ui/core/service/preferencias_service.dart';
-import 'package:vox_finance/ui/core/service/theme_controller.dart';
-import '../../widgets/app_drawer.dart';
+
+import 'package:vox_finance/ui/core/enum/tipo_grafico.dart';
+import 'package:vox_finance/ui/core/service/grafico_preferencia_service.dart';
 
 class ConfigGraficoPage extends StatefulWidget {
   const ConfigGraficoPage({super.key});
@@ -14,106 +11,58 @@ class ConfigGraficoPage extends StatefulWidget {
 }
 
 class _ConfigGraficoPageState extends State<ConfigGraficoPage> {
-  GraficoVisaoInicial _visao = GraficoVisaoInicial.ano;
-  ThemeMode _themeMode = ThemeMode.system;
+  final _service = GraficoPreferenciaService();
+  TipoGrafico _selecionado = TipoGrafico.barra;
+  bool _carregando = true;
 
   @override
   void initState() {
     super.initState();
-    _carregar();
+    _carregarPreferencia();
   }
 
-  Future<void> _carregar() async {
-    _visao = await PreferenciasService.carregarVisao();
-    _themeMode = themeController.themeMode; // ✅ vem do singleton
-
-    setState(() {});
+  Future<void> _carregarPreferencia() async {
+    final tipo = await _service.carregarTipoGrafico();
+    setState(() {
+      _selecionado = tipo;
+      _carregando = false;
+    });
   }
 
-  Future<void> _salvarVisao(GraficoVisaoInicial nova) async {
-    setState(() => _visao = nova);
-    await PreferenciasService.salvarVisao(nova);
-  }
-
-  Future<void> _alterarTema(ThemeMode modo) async {
-    setState(() => _themeMode = modo);
-    await themeController.setThemeMode(modo); // ✅ salva + notifica app
+  Future<void> _salvar(TipoGrafico tipo) async {
+    setState(() => _selecionado = tipo);
+    await _service.salvarTipoGrafico(tipo);
+    // opcional: mostrar snackbar
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Tipo de gráfico alterado para ${tipo.label}.'),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    if (_carregando) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Configurações")),
-      drawer: const AppDrawer(currentRoute: '/config-grafico'),
+      appBar: AppBar(title: const Text('Configuração de Gráfico')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            "Visão inicial do gráfico",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: colors.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          RadioListTile<GraficoVisaoInicial>(
-            title: const Text("Ano"),
-            value: GraficoVisaoInicial.ano,
-            groupValue: _visao,
-            onChanged: (v) => _salvarVisao(v!),
-          ),
-          RadioListTile<GraficoVisaoInicial>(
-            title: const Text("Mês"),
-            value: GraficoVisaoInicial.mes,
-            groupValue: _visao,
-            onChanged: (v) => _salvarVisao(v!),
-          ),
-          RadioListTile<GraficoVisaoInicial>(
-            title: const Text("Dia"),
-            value: GraficoVisaoInicial.dia,
-            groupValue: _visao,
-            onChanged: (v) => _salvarVisao(v!),
-          ),
-
-          const SizedBox(height: 24),
-          Divider(color: colors.primary.withOpacity(0.3)),
-          const SizedBox(height: 24),
-
-          Text(
-            "Tema do aplicativo",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: colors.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          RadioListTile<ThemeMode>(
-            title: const Text("Claro"),
-            value: ThemeMode.light,
-            groupValue: _themeMode,
-            onChanged: (v) => _alterarTema(v!),
-          ),
-          RadioListTile<ThemeMode>(
-            title: const Text("Escuro"),
-            value: ThemeMode.dark,
-            groupValue: _themeMode,
-            onChanged: (v) => _alterarTema(v!),
-          ),
-          RadioListTile<ThemeMode>(
-            title: const Text("Automático (Sistema)"),
-            value: ThemeMode.system,
-            groupValue: _themeMode,
-            onChanged: (v) => _alterarTema(v!),
-          ),
-
-          const SizedBox(height: 32),
-        ],
+        children: TipoGrafico.values.map((tipo) {
+          return RadioListTile<TipoGrafico>(
+            title: Text(tipo.label),
+            value: tipo,
+            groupValue: _selecionado,
+            onChanged: (v) {
+              if (v != null) _salvar(v);
+            },
+          );
+        }).toList(),
       ),
     );
   }

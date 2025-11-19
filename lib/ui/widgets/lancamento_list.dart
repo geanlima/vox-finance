@@ -33,6 +33,10 @@ class LancamentoList extends StatelessWidget {
         final lanc = lancamentos[index];
         final isFatura = lanc.pagamentoFatura;
 
+        // 👇 Status baseado no campo pago
+        final statusTexto = lanc.pago ? 'Pago' : 'Pendente';
+        final statusCor = lanc.pago ? Colors.green : Colors.orange;
+
         return Card(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
@@ -49,7 +53,9 @@ class LancamentoList extends StatelessWidget {
             subtitle: Text(
               '${lanc.descricao}'
               '${isFatura ? ' (Pagamento de fatura)' : ''}\n'
+              'Status: $statusTexto\n'
               '${dateHoraFormat.format(lanc.dataHora)}',
+              style: TextStyle(color: statusCor),
             ),
             isThreeLine: true,
             trailing: Row(

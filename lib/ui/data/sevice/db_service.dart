@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -141,7 +141,6 @@ class DbService {
     return result.map((e) => Lancamento.fromMap(e)).toList();
   }
 
-  /// Lançamentos futuros (não pagos) até uma data limite
   Future<List<Lancamento>> getLancamentosFuturosAte(DateTime limite) async {
     final database = await db;
 
@@ -159,14 +158,69 @@ class DbService {
       orderBy: 'data_hora ASC',
     );
 
+    final todos = result.map((e) => Lancamento.fromMap(e)).toList();
+
+    // ==== AGRUPAMENTO POR GRUPO_PARCELAS ====
+    final Map<String, List<Lancamento>> grupos = {};
+
+    for (final lanc in todos) {
+      // se não tiver grupo, usa um identificador próprio
+      final key = lanc.grupoParcelas ?? 'SINGLE_${lanc.id}';
+      grupos.putIfAbsent(key, () => []).add(lanc);
+    }
+
+    final List<Lancamento> agregados = [];
+
+    grupos.forEach((key, lista) {
+      if (lista.length == 1 && lista.first.grupoParcelas == null) {
+        // não é parcelado → volta como está
+        agregados.add(lista.first);
+      } else {
+        // é parcelado → soma valor e usa a menor data
+        final primeiro = lista.first;
+        final total = lista.fold<double>(0.0, (acc, l) => acc + l.valor);
+        final menorData = lista
+            .map((l) => l.dataHora)
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+
+        agregados.add(
+          primeiro.copyWith(
+            valor: total,
+            dataHora: menorData,
+            grupoParcelas: primeiro.grupoParcelas ?? key,
+            // pago fica false se qualquer parcela estiver pendente
+            pago: lista.every((l) => l.pago),
+          ),
+        );
+      }
+    });
+
+    // ordena por data
+    agregados.sort((a, b) => a.dataHora.compareTo(b.dataHora));
+
+    return agregados;
+  }
+
+  Future<List<Lancamento>> getParcelasPorGrupoLancamento(String grupo) async {
+    final database = await db;
+
+    final result = await database.query(
+      'lancamentos',
+      where: 'grupo_parcelas = ?',
+      whereArgs: [grupo],
+      orderBy: 'data_hora ASC',
+    );
+
     return result.map((e) => Lancamento.fromMap(e)).toList();
   }
+
 
   /// Soma o valor de todos os lançamentos futuros até o limite
   Future<double> getTotalLancamentosFuturosAte(DateTime limite) async {
     final lista = await getLancamentosFuturosAte(limite);
     return lista.fold<double>(0.0, (acc, l) => acc + l.valor);
   }
+
 
   /// Marca / desmarca um lançamento como pago
   Future<void> marcarLancamentoComoPago(int id, bool pago) async {
@@ -253,5 +307,44 @@ class DbService {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<void> salvarLancamentosParceladosFuturos(
+    Lancamento base,
+    int qtdParcelas,
+  ) async {
+    final database = await db;
+
+    // grupo único para todas as parcelas
+    final String grupo =
+        base.grupoParcelas ?? DateTime.now().millisecondsSinceEpoch.toString();
+
+    // valor de cada parcela
+    final double valorParcela = base.valor / qtdParcelas;
+
+    final DateTime dataBase = base.dataHora;
+
+    for (int i = 0; i < qtdParcelas; i++) {
+      // 👇 cada parcela com diferença de 1 mês (≈ 30 dias)
+      // 0 => mês base, 1 => +1 mês, 2 => +2 meses...
+      final DateTime dataParcela = DateTime(
+        dataBase.year,
+        dataBase.month + i,
+        min(dataBase.day, 28), // evita problemas com meses de 28/30/31
+      );
+
+      final lancParcela = base.copyWith(
+        id: null, // sempre novo registro
+        valor: valorParcela,
+        dataHora: dataParcela,
+        grupoParcelas: grupo,
+        parcelaNumero: i + 1,
+        parcelaTotal: qtdParcelas,
+        pago: false,
+        dataPagamento: null,
+      );
+
+      await database.insert('lancamentos', lancParcela.toMap());
+    }
   }
 }
