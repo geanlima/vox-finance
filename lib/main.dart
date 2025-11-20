@@ -3,14 +3,11 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
 import 'package:vox_finance/ui/core/service/theme_controller.dart';
-import 'package:vox_finance/ui/pages/grafico/config_grafico_page.dart';
-import 'package:vox_finance/ui/pages/grafico/grafico_mensal_page.dart';
 
 import 'package:vox_finance/ui/pages/home/home_page.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/contas_pagar_page.dart';
-import 'package:vox_finance/ui/pages/lancamento_futuro/lancamento_futuro_page.dart';
+import 'package:vox_finance/ui/pages/grafico/graficos_page.dart';
 
-// 👇 instancia GLOBAL, é essa que você usa no ConfigGraficoPage
 final themeController = ThemeController();
 
 Future<void> main() async {
@@ -34,17 +31,21 @@ class VoxFinanceApp extends StatelessWidget {
 
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-
-          // 👇 AQUI É O SEGREDO: usa o valor do controller
-          themeMode: themeController.themeMode,
+          themeMode: themeController.themeMode, // usa o valor do controller
 
           initialRoute: '/',
           routes: {
             '/': (_) => const HomePage(),
-            '/grafico-mensal': (_) => const GraficoMensalPage(),
-            '/config-grafico': (_) => const ConfigGraficoPage(),
+
+            // 💰 Lançamentos / Contas
             '/contas-pagar': (_) => const ContasPagarPage(),
-            '/lancamentos-futuros': (_) => const LancamentosFuturosPage(),
+            //'/lancamentos-futuros': (_) => const LancamentosFuturosPage(),
+
+            // 📊 Gráficos
+            //'/grafico-mensal': (_) => const GraficoMensalPage(),
+            //'/config-grafico': (_) => const ConfigGraficoPage(),
+            '/graficos':
+                (_) => const GraficosPage(), // 👈 tela com gráfico pizza
           },
         );
       },
