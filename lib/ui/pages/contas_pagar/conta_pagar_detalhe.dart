@@ -66,7 +66,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       pagamentoFatura: false,
       pago: true,
       dataPagamento: agora,
-      categoria: Categoria.contas,
+      categoria: Categoria.impostosETaxas,
       grupoParcelas: parcela.grupoParcelas,
       parcelaNumero: parcela.parcelaNumero,
       parcelaTotal: parcela.parcelaTotal,
