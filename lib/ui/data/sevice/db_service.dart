@@ -145,26 +145,30 @@ class DbService {
     final database = await db;
 
     final hoje = DateTime.now();
-    final amanha = DateTime(hoje.year, hoje.month, hoje.day)
-        .add(const Duration(days: 1));
+    final inicioHoje = DateTime(hoje.year, hoje.month, hoje.day);
 
-    final fim = DateTime(limite.year, limite.month, limite.day)
-        .add(const Duration(days: 1));
+    final fim = DateTime(
+      limite.year,
+      limite.month,
+      limite.day,
+    ).add(const Duration(days: 1)); // limite exclusivo
 
     final result = await database.query(
       'lancamentos',
       where: 'data_hora >= ? AND data_hora < ? AND pago = 0',
-      whereArgs: [amanha.millisecondsSinceEpoch, fim.millisecondsSinceEpoch],
+      whereArgs: [
+        inicioHoje.millisecondsSinceEpoch,
+        fim.millisecondsSinceEpoch,
+      ],
       orderBy: 'data_hora ASC',
     );
 
     final todos = result.map((e) => Lancamento.fromMap(e)).toList();
 
-    // ==== AGRUPAMENTO POR GRUPO_PARCELAS ====
+    // ==== AGRUPAMENTO POR GRUPO_PARCELAS ==== (seu código atual)
     final Map<String, List<Lancamento>> grupos = {};
 
     for (final lanc in todos) {
-      // se não tiver grupo, usa um identificador próprio
       final key = lanc.grupoParcelas ?? 'SINGLE_${lanc.id}';
       grupos.putIfAbsent(key, () => []).add(lanc);
     }
@@ -173,10 +177,8 @@ class DbService {
 
     grupos.forEach((key, lista) {
       if (lista.length == 1 && lista.first.grupoParcelas == null) {
-        // não é parcelado → volta como está
         agregados.add(lista.first);
       } else {
-        // é parcelado → soma valor e usa a menor data
         final primeiro = lista.first;
         final total = lista.fold<double>(0.0, (acc, l) => acc + l.valor);
         final menorData = lista
@@ -188,16 +190,13 @@ class DbService {
             valor: total,
             dataHora: menorData,
             grupoParcelas: primeiro.grupoParcelas ?? key,
-            // pago fica false se qualquer parcela estiver pendente
             pago: lista.every((l) => l.pago),
           ),
         );
       }
     });
 
-    // ordena por data
     agregados.sort((a, b) => a.dataHora.compareTo(b.dataHora));
-
     return agregados;
   }
 
@@ -214,13 +213,11 @@ class DbService {
     return result.map((e) => Lancamento.fromMap(e)).toList();
   }
 
-
   /// Soma o valor de todos os lançamentos futuros até o limite
   Future<double> getTotalLancamentosFuturosAte(DateTime limite) async {
     final lista = await getLancamentosFuturosAte(limite);
     return lista.fold<double>(0.0, (acc, l) => acc + l.valor);
   }
-
 
   /// Marca / desmarca um lançamento como pago
   Future<void> marcarLancamentoComoPago(int id, bool pago) async {
@@ -315,7 +312,7 @@ class DbService {
   ) async {
     final database = await db;
 
-    // grupo único para todas as parcelas
+    // grupo único para todas as parcelas (compartilhado por lancamento e conta_pagar)
     final String grupo =
         base.grupoParcelas ?? DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -324,27 +321,55 @@ class DbService {
 
     final DateTime dataBase = base.dataHora;
 
+    // paga / não paga vem do lançamento base
+    final bool pagoBase = base.pago;
+
+    // DateTime? pois sua model usa DateTime para dataPagamento
+    final DateTime? dataPagamentoBase =
+        pagoBase ? (base.dataPagamento ?? DateTime.now()) : null;
+
     for (int i = 0; i < qtdParcelas; i++) {
-      // 👇 cada parcela com diferença de 1 mês (≈ 30 dias)
-      // 0 => mês base, 1 => +1 mês, 2 => +2 meses...
       final DateTime dataParcela = DateTime(
         dataBase.year,
         dataBase.month + i,
-        min(dataBase.day, 28), // evita problemas com meses de 28/30/31
+        min(dataBase.day, 28),
       );
 
+      // =========================
+      // 1) LANÇAMENTO PARCELADO
+      // =========================
       final lancParcela = base.copyWith(
-        id: null, // sempre novo registro
+        id: null,
         valor: valorParcela,
         dataHora: dataParcela,
         grupoParcelas: grupo,
         parcelaNumero: i + 1,
         parcelaTotal: qtdParcelas,
-        pago: false,
-        dataPagamento: null,
+        pago: pagoBase,
+        dataPagamento: dataPagamentoBase,
       );
 
       await database.insert('lancamentos', lancParcela.toMap());
+
+      // =========================
+      // 2) CONTA A PAGAR (se não estiver pago)
+      // =========================
+      if (!pagoBase) {
+        final conta = ContaPagar(
+          id: null,
+          descricao: lancParcela.descricao,
+          valor: valorParcela,
+          dataVencimento: dataParcela,
+          pago: false,
+          dataPagamento: null,
+          parcelaNumero: i + 1,
+          parcelaTotal: qtdParcelas,
+          grupoParcelas: grupo,
+        );
+
+        await database.insert('conta_pagar', conta.toMap());
+      }
     }
   }
+
 }

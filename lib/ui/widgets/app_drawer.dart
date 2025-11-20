@@ -45,12 +45,6 @@ class AppDrawer extends StatelessWidget {
             ),
             _menuItem(
               context,
-              icon: Icons.payments,
-              label: 'Lançamentos futuros',
-              route: '/lancamentos-futuros',
-            ),
-            _menuItem(
-              context,
               icon: Icons.receipt_long,
               label: 'Contas a pagar',
               route: '/contas-pagar',
