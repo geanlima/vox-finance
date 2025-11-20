@@ -2,9 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:vox_finance/ui/core/enum/categoria.dart';
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-import 'package:vox_finance/ui/core/service/categorias_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 
 /// Abre o bottom sheet de voz e retorna o texto reconhecido
