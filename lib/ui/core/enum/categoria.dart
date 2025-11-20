@@ -1,39 +1,52 @@
 enum Categoria {
-  mercado,
   alimentacao,
-  farmacia,
-  transporte,
-  moradia,
-  lazer,
-  renda,
-  outros,
-  saude,
-  contas,
   educacao,
-  restaurantes,
+  familia,
+  financasPessoais,
+  impostosETaxas,
+  lazerEEntretenimento,
+  moradia,
+  outros,
+  presentesEDoacoes,
+  saude,
+  seguros,
+  tecnologia,
+  transporte,
+  vestuario,
 }
 
 class CategoriaService {
   /// Converte enum → nome de exibição
   static String toName(Categoria cat) {
     switch (cat) {
-      case Categoria.mercado:
-        return "Mercado";
-      case Categoria.transporte:
-        return "Transporte";
-      case Categoria.lazer:
-        return "Lazer";
-      case Categoria.contas:
-        return "Contas";
-      case Categoria.saude:
-        return "Saúde";
+      case Categoria.alimentacao:
+        return "Alimentação";
       case Categoria.educacao:
         return "Educação";
-      case Categoria.restaurantes:
-        return "Restaurantes";
+      case Categoria.familia:
+        return "Família";
+      case Categoria.financasPessoais:
+        return "Finanças Pessoais";
+      case Categoria.impostosETaxas:
+        return "Impostos e Taxas";
+      case Categoria.lazerEEntretenimento:
+        return "Lazer e Entretenimento";
+      case Categoria.moradia:
+        return "Moradia";
       case Categoria.outros:
-      default:
         return "Outros";
+      case Categoria.presentesEDoacoes:
+        return "Presentes e Doações";
+      case Categoria.saude:
+        return "Saúde";
+      case Categoria.seguros:
+        return "Seguros";
+      case Categoria.tecnologia:
+        return "Tecnologia";
+      case Categoria.transporte:
+        return "Transporte";
+      case Categoria.vestuario:
+        return "Vestuário";
     }
   }
 
@@ -47,7 +60,7 @@ class CategoriaService {
         desc.contains("compra") ||
         desc.contains("sacolão") ||
         desc.contains("horti")) {
-      return Categoria.mercado;
+      return Categoria.alimentacao;
     }
 
     // Transporte
@@ -68,7 +81,7 @@ class CategoriaService {
         desc.contains("bar") ||
         desc.contains("caf") ||
         desc.contains("food")) {
-      return Categoria.restaurantes;
+      return Categoria.alimentacao;
     }
 
     // Lazer
@@ -78,7 +91,7 @@ class CategoriaService {
         desc.contains("lazer") ||
         desc.contains("netflix") ||
         desc.contains("spotify")) {
-      return Categoria.lazer;
+      return Categoria.lazerEEntretenimento;
     }
 
     // Contas (fixas)
@@ -92,7 +105,7 @@ class CategoriaService {
         desc.contains("internet") ||
         desc.contains("boleto") ||
         desc.contains("aluguel")) {
-      return Categoria.contas;
+      return Categoria.impostosETaxas;
     }
 
     // Saúde

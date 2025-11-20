@@ -8,6 +8,7 @@ enum FormaPagamento {
   boleto,
   transferencia,
   cheque,
+  voucher,
   outros,
 }
 
@@ -28,6 +29,8 @@ extension FormaPagamentoExt on FormaPagamento {
         return 'Transferência';
       case FormaPagamento.cheque:
         return 'Cheque';
+      case FormaPagamento.voucher:
+        return 'Voucher';
       case FormaPagamento.outros:
         return 'Outros';
     }
@@ -49,6 +52,8 @@ extension FormaPagamentoExt on FormaPagamento {
         return Icons.compare_arrows;
       case FormaPagamento.cheque:
         return Icons.description;
+      case FormaPagamento.voucher:
+        return Icons.lunch_dining;
       case FormaPagamento.outros:
         return Icons.more_horiz;
     }
