@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
+import 'package:vox_finance/ui/core/enum/categoria.dart';
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-import 'package:vox_finance/ui/core/service/categorias_service.dart';
 import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
@@ -28,7 +28,6 @@ class _HomePageState extends State<HomePage> {
   final _imagePicker = ImagePicker();
   final List<Lancamento> _lancamentos = [];
 
-  /// Agora é um DbService de verdade, não mais “Isar”
   final _dbService = DbService();
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
@@ -89,6 +88,11 @@ class _HomePageState extends State<HomePage> {
 
   void _onAddLancamento() {
     _abrirFormLancamento();
+  }
+
+  Future<void> _abrirLancamentosFuturos() async {
+    await Navigator.pushNamed(context, '/lancamentos-futuros');
+    await _carregarDoBanco(); // ao voltar, atualiza o dia selecionado
   }
 
   Future<void> _onMicPressed() async {
@@ -201,6 +205,8 @@ class _HomePageState extends State<HomePage> {
 
   // ============ FORM ============
 
+  // ============ FORM ============
+
   void _abrirFormLancamento({
     Lancamento? existente,
     double? valorInicial,
@@ -228,6 +234,20 @@ class _HomePageState extends State<HomePage> {
     DateTime dataLancamento = existente?.dataHora ?? _dataSelecionada;
 
     final ehEdicao = existente != null;
+
+    // 👇 Categoria selecionada
+    Categoria? categoriaSelecionada = existente?.categoria;
+    if (!ehEdicao && categoriaSelecionada == null) {
+      // tenta sugerir categoria pela descrição inicial
+      final baseDesc = descricaoInicial ?? existente?.descricao ?? '';
+      if (baseDesc.trim().isNotEmpty) {
+        categoriaSelecionada = CategoriaService.fromDescricao(baseDesc);
+      }
+    }
+
+    // 👇 controles de parcelamento (somente para NOVO lançamento)
+    bool parcelado = false;
+    final qtdParcelasController = TextEditingController(text: '2');
 
     showModalBottomSheet(
       context: context,
@@ -261,6 +281,8 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                     const SizedBox(height: 16),
+
+                    // Valor
                     TextField(
                       controller: valorController,
                       keyboardType: TextInputType.number,
@@ -271,6 +293,8 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+
+                    // Descrição
                     TextField(
                       controller: descricaoController,
                       decoration: const InputDecoration(
@@ -280,6 +304,32 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+
+                    // 👇 Categoria
+                    DropdownButtonFormField<Categoria>(
+                      value: categoriaSelecionada,
+                      decoration: const InputDecoration(
+                        labelText: 'Categoria',
+                        border: OutlineInputBorder(),
+                      ),
+                      items:
+                          Categoria.values.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text(
+                                c.name,
+                              ), // se tiver c.label, pode trocar
+                            );
+                          }).toList(),
+                      onChanged: (nova) {
+                        setModalState(() {
+                          categoriaSelecionada = nova;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Forma de pagamento
                     DropdownButtonFormField<FormaPagamento>(
                       value: formaSelecionada,
                       decoration: const InputDecoration(
@@ -306,6 +356,8 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                     const SizedBox(height: 12),
+
+                    // Pagamento de fatura
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Pagamento de fatura de cartão'),
@@ -316,6 +368,8 @@ class _HomePageState extends State<HomePage> {
                         });
                       },
                     ),
+
+                    // Já está pago
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Já está pago'),
@@ -330,7 +384,36 @@ class _HomePageState extends State<HomePage> {
                         });
                       },
                     ),
+
+                    // ------- PARCELAMENTO (apenas novo lançamento) -------
+                    if (!ehEdicao) ...[
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Lançamento parcelado?'),
+                        value: parcelado,
+                        onChanged: (v) {
+                          setModalState(() {
+                            parcelado = v;
+                          });
+                        },
+                      ),
+                      if (parcelado) ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: qtdParcelasController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Quantidade de parcelas',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ],
+
                     const SizedBox(height: 12),
+
+                    // Data
                     InkWell(
                       onTap: () async {
                         final novaData = await showDatePicker(
@@ -373,6 +456,8 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // Botões
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -412,16 +497,23 @@ class _HomePageState extends State<HomePage> {
                               return;
                             }
 
+                            if (categoriaSelecionada == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Selecione a categoria.'),
+                                ),
+                              );
+                              return;
+                            }
+
                             final descricao =
                                 descricaoController.text.trim().isEmpty
                                     ? 'Sem descrição'
                                     : descricaoController.text.trim();
 
-                            final categoria = CategoriaService.fromDescricao(
-                              descricao,
-                            );
+                            final categoria = categoriaSelecionada!;
 
-                            // monta o objeto para salvar
+                            // monta o objeto base
                             final Lancamento lanc =
                                 ehEdicao
                                     ? existente.copyWith(
@@ -450,9 +542,39 @@ class _HomePageState extends State<HomePage> {
                                           pago ? DateTime.now() : null,
                                     );
 
-                            await _dbService.salvarLancamento(lanc);
-                            await _carregarDoBanco();
+                            // ======== LÓGICA DE SALVAR / PARCELAR ========
+                            if (!ehEdicao && parcelado) {
+                              final qtd =
+                                  int.tryParse(qtdParcelasController.text) ?? 1;
 
+                              if (qtd < 2) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Informe uma quantidade de parcelas maior ou igual a 2.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              // base para as parcelas: respeita "Já está pago"
+                              final base = lanc.copyWith(
+                                grupoParcelas: null,
+                                parcelaNumero: null,
+                                parcelaTotal: null,
+                              );
+
+                              await _dbService
+                                  .salvarLancamentosParceladosFuturos(
+                                    base,
+                                    qtd,
+                                  );
+                            } else {
+                              await _dbService.salvarLancamento(lanc);
+                            }
+
+                            await _carregarDoBanco();
                             Navigator.pop(context);
                           },
                           child: Text(
@@ -519,6 +641,11 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('VoxFinance'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.payments),
+            onPressed: _abrirLancamentosFuturos,
+            tooltip: 'Lançamentos futuros',
+          ),
           IconButton(
             icon: const Icon(Icons.mic),
             onPressed: _onMicPressed,

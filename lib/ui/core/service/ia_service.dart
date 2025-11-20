@@ -1,6 +1,5 @@
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
-import 'package:vox_finance/ui/core/service/categorias_service.dart';
 import 'package:vox_finance/ui/data/sevice/db_service.dart';
 
 class IAInterpretacao {

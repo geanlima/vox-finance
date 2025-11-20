@@ -8,7 +8,7 @@ class Lancamento {
   FormaPagamento formaPagamento;
   DateTime dataHora;
   bool pagamentoFatura;
-  bool pago;
+  bool pago = true;
   DateTime? dataPagamento;
   Categoria categoria;
   String? grupoParcelas;
