@@ -7,10 +7,7 @@ import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
-enum TipoAgrupamentoPizza {
-  categoria,
-  formaPagamento,
-}
+enum TipoAgrupamentoPizza { categoria, formaPagamento }
 
 class GraficoPizzaComponent extends StatefulWidget {
   const GraficoPizzaComponent({
@@ -30,9 +27,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   final _db = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
-  // Ano fixo = ano atual
-  late final int _anoAtual;
+  // 🔹 Ano / mês selecionados + anos disponíveis
+  late int _anoSelecionado;
   int _mesSelecionado = DateTime.now().month;
+  late final List<int> _anosDisponiveis;
 
   TipoAgrupamentoPizza _tipo = TipoAgrupamentoPizza.categoria;
 
@@ -60,7 +58,14 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   @override
   void initState() {
     super.initState();
-    _anoAtual = DateTime.now().year;
+    final agora = DateTime.now();
+    _anoSelecionado = agora.year;
+
+    _anosDisponiveis = List<int>.generate(
+      9, // 5 anos atrás + ano atual + 3 à frente
+      (i) => agora.year - 5 + i,
+    );
+
     _carregarDados();
   }
 
@@ -73,8 +78,15 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   Future<void> _carregarDados() async {
     setState(() => _carregando = true);
 
-    final inicioMes = DateTime(_anoAtual, _mesSelecionado, 1);
-    final fimMes = DateTime(_anoAtual, _mesSelecionado + 1, 0, 23, 59, 59);
+    final inicioMes = DateTime(_anoSelecionado, _mesSelecionado, 1);
+    final fimMes = DateTime(
+      _anoSelecionado,
+      _mesSelecionado + 1,
+      0,
+      23,
+      59,
+      59,
+    );
 
     final lista = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
 
@@ -94,6 +106,11 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     });
   }
 
+  // ======= TOTAIS =======
+
+  double get _totalMes =>
+      _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
+
   Map<Categoria, double> _totaisPorCategoria() {
     final Map<Categoria, double> totais = {};
     for (final l in _lancamentos) {
@@ -105,10 +122,16 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   Map<FormaPagamento, double> _totaisPorFormaPagamento() {
     final Map<FormaPagamento, double> totais = {};
     for (final l in _lancamentos) {
-      totais.update(l.formaPagamento, (v) => v + l.valor, ifAbsent: () => l.valor);
+      totais.update(
+        l.formaPagamento,
+        (v) => v + l.valor,
+        ifAbsent: () => l.valor,
+      );
     }
     return totais;
   }
+
+  // ======= GRÁFICO =======
 
   List<PieChartSectionData> _buildSections() {
     if (_lancamentos.isEmpty) return [];
@@ -168,92 +191,215 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     }
   }
 
+  // ======= RESUMO POR FORMA (MÊS) =======
+
+  void _mostrarResumoPorFormaPagamentoMes() {
+    if (_lancamentos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há lançamentos neste mês para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    final totaisPorForma = _totaisPorFormaPagamento();
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Gastos por forma de pagamento',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                mesAnoLabel,
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              ...totaisPorForma.entries.map((entry) {
+                final forma = entry.key;
+                final valor = entry.value;
+
+                return ListTile(
+                  leading: CircleAvatar(child: Icon(forma.icon, size: 18)),
+                  title: Text(forma.label),
+                  trailing: Text(
+                    _currency.format(valor),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ======= BUILD =======
+
   @override
   Widget build(BuildContext context) {
-    final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoAtual';
+    final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+    final totalMesFormatado = _currency.format(_totalMes);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ====== FILTROS: MÊS DO ANO + AGRUPAMENTO ======
-        Row(
+        // ====== FILTROS (2 linhas) ======
+        Column(
           children: [
-            // MÊS DO ANO
-            Expanded(
-              child: DropdownButtonFormField<int>(
-                value: _mesSelecionado,
-                decoration: const InputDecoration(
-                  labelText: 'Mês',
-                  border: OutlineInputBorder(),
-                  isDense: true,
+            // Linha 1: MÊS + ANO
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _mesSelecionado,
+                    decoration: const InputDecoration(
+                      labelText: 'Mês',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: List.generate(12, (i) {
+                      final mes = i + 1;
+                      return DropdownMenuItem(
+                        value: mes,
+                        child: Text(_nomeMes(mes)),
+                      );
+                    }),
+                    onChanged: (novoMes) {
+                      if (novoMes == null) return;
+                      setState(() => _mesSelecionado = novoMes);
+                      _carregarDados();
+                    },
+                  ),
                 ),
-                items: List.generate(12, (i) {
-                  final mes = i + 1;
-                  return DropdownMenuItem(
-                    value: mes,
-                    child: Text(_nomeMes(mes)),
-                  );
-                }),
-                onChanged: (novoMes) {
-                  if (novoMes == null) return;
-                  setState(() {
-                    _mesSelecionado = novoMes;
-                  });
-                  _carregarDados();
-                },
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _anoSelecionado,
+                    decoration: const InputDecoration(
+                      labelText: 'Ano',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items:
+                        _anosDisponiveis
+                            .map(
+                              (ano) => DropdownMenuItem(
+                                value: ano,
+                                child: Text(ano.toString()),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (novoAno) {
+                      if (novoAno == null) return;
+                      setState(() => _anoSelecionado = novoAno);
+                      _carregarDados();
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
 
-            // TIPO AGRUPAMENTO
-            Expanded(
-              child: DropdownButtonFormField<TipoAgrupamentoPizza>(
-                value: _tipo,
-                decoration: const InputDecoration(
-                  labelText: 'Agrupar por',
-                  border: OutlineInputBorder(),
-                  isDense: true,
+            const SizedBox(height: 12),
+
+            // Linha 2: AGRUPAR POR
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<TipoAgrupamentoPizza>(
+                    value: _tipo,
+                    decoration: const InputDecoration(
+                      labelText: 'Agrupar por',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: TipoAgrupamentoPizza.categoria,
+                        child: Text('Categoria'),
+                      ),
+                      DropdownMenuItem(
+                        value: TipoAgrupamentoPizza.formaPagamento,
+                        child: Text('Forma pgto'),
+                      ),
+                    ],
+                    onChanged: (novo) {
+                      if (novo == null) return;
+                      setState(() => _tipo = novo);
+                    },
+                  ),
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: TipoAgrupamentoPizza.categoria,
-                    child: Text('Categoria'),
-                  ),
-                  DropdownMenuItem(
-                    value: TipoAgrupamentoPizza.formaPagamento,
-                    child: Text('Forma pgto'),
-                  ),
-                ],
-                onChanged: (novo) {
-                  if (novo == null) return;
-                  setState(() {
-                    _tipo = novo;
-                  });
-                },
-              ),
+              ],
             ),
           ],
         ),
+
         const SizedBox(height: 16),
 
+        // MÊS / ANO
         Text(
           labelMesAno,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
 
+        // ====== TOTAL GASTO NO MÊS (CLICÁVEL) ======
+        InkWell(
+          onTap: _mostrarResumoPorFormaPagamentoMes,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.summarize,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Total gasto no mês:',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                const Spacer(),
+                Text(
+                  totalMesFormatado,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
         if (_carregando)
-          const Expanded(
-            child: Center(child: CircularProgressIndicator()),
-          )
+          const Expanded(child: Center(child: CircularProgressIndicator()))
         else if (_lancamentos.isEmpty)
           const Expanded(
-            child: Center(
-              child: Text('Sem lançamentos neste período.'),
-            ),
+            child: Center(child: Text('Sem lançamentos neste período.')),
           )
         else ...[
           SizedBox(
@@ -268,14 +414,17 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: _tipo == TipoAgrupamentoPizza.categoria
-                ? _buildLegendaCategoria()
-                : _buildLegendaFormaPagamento(),
+            child:
+                _tipo == TipoAgrupamentoPizza.categoria
+                    ? _buildLegendaCategoria()
+                    : _buildLegendaFormaPagamento(),
           ),
         ],
       ],
     );
   }
+
+  // ======= LEGENDAS =======
 
   Widget _buildLegendaCategoria() {
     final data = _totaisPorCategoria();
@@ -295,10 +444,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           leading: Container(
             width: 14,
             height: 14,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-            ),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
           ),
           title: Text(CategoriaService.toName(cat)),
           subtitle: Text('${percent.toStringAsFixed(1)}%'),
@@ -332,10 +478,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
               Container(
                 width: 14,
                 height: 14,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color,
-                ),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
               ),
               const SizedBox(width: 8),
               Icon(forma.icon, size: 18),
