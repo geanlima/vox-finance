@@ -40,20 +40,14 @@ class AppDrawer extends StatelessWidget {
             _menuItem(
               context,
               icon: Icons.bar_chart,
-              label: 'Gráfico mensal',
-              route: '/grafico-mensal',
+              label: 'Gráfico',
+              route: '/graficos',
             ),
             _menuItem(
               context,
               icon: Icons.receipt_long,
               label: 'Contas a pagar',
               route: '/contas-pagar',
-            ),
-            _menuItem(
-              context,
-              icon: Icons.settings,
-              label: 'Configurar gráfico / tema',
-              route: '/config-grafico',
             ),
 
             const Spacer(),
