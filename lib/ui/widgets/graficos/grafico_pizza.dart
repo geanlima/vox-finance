@@ -1,13 +1,29 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
-enum TipoAgrupamentoPizza { categoria, formaPagamento }
+enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
+
+/// Grupo para resumo por forma/cartão
+class _GrupoFormaPagamento {
+  final String label;
+  final IconData icon;
+  double total;
+
+  _GrupoFormaPagamento({
+    required this.label,
+    required this.icon,
+    required this.total,
+  });
+}
 
 class GraficoPizzaComponent extends StatefulWidget {
   const GraficoPizzaComponent({
@@ -26,8 +42,10 @@ class GraficoPizzaComponent extends StatefulWidget {
 class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   final _db = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
+  final _dateHoraFormat = DateFormat('dd/MM HH:mm');
+  final _dateDiaFormat = DateFormat('dd/MM');
 
-  // 🔹 Ano / mês selecionados + anos disponíveis
+  // 🔹 Ano / mês selecionados e anos disponíveis
   late int _anoSelecionado;
   int _mesSelecionado = DateTime.now().month;
   late final List<int> _anosDisponiveis;
@@ -36,6 +54,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   bool _carregando = false;
   List<Lancamento> _lancamentos = [];
+
+  // 🔹 Cartões carregados do banco
+  List<CartaoCredito> _cartoes = [];
 
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
@@ -61,9 +82,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final agora = DateTime.now();
     _anoSelecionado = agora.year;
 
+    // 5 anos para trás + ano atual + 3 anos para frente = 9 anos
+    const anosAtras = 5;
+    const anosFrente = 3;
     _anosDisponiveis = List<int>.generate(
-      9, // 5 anos atrás + ano atual + 3 à frente
-      (i) => agora.year - 5 + i,
+      anosAtras + anosFrente + 1,
+      (i) => agora.year - anosAtras + i,
     );
 
     _carregarDados();
@@ -89,6 +113,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     );
 
     final lista = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
+    final cards = await _db.getCartoesCredito();
 
     Iterable<Lancamento> filtrados = lista;
 
@@ -102,14 +127,16 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
     setState(() {
       _lancamentos = filtrados.toList();
+      _cartoes = cards;
       _carregando = false;
     });
   }
 
   // ======= TOTAIS =======
 
-  double get _totalMes =>
-      _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
+  double get _totalMes {
+    return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
+  }
 
   Map<Categoria, double> _totaisPorCategoria() {
     final Map<Categoria, double> totais = {};
@@ -119,16 +146,117 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return totais;
   }
 
-  Map<FormaPagamento, double> _totaisPorFormaPagamento() {
-    final Map<FormaPagamento, double> totais = {};
+  /// 🔹 Forma pagamento: débito/pix/dinheiro etc. normal,
+  /// crédito agrupado por CARTÃO (descrição + bandeira + últimos 4 dígitos)
+  Map<String, _GrupoFormaPagamento> _totaisPorFormaPagamentoAgrupado() {
+    final Map<String, _GrupoFormaPagamento> mapa = {};
+
     for (final l in _lancamentos) {
-      totais.update(
-        l.formaPagamento,
-        (v) => v + l.valor,
-        ifAbsent: () => l.valor,
-      );
+      if (l.formaPagamento == FormaPagamento.credito) {
+        CartaoCredito? cartao;
+        if (l.idCartao != null) {
+          try {
+            cartao = _cartoes.firstWhere((c) => c.id == l.idCartao);
+          } catch (_) {
+            cartao = null;
+          }
+        }
+
+        final String label;
+        if (cartao != null) {
+          label =
+              '${cartao.descricao} • ${cartao.bandeira} • **** ${cartao.ultimos4Digitos}';
+        } else if (l.idCartao == null) {
+          label = 'Crédito (sem cartão vinculado)';
+        } else {
+          label = 'Crédito (cartão id ${l.idCartao})';
+        }
+
+        final key = label;
+        if (mapa.containsKey(key)) {
+          mapa[key]!.total += l.valor;
+        } else {
+          mapa[key] = _GrupoFormaPagamento(
+            label: label,
+            icon: Icons.credit_card,
+            total: l.valor,
+          );
+        }
+      } else {
+        final label = l.formaPagamento.label;
+        final key = label;
+
+        if (mapa.containsKey(key)) {
+          mapa[key]!.total += l.valor;
+        } else {
+          mapa[key] = _GrupoFormaPagamento(
+            label: label,
+            icon: l.formaPagamento.icon,
+            total: l.valor,
+          );
+        }
+      }
     }
-    return totais;
+
+    return mapa;
+  }
+
+  /// 🔹 Mapa: label (forma/cartão) → lista de lançamentos
+  Map<String, List<Lancamento>> _lancamentosPorGrupoFormaPagamento() {
+    final Map<String, List<Lancamento>> mapa = {};
+
+    for (final l in _lancamentos) {
+      String label;
+
+      if (l.formaPagamento == FormaPagamento.credito) {
+        CartaoCredito? cartao;
+        if (l.idCartao != null) {
+          try {
+            cartao = _cartoes.firstWhere((c) => c.id == l.idCartao);
+          } catch (_) {
+            cartao = null;
+          }
+        }
+
+        if (cartao != null) {
+          label =
+              '${cartao.descricao} • ${cartao.bandeira} • **** ${cartao.ultimos4Digitos}';
+        } else if (l.idCartao == null) {
+          label = 'Crédito (sem cartão vinculado)';
+        } else {
+          label = 'Crédito (cartão id ${l.idCartao})';
+        }
+      } else {
+        label = l.formaPagamento.label;
+      }
+
+      mapa.putIfAbsent(label, () => []).add(l);
+    }
+
+    return mapa;
+  }
+
+  /// 🔹 Total por dia do mês (cada dia é um "grupo")
+  Map<DateTime, double> _totaisPorDia() {
+    final Map<DateTime, double> totais = {};
+    for (final l in _lancamentos) {
+      final d = DateTime(l.dataHora.year, l.dataHora.month, l.dataHora.day);
+      totais.update(d, (v) => v + l.valor, ifAbsent: () => l.valor);
+    }
+    // ordena por dia
+    final entries =
+        totais.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    return {for (final e in entries) e.key: e.value};
+  }
+
+  /// 🔹 Mapa: dia → lista de lançamentos
+  Map<DateTime, List<Lancamento>> _lancamentosPorDia() {
+    final Map<DateTime, List<Lancamento>> mapa = {};
+    for (final l in _lancamentos) {
+      final d = DateTime(l.dataHora.year, l.dataHora.month, l.dataHora.day);
+      mapa.putIfAbsent(d, () => []).add(l);
+    }
+    return mapa;
   }
 
   // ======= GRÁFICO =======
@@ -162,8 +290,35 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           color: color,
         );
       });
+    } else if (_tipo == TipoAgrupamentoPizza.formaPagamento) {
+      final data = _totaisPorFormaPagamentoAgrupado();
+      final total = data.values.fold<double>(0.0, (a, b) => a + b.total);
+      if (total == 0) return [];
+
+      final entries = data.values.toList();
+
+      return List.generate(entries.length, (i) {
+        final grupo = entries[i];
+        final valor = grupo.total;
+        final percent = (valor / total) * 100;
+        final color = _colorForIndex(i);
+
+        return PieChartSectionData(
+          value: valor,
+          title: '${percent.toStringAsFixed(1)}%',
+          radius: 80,
+          showTitle: true,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          color: color,
+        );
+      });
     } else {
-      final data = _totaisPorFormaPagamento();
+      // 🔹 Agrupamento por DIA
+      final data = _totaisPorDia();
       final total = data.values.fold<double>(0.0, (a, b) => a + b);
       if (total == 0) return [];
 
@@ -181,7 +336,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           radius: 80,
           showTitle: true,
           titleStyle: const TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
@@ -200,50 +355,125 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           content: Text('Não há lançamentos neste mês para detalhar.'),
         ),
       );
+    } else {
+      final totaisPorGrupo = _totaisPorFormaPagamentoAgrupado();
+
+      showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (context) {
+          final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Gastos por forma de pagamento / cartão',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  mesAnoLabel,
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                ...totaisPorGrupo.values.map((grupo) {
+                  return ListTile(
+                    leading: CircleAvatar(child: Icon(grupo.icon, size: 18)),
+                    title: Text(grupo.label),
+                    trailing: Text(
+                      _currency.format(grupo.total),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        },
+      );
+    }
+  }
+
+  // ======= DETALHAMENTO =======
+
+  void _mostrarDetalheLancamentos({
+    required String titulo,
+    required String subtitulo,
+    required List<Lancamento> lancamentos,
+  }) {
+    if (lancamentos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nenhum lançamento para detalhar.')),
+      );
       return;
     }
 
-    final totaisPorForma = _totaisPorFormaPagamento();
+    final total = lancamentos.fold<double>(0.0, (a, b) => a + b.valor);
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Gastos por forma de pagamento',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                mesAnoLabel,
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ...totaisPorForma.entries.map((entry) {
-                final forma = entry.key;
-                final valor = entry.value;
-
-                return ListTile(
-                  leading: CircleAvatar(child: Icon(forma.icon, size: 18)),
-                  title: Text(forma.label),
-                  trailing: Text(
-                    _currency.format(valor),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(titulo, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitulo,
+                    style: const TextStyle(fontSize: 13, color: Colors.grey),
                   ),
-                );
-              }),
-            ],
-          ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Total: ${_currency.format(total)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      itemCount: lancamentos.length,
+                      itemBuilder: (context, index) {
+                        final l = lancamentos[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l.descricao),
+                          subtitle: Text(
+                            '${_dateHoraFormat.format(l.dataHora)} • '
+                            '${CategoriaService.toName(l.categoria)}',
+                          ),
+                          trailing: Text(
+                            _currency.format(l.valor),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -259,96 +489,93 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ====== FILTROS (2 linhas) ======
-        Column(
+        // ====== LINHA 1: MÊS + ANO ======
+        Row(
           children: [
-            // Linha 1: MÊS + ANO
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _mesSelecionado,
-                    decoration: const InputDecoration(
-                      labelText: 'Mês',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: List.generate(12, (i) {
-                      final mes = i + 1;
-                      return DropdownMenuItem(
-                        value: mes,
-                        child: Text(_nomeMes(mes)),
-                      );
-                    }),
-                    onChanged: (novoMes) {
-                      if (novoMes == null) return;
-                      setState(() => _mesSelecionado = novoMes);
-                      _carregarDados();
-                    },
-                  ),
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: _mesSelecionado,
+                decoration: const InputDecoration(
+                  labelText: 'Mês',
+                  border: OutlineInputBorder(),
+                  isDense: true,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _anoSelecionado,
-                    decoration: const InputDecoration(
-                      labelText: 'Ano',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items:
-                        _anosDisponiveis
-                            .map(
-                              (ano) => DropdownMenuItem(
-                                value: ano,
-                                child: Text(ano.toString()),
-                              ),
-                            )
-                            .toList(),
-                    onChanged: (novoAno) {
-                      if (novoAno == null) return;
-                      setState(() => _anoSelecionado = novoAno);
-                      _carregarDados();
-                    },
-                  ),
-                ),
-              ],
+                items: List.generate(12, (i) {
+                  final mes = i + 1;
+                  return DropdownMenuItem(
+                    value: mes,
+                    child: Text(_nomeMes(mes)),
+                  );
+                }),
+                onChanged: (novoMes) {
+                  if (novoMes == null) return;
+                  setState(() {
+                    _mesSelecionado = novoMes;
+                  });
+                  _carregarDados();
+                },
+              ),
             ),
-
-            const SizedBox(height: 12),
-
-            // Linha 2: AGRUPAR POR
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<TipoAgrupamentoPizza>(
-                    value: _tipo,
-                    decoration: const InputDecoration(
-                      labelText: 'Agrupar por',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: TipoAgrupamentoPizza.categoria,
-                        child: Text('Categoria'),
-                      ),
-                      DropdownMenuItem(
-                        value: TipoAgrupamentoPizza.formaPagamento,
-                        child: Text('Forma pgto'),
-                      ),
-                    ],
-                    onChanged: (novo) {
-                      if (novo == null) return;
-                      setState(() => _tipo = novo);
-                    },
-                  ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: _anoSelecionado,
+                decoration: const InputDecoration(
+                  labelText: 'Ano',
+                  border: OutlineInputBorder(),
+                  isDense: true,
                 ),
-              ],
+                items:
+                    _anosDisponiveis
+                        .map(
+                          (ano) => DropdownMenuItem(
+                            value: ano,
+                            child: Text(ano.toString()),
+                          ),
+                        )
+                        .toList(),
+                onChanged: (novoAno) {
+                  if (novoAno == null) return;
+                  setState(() {
+                    _anoSelecionado = novoAno;
+                  });
+                  _carregarDados();
+                },
+              ),
             ),
           ],
         ),
+        const SizedBox(height: 8),
 
+        // ====== LINHA 2: TIPO (AGRUPAR POR) ======
+        DropdownButtonFormField<TipoAgrupamentoPizza>(
+          value: _tipo,
+          decoration: const InputDecoration(
+            labelText: 'Agrupar por',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: TipoAgrupamentoPizza.categoria,
+              child: Text('Categoria'),
+            ),
+            DropdownMenuItem(
+              value: TipoAgrupamentoPizza.formaPagamento,
+              child: Text('Forma pgto / Cartão'),
+            ),
+            DropdownMenuItem(
+              value: TipoAgrupamentoPizza.dia,
+              child: Text('Dia'),
+            ),
+          ],
+          onChanged: (novo) {
+            if (novo == null) return;
+            setState(() {
+              _tipo = novo;
+            });
+          },
+        ),
         const SizedBox(height: 16),
 
         // MÊS / ANO
@@ -417,7 +644,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
             child:
                 _tipo == TipoAgrupamentoPizza.categoria
                     ? _buildLegendaCategoria()
-                    : _buildLegendaFormaPagamento(),
+                    : _tipo == TipoAgrupamentoPizza.formaPagamento
+                    ? _buildLegendaFormaPagamento()
+                    : _buildLegendaDia(),
           ),
         ],
       ],
@@ -441,6 +670,16 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         final color = _colorForIndex(index);
 
         return ListTile(
+          onTap: () {
+            final lancs =
+                _lancamentos.where((l) => l.categoria == cat).toList();
+            _mostrarDetalheLancamentos(
+              titulo: 'Detalhe por categoria',
+              subtitulo:
+                  '${CategoriaService.toName(cat)} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+              lancamentos: lancs,
+            );
+          },
           leading: Container(
             width: 14,
             height: 14,
@@ -458,20 +697,29 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   }
 
   Widget _buildLegendaFormaPagamento() {
-    final data = _totaisPorFormaPagamento();
-    final total = data.values.fold<double>(0.0, (a, b) => a + b);
-    final entries = data.entries.toList();
+    final dataResumo = _totaisPorFormaPagamentoAgrupado();
+    final dataLancs = _lancamentosPorGrupoFormaPagamento();
+    final total = dataResumo.values.fold<double>(0.0, (a, b) => a + b.total);
+    final entries = dataResumo.values.toList();
 
     return ListView.builder(
       itemCount: entries.length,
       itemBuilder: (context, index) {
-        final entry = entries[index];
-        final forma = entry.key;
-        final valor = entry.value;
+        final grupo = entries[index];
+        final valor = grupo.total;
         final percent = total == 0 ? 0 : (valor / total) * 100;
         final color = _colorForIndex(index);
 
         return ListTile(
+          onTap: () {
+            final lancs = dataLancs[grupo.label] ?? const <Lancamento>[];
+            _mostrarDetalheLancamentos(
+              titulo: 'Detalhe por forma / cartão',
+              subtitulo:
+                  '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+              lancamentos: lancs,
+            );
+          },
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -481,10 +729,51 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                 decoration: BoxDecoration(shape: BoxShape.circle, color: color),
               ),
               const SizedBox(width: 8),
-              Icon(forma.icon, size: 18),
+              Icon(grupo.icon, size: 18),
             ],
           ),
-          title: Text(forma.label),
+          title: Text(grupo.label),
+          subtitle: Text('${percent.toStringAsFixed(1)}%'),
+          trailing: Text(
+            _currency.format(valor),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 🔹 Legenda quando agrupado por DIA
+  Widget _buildLegendaDia() {
+    final data = _totaisPorDia();
+    final dataLancs = _lancamentosPorDia();
+    final total = data.values.fold<double>(0.0, (a, b) => a + b);
+    final entries = data.entries.toList();
+
+    return ListView.builder(
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        final dia = entry.key;
+        final valor = entry.value;
+        final percent = total == 0 ? 0 : (valor / total) * 100;
+        final color = _colorForIndex(index);
+
+        return ListTile(
+          onTap: () {
+            final lancs = dataLancs[dia] ?? const <Lancamento>[];
+            _mostrarDetalheLancamentos(
+              titulo: 'Detalhe do dia',
+              subtitulo: _dateDiaFormat.format(dia),
+              lancamentos: lancs,
+            );
+          },
+          leading: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          title: Text('Dia ${_dateDiaFormat.format(dia)}'),
           subtitle: Text('${percent.toStringAsFixed(1)}%'),
           trailing: Text(
             _currency.format(valor),
