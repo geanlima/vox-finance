@@ -15,6 +15,9 @@ class Lancamento {
   int? parcelaNumero;
   int? parcelaTotal;
 
+  /// 👇 novo: cartão de crédito usado (pode ser null)
+  int? idCartao;
+
   Lancamento({
     this.id,
     required this.valor,
@@ -28,6 +31,7 @@ class Lancamento {
     this.grupoParcelas,
     this.parcelaNumero,
     this.parcelaTotal,
+    this.idCartao, // 👈 novo
   });
 
   Lancamento copyWith({
@@ -43,6 +47,7 @@ class Lancamento {
     String? grupoParcelas,
     int? parcelaNumero,
     int? parcelaTotal,
+    int? idCartao,
   }) {
     return Lancamento(
       id: id ?? this.id,
@@ -57,6 +62,7 @@ class Lancamento {
       grupoParcelas: grupoParcelas ?? this.grupoParcelas,
       parcelaNumero: parcelaNumero ?? this.parcelaNumero,
       parcelaTotal: parcelaTotal ?? this.parcelaTotal,
+      idCartao: idCartao ?? this.idCartao, // 👈 novo
     );
   }
 
@@ -74,7 +80,7 @@ class Lancamento {
       'grupo_parcelas': grupoParcelas,
       'parcela_numero': parcelaNumero,
       'parcela_total': parcelaTotal,
-      // ehReceita não vai para o banco (se quiser, cria coluna depois)
+      'id_cartao': idCartao, // 👈 novo campo no banco
     };
   }
 
@@ -97,6 +103,7 @@ class Lancamento {
       grupoParcelas: map['grupo_parcelas'] as String?,
       parcelaNumero: map['parcela_numero'] as int?,
       parcelaTotal: map['parcela_total'] as int?,
+      idCartao: map['id_cartao'] as int?, // 👈 novo
     );
   }
 }
