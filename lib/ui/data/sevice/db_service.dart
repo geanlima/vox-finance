@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable, duplicate_ignore, unused_catch_stack, empty_catches
+
 import 'dart:async';
 import 'dart:math';
 import 'package:path/path.dart' as p;
@@ -28,27 +30,18 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 4, // versão atual do schema
+      version: 5,
       onCreate: (db, version) async {
         await _criarTabelasV4(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // ⚠️ IMPORTANTE: nada de DROP TABLE aqui.
-        // Fazemos apenas as migrações necessárias.
-
-        // Exemplo: se vier de uma versão antiga (< 4),
-        // garantimos a coluna id_cartao e a tabela cartao_credito
         if (oldVersion < 4) {
-          // adicionar coluna id_cartao em lancamentos (se ainda não existir)
           try {
             await db.execute(
               'ALTER TABLE lancamentos ADD COLUMN id_cartao INTEGER;',
             );
-          } catch (_) {
-            // se já existir, ignoramos o erro
-          }
+          } catch (e) {}
 
-          // criar tabela de cartão de crédito (se ainda não existir)
           await db.execute('''
             CREATE TABLE IF NOT EXISTS cartao_credito (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,6 +51,12 @@ class DbService {
             );
           ''');
         }
+      },
+      onOpen: (db) async {
+        // ignore: unused_local_variable
+        final res = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='cartao_credito';",
+        );
       },
     );
 
@@ -396,31 +395,45 @@ class DbService {
   Future<int> salvarCartaoCredito(CartaoCredito cartao) async {
     final database = await db;
 
-    if (cartao.id == null) {
-      final id = await database.insert(
-        'cartao_credito',
-        cartao.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      cartao.id = id;
-      return id;
-    }
+    try {
+      if (cartao.id == null) {
+        final id = await database.insert(
+          'cartao_credito',
+          cartao.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        cartao.id = id;
 
-    return await database.update(
-      'cartao_credito',
-      cartao.toMap(),
-      where: 'id = ?',
-      whereArgs: [cartao.id],
-    );
+        final check = await database.query('cartao_credito');
+
+        return id;
+      } else {
+        final linhas = await database.update(
+          'cartao_credito',
+          cartao.toMap(),
+          where: 'id = ?',
+          whereArgs: [cartao.id],
+        );
+
+        final check = await database.query('cartao_credito');
+        return linhas;
+      }
+    } catch (e, s) {
+      rethrow;
+    }
   }
 
   Future<List<CartaoCredito>> getCartoesCredito() async {
     final database = await db;
-    final result = await database.query(
-      'cartao_credito',
-      orderBy: 'descricao ASC',
-    );
-    return result.map((e) => CartaoCredito.fromMap(e)).toList();
+    try {
+      final result = await database.query(
+        'cartao_credito',
+        orderBy: 'descricao ASC',
+      );
+      return result.map((e) => CartaoCredito.fromMap(e)).toList();
+    } catch (e, s) {
+      rethrow;
+    }
   }
 
   Future<void> deletarCartaoCredito(int id) async {

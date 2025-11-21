@@ -1,3 +1,5 @@
+// ignore_for_file: override_on_non_overriding_member
+
 class CartaoCredito {
   int? id;
   String descricao;
@@ -11,26 +13,30 @@ class CartaoCredito {
     required this.ultimos4Digitos,
   });
 
+  // ----------- TO MAP (SALVAR NO BANCO) -----------
+  @override
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'descricao': descricao,
       'bandeira': bandeira,
-      // 👇 nome da coluna IGUAL ao da tabela: ultimos4
-      'ultimos4': ultimos4Digitos,
+      // 👇 Nome EXATO no banco SQLite do seu celular
+      'ultimos_4_digitos': ultimos4Digitos,
     };
   }
 
+  // ----------- FROM MAP (LER DO BANCO) -----------
   factory CartaoCredito.fromMap(Map<String, Object?> map) {
     return CartaoCredito(
       id: map['id'] as int?,
       descricao: map['descricao'] as String,
       bandeira: map['bandeira'] as String,
-      // 👇 idem aqui
-      ultimos4Digitos: map['ultimos4'] as String,
+
+      // 👇 Compatível com banco novo e algum banco antigo
+      ultimos4Digitos: (map['ultimos_4_digitos'] ?? map['ultimos4']) as String,
     );
   }
 
-  /// Para exibir em dropdown / lista
+  // ----------- LABEL PARA DROPDOWN / LISTA -----------
   String get label => '$descricao • $bandeira • **** $ultimos4Digitos';
 }

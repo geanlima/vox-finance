@@ -217,13 +217,16 @@ class _HomePageState extends State<HomePage> {
 
   // ============ FORM ============
 
-  void _abrirFormLancamento({
+  Future<void> _abrirFormLancamento({
     Lancamento? existente,
     double? valorInicial,
     String? descricaoInicial,
     FormaPagamento? formaInicial,
     bool? pagamentoFaturaInicial,
-  }) {
+  }) async {
+    // garante que os cartões estão atualizados antes de abrir o form
+    await _carregarCartoes();
+
     final valorController = TextEditingController(
       text:
           existente != null
@@ -270,7 +273,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -589,7 +592,7 @@ class _HomePageState extends State<HomePage> {
 
                             final Lancamento lanc =
                                 ehEdicao
-                                    ? existente!.copyWith(
+                                    ? existente.copyWith(
                                       valor: valor,
                                       descricao: descricao,
                                       formaPagamento: formaSelecionada!,
@@ -769,7 +772,8 @@ class _HomePageState extends State<HomePage> {
 
   // ============ RESUMO POR FORMA / DETALHES ============
 
-  void _mostrarResumoPorFormaPagamento() {
+  Future<void> _mostrarResumoPorFormaPagamento() async {
+    // só gastos pagos e que NÃO são pagamento de fatura
     final lancamentosDia =
         _lancamentosDoDia.where((l) => l.pago && !l.pagamentoFatura).toList();
 
@@ -780,14 +784,30 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    final Map<FormaPagamento, double> totaisPorForma = {};
+    // garante que lista de cartões está atualizada
+    await _carregarCartoes();
+
+    // Outros meios (débito, pix, dinheiro, etc.)
+    final Map<FormaPagamento, double> totaisOutros = {};
+
+    // Cartão de crédito → agrupar por cartão (id_cartao)
+    final Map<int?, double> totaisPorCartao = {};
 
     for (final lanc in lancamentosDia) {
-      totaisPorForma.update(
-        lanc.formaPagamento,
-        (valorAtual) => valorAtual + lanc.valor,
-        ifAbsent: () => lanc.valor,
-      );
+      if (lanc.formaPagamento == FormaPagamento.credito) {
+        // agrupa pelo idCartao; null fica em um grupo separado
+        totaisPorCartao.update(
+          lanc.idCartao,
+          (valorAtual) => valorAtual + lanc.valor,
+          ifAbsent: () => lanc.valor,
+        );
+      } else {
+        totaisOutros.update(
+          lanc.formaPagamento,
+          (valorAtual) => valorAtual + lanc.valor,
+          ifAbsent: () => lanc.valor,
+        );
+      }
     }
 
     showModalBottomSheet(
@@ -798,34 +818,98 @@ class _HomePageState extends State<HomePage> {
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Gastos por forma de pagamento',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _dateDiaFormat.format(_dataSelecionada),
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ...totaisPorForma.entries.map((entry) {
-                final forma = entry.key;
-                final valor = entry.value;
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Gastos detalhados',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _dateDiaFormat.format(_dataSelecionada),
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
 
-                return ListTile(
-                  leading: CircleAvatar(child: Icon(forma.icon)),
-                  title: Text(forma.label),
-                  trailing: Text(
-                    _currency.format(valor),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                // ========= OUTRAS FORMAS =========
+                if (totaisOutros.isNotEmpty) ...[
+                  Text(
+                    'Outras formas de pagamento',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelLarge?.copyWith(color: Colors.grey[700]),
                   ),
-                );
-              }),
-            ],
+                  const SizedBox(height: 8),
+                  ...totaisOutros.entries.map((entry) {
+                    final forma = entry.key;
+                    final valor = entry.value;
+
+                    return ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        child: Icon(forma.icon, size: 18),
+                      ),
+                      title: Text(forma.label),
+                      trailing: Text(
+                        _currency.format(valor),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                ],
+
+                // ========= CARTÕES DE CRÉDITO =========
+                if (totaisPorCartao.isNotEmpty) ...[
+                  Text(
+                    'Cartões de crédito',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelLarge?.copyWith(color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 8),
+                  ...totaisPorCartao.entries.map((entry) {
+                    final int? idCartao = entry.key;
+                    final double valor = entry.value;
+
+                    CartaoCredito? cartao;
+                    if (idCartao != null) {
+                      try {
+                        cartao = _cartoes.firstWhere((c) => c.id == idCartao);
+                      } catch (_) {
+                        cartao = null;
+                      }
+                    }
+
+                    final titulo = cartao?.descricao ?? 'Cartão de crédito';
+                    final subtitulo =
+                        cartao != null
+                            ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
+                            : (idCartao == null
+                                ? 'Sem cartão vinculado'
+                                : 'Cartão (id $idCartao)');
+
+                    return ListTile(
+                      dense: true,
+                      leading: const CircleAvatar(
+                        radius: 16,
+                        child: Icon(Icons.credit_card, size: 18),
+                      ),
+                      title: Text(titulo),
+                      subtitle: Text(subtitulo),
+                      trailing: Text(
+                        _currency.format(valor),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  }),
+                ],
+              ],
+            ),
           ),
         );
       },

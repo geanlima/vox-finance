@@ -10,7 +10,9 @@ class ResumoDiaCard extends StatelessWidget {
   final VoidCallback onDiaAnterior;
   final VoidCallback onProximoDia;
   final VoidCallback onSelecionarData;
-  final VoidCallback onTapTotal;
+
+  /// Agora assume que a função pode ser assíncrona (ex: abrir bottom sheet)
+  final Future<void> Function() onTapTotal;
 
   const ResumoDiaCard({
     super.key,
@@ -90,7 +92,10 @@ class ResumoDiaCard extends StatelessWidget {
                   style: TextStyle(fontSize: 16),
                 ),
                 InkWell(
-                  onTap: onTapTotal,
+                  onTap: () {
+                    // chama a função async, não precisa de await aqui
+                    onTapTotal();
+                  },
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
