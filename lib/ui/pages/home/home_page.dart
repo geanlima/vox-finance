@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
-import 'package:vox_finance/ui/core/enum/categoria.dart';
 
+import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/sevice/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 import 'package:vox_finance/ui/widgets/resumo_dia_card.dart';
 import 'package:vox_finance/ui/widgets/lancamento_list.dart';
@@ -39,12 +40,16 @@ class _HomePageState extends State<HomePage> {
 
   DateTime _dataSelecionada = DateTime.now();
 
+  // 🔹 Cartões carregados do banco
+  List<CartaoCredito> _cartoes = [];
+
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
     _initSpeech();
     _carregarDoBanco();
+    _carregarCartoes();
   }
 
   Future<void> _initSpeech() async {
@@ -58,6 +63,13 @@ class _HomePageState extends State<HomePage> {
       _lancamentos
         ..clear()
         ..addAll(lista);
+    });
+  }
+
+  Future<void> _carregarCartoes() async {
+    final lista = await _dbService.getCartoesCredito();
+    setState(() {
+      _cartoes = lista;
     });
   }
 
@@ -205,8 +217,6 @@ class _HomePageState extends State<HomePage> {
 
   // ============ FORM ============
 
-  // ============ FORM ============
-
   void _abrirFormLancamento({
     Lancamento? existente,
     double? valorInicial,
@@ -235,19 +245,30 @@ class _HomePageState extends State<HomePage> {
 
     final ehEdicao = existente != null;
 
-    // 👇 Categoria selecionada
+    // Categoria selecionada
     Categoria? categoriaSelecionada = existente?.categoria;
     if (!ehEdicao && categoriaSelecionada == null) {
-      // tenta sugerir categoria pela descrição inicial
       final baseDesc = descricaoInicial ?? existente?.descricao ?? '';
       if (baseDesc.trim().isNotEmpty) {
         categoriaSelecionada = CategoriaService.fromDescricao(baseDesc);
       }
     }
 
-    // 👇 controles de parcelamento (somente para NOVO lançamento)
+    // Parcelamento (somente para NOVO lançamento)
     bool parcelado = false;
     final qtdParcelasController = TextEditingController(text: '2');
+
+    // Cartão selecionado (se já vier do lançamento)
+    CartaoCredito? cartaoSelecionado;
+    if (existente?.idCartao != null && _cartoes.isNotEmpty) {
+      try {
+        cartaoSelecionado = _cartoes.firstWhere(
+          (c) => c.id == existente!.idCartao,
+        );
+      } catch (_) {
+        cartaoSelecionado = null;
+      }
+    }
 
     showModalBottomSheet(
       context: context,
@@ -305,7 +326,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 12),
 
-                    // 👇 Categoria
+                    // Categoria
                     DropdownButtonFormField<Categoria>(
                       value: categoriaSelecionada,
                       decoration: const InputDecoration(
@@ -316,9 +337,7 @@ class _HomePageState extends State<HomePage> {
                           Categoria.values.map((c) {
                             return DropdownMenuItem(
                               value: c,
-                              child: Text(
-                                c.name,
-                              ), // se tiver c.label, pode trocar
+                              child: Text(c.name),
                             );
                           }).toList(),
                       onChanged: (nova) {
@@ -352,10 +371,50 @@ class _HomePageState extends State<HomePage> {
                       onChanged: (novo) {
                         setModalState(() {
                           formaSelecionada = novo;
+                          // Se trocar para algo que não seja crédito, limpa cartão
+                          if (formaSelecionada != FormaPagamento.credito) {
+                            cartaoSelecionado = null;
+                          }
                         });
                       },
                     ),
                     const SizedBox(height: 12),
+
+                    // Cartão de crédito (apenas se for crédito)
+                    if (formaSelecionada == FormaPagamento.credito) ...[
+                      if (_cartoes.isEmpty) ...[
+                        const Text(
+                          'Nenhum cartão cadastrado.\n'
+                          'Cadastre em: Menu → Cartões de crédito.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ] else ...[
+                        DropdownButtonFormField<CartaoCredito>(
+                          value: cartaoSelecionado,
+                          decoration: const InputDecoration(
+                            labelText: 'Cartão de crédito',
+                            border: OutlineInputBorder(),
+                          ),
+                          items:
+                              _cartoes.map((c) {
+                                return DropdownMenuItem(
+                                  value: c,
+                                  child: Text(c.label),
+                                );
+                              }).toList(),
+                          onChanged: (novoCartao) {
+                            setModalState(() {
+                              cartaoSelecionado = novoCartao;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ],
 
                     // Pagamento de fatura
                     CheckboxListTile(
@@ -385,7 +444,7 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
 
-                    // ------- PARCELAMENTO (apenas novo lançamento) -------
+                    // Parcelamento (apenas novo lançamento)
                     if (!ehEdicao) ...[
                       const SizedBox(height: 8),
                       SwitchListTile(
@@ -506,6 +565,21 @@ class _HomePageState extends State<HomePage> {
                               return;
                             }
 
+                            // se for crédito e já existir cartão cadastrado,
+                            // obriga escolher um cartão
+                            if (formaSelecionada == FormaPagamento.credito &&
+                                _cartoes.isNotEmpty &&
+                                cartaoSelecionado == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Selecione o cartão de crédito usado.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
                             final descricao =
                                 descricaoController.text.trim().isEmpty
                                     ? 'Sem descrição'
@@ -513,10 +587,9 @@ class _HomePageState extends State<HomePage> {
 
                             final categoria = categoriaSelecionada!;
 
-                            // monta o objeto base
                             final Lancamento lanc =
                                 ehEdicao
-                                    ? existente.copyWith(
+                                    ? existente!.copyWith(
                                       valor: valor,
                                       descricao: descricao,
                                       formaPagamento: formaSelecionada!,
@@ -529,6 +602,7 @@ class _HomePageState extends State<HomePage> {
                                               ? (existente.dataPagamento ??
                                                   DateTime.now())
                                               : null,
+                                      idCartao: cartaoSelecionado?.id,
                                     )
                                     : Lancamento(
                                       valor: valor,
@@ -540,6 +614,7 @@ class _HomePageState extends State<HomePage> {
                                       pago: pago,
                                       dataPagamento:
                                           pago ? DateTime.now() : null,
+                                      idCartao: cartaoSelecionado?.id,
                                     );
 
                             // ======== LÓGICA DE SALVAR / PARCELAR ========
@@ -558,7 +633,6 @@ class _HomePageState extends State<HomePage> {
                                 return;
                               }
 
-                              // base para as parcelas: respeita "Já está pago"
                               final base = lanc.copyWith(
                                 grupoParcelas: null,
                                 parcelaNumero: null,

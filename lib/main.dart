@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
+import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 
 import 'package:vox_finance/ui/pages/home/home_page.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/contas_pagar_page.dart';
@@ -44,6 +45,7 @@ class VoxFinanceApp extends StatelessWidget {
         // 📊 Gráficos
         // '/grafico-mensal': (_) => const GraficoMensalPage(),
         // '/config-grafico': (_) => const ConfigGraficoPage(),
+        '/cartoes-credito': (_) => const CartaoCreditoPage(),
         '/graficos': (_) => const GraficosPage(), // tela com gráfico pizza
       },
     );

@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 
 class DbService {
   DbService._internal();
@@ -27,22 +28,44 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 2, // aumente se mudar o schema
+      version: 4, // versão atual do schema
       onCreate: (db, version) async {
-        await _criarTabelas(db);
+        await _criarTabelasV4(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // Em produção o ideal é migrar com ALTER TABLE.
-        await db.execute('DROP TABLE IF EXISTS lancamentos;');
-        await db.execute('DROP TABLE IF EXISTS conta_pagar;');
-        await _criarTabelas(db);
+        // ⚠️ IMPORTANTE: nada de DROP TABLE aqui.
+        // Fazemos apenas as migrações necessárias.
+
+        // Exemplo: se vier de uma versão antiga (< 4),
+        // garantimos a coluna id_cartao e a tabela cartao_credito
+        if (oldVersion < 4) {
+          // adicionar coluna id_cartao em lancamentos (se ainda não existir)
+          try {
+            await db.execute(
+              'ALTER TABLE lancamentos ADD COLUMN id_cartao INTEGER;',
+            );
+          } catch (_) {
+            // se já existir, ignoramos o erro
+          }
+
+          // criar tabela de cartão de crédito (se ainda não existir)
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS cartao_credito (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              descricao TEXT NOT NULL,
+              bandeira TEXT NOT NULL,
+              ultimos_4_digitos TEXT NOT NULL
+            );
+          ''');
+        }
       },
     );
 
     return _db!;
   }
 
-  Future<void> _criarTabelas(Database db) async {
+  // Cria tudo já no formato da versão 4 (instalação nova)
+  Future<void> _criarTabelasV4(Database db) async {
     // --------- TABELA DE LANÇAMENTOS ---------
     await db.execute('''
       CREATE TABLE lancamentos (
@@ -57,7 +80,8 @@ class DbService {
         categoria INTEGER NOT NULL,
         grupo_parcelas TEXT,
         parcela_numero INTEGER,
-        parcela_total INTEGER
+        parcela_total INTEGER,
+        id_cartao INTEGER
       );
     ''');
 
@@ -73,6 +97,16 @@ class DbService {
         parcela_numero INTEGER,
         parcela_total INTEGER,
         grupo_parcelas TEXT NOT NULL
+      );
+    ''');
+
+    // --------- TABELA DE CARTÕES DE CRÉDITO ---------
+    await db.execute('''
+      CREATE TABLE cartao_credito (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        bandeira TEXT NOT NULL,
+        ultimos_4_digitos TEXT NOT NULL
       );
     ''');
   }
@@ -165,7 +199,7 @@ class DbService {
 
     final todos = result.map((e) => Lancamento.fromMap(e)).toList();
 
-    // ==== AGRUPAMENTO POR GRUPO_PARCELAS ==== (seu código atual)
+    // ==== AGRUPAMENTO POR GRUPO_PARCELAS ====
     final Map<String, List<Lancamento>> grupos = {};
 
     for (final lanc in todos) {
@@ -259,7 +293,6 @@ class DbService {
     }
   }
 
-  /// Todas as contas (pagas ou não), ordenadas por vencimento
   Future<List<ContaPagar>> getContasPagar() async {
     final database = await db;
     final result = await database.query(
@@ -269,7 +302,6 @@ class DbService {
     return result.map((e) => ContaPagar.fromMap(e)).toList();
   }
 
-  /// Apenas contas não pagas, ordenadas por vencimento
   Future<List<ContaPagar>> getContasPagarPendentes() async {
     final database = await db;
     final result = await database.query(
@@ -280,7 +312,6 @@ class DbService {
     return result.map((e) => ContaPagar.fromMap(e)).toList();
   }
 
-  /// Todas as parcelas de um mesmo grupo de parcelas
   Future<List<ContaPagar>> getParcelasPorGrupo(String grupo) async {
     final database = await db;
     final result = await database.query(
@@ -292,7 +323,6 @@ class DbService {
     return result.map((e) => ContaPagar.fromMap(e)).toList();
   }
 
-  /// Marca / desmarca uma parcela como paga
   Future<void> marcarParcelaComoPaga(int id, bool pago) async {
     final database = await db;
     await database.update(
@@ -312,19 +342,12 @@ class DbService {
   ) async {
     final database = await db;
 
-    // grupo único para todas as parcelas (compartilhado por lancamento e conta_pagar)
     final String grupo =
         base.grupoParcelas ?? DateTime.now().millisecondsSinceEpoch.toString();
 
-    // valor de cada parcela
     final double valorParcela = base.valor / qtdParcelas;
-
     final DateTime dataBase = base.dataHora;
-
-    // paga / não paga vem do lançamento base
     final bool pagoBase = base.pago;
-
-    // DateTime? pois sua model usa DateTime para dataPagamento
     final DateTime? dataPagamentoBase =
         pagoBase ? (base.dataPagamento ?? DateTime.now()) : null;
 
@@ -335,9 +358,6 @@ class DbService {
         min(dataBase.day, 28),
       );
 
-      // =========================
-      // 1) LANÇAMENTO PARCELADO
-      // =========================
       final lancParcela = base.copyWith(
         id: null,
         valor: valorParcela,
@@ -351,9 +371,6 @@ class DbService {
 
       await database.insert('lancamentos', lancParcela.toMap());
 
-      // =========================
-      // 2) CONTA A PAGAR (se não estiver pago)
-      // =========================
       if (!pagoBase) {
         final conta = ContaPagar(
           id: null,
@@ -372,4 +389,42 @@ class DbService {
     }
   }
 
+  // ============================================================
+  //  CRUD Cartões de crédito
+  // ============================================================
+
+  Future<int> salvarCartaoCredito(CartaoCredito cartao) async {
+    final database = await db;
+
+    if (cartao.id == null) {
+      final id = await database.insert(
+        'cartao_credito',
+        cartao.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      cartao.id = id;
+      return id;
+    }
+
+    return await database.update(
+      'cartao_credito',
+      cartao.toMap(),
+      where: 'id = ?',
+      whereArgs: [cartao.id],
+    );
+  }
+
+  Future<List<CartaoCredito>> getCartoesCredito() async {
+    final database = await db;
+    final result = await database.query(
+      'cartao_credito',
+      orderBy: 'descricao ASC',
+    );
+    return result.map((e) => CartaoCredito.fromMap(e)).toList();
+  }
+
+  Future<void> deletarCartaoCredito(int id) async {
+    final database = await db;
+    await database.delete('cartao_credito', where: 'id = ?', whereArgs: [id]);
+  }
 }
