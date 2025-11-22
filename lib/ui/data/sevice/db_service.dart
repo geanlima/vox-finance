@@ -30,11 +30,12 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 5,
+      version: 6, // 👈 subimos para 6 para garantir o upgrade
       onCreate: (db, version) async {
-        await _criarTabelasV4(db);
+        await _criarTabelasV6(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        // ---- UPGRADE PARA V4 (id_cartao + tabela cartao_credito básica) ----
         if (oldVersion < 4) {
           try {
             await db.execute(
@@ -51,6 +52,21 @@ class DbService {
             );
           ''');
         }
+
+        // ---- UPGRADE PARA V6 (foto + dia_vencimento no cartão) ----
+        if (oldVersion < 6) {
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN foto_path TEXT;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN dia_vencimento INTEGER;',
+            );
+          } catch (e) {}
+        }
       },
       onOpen: (db) async {
         // ignore: unused_local_variable
@@ -63,8 +79,8 @@ class DbService {
     return _db!;
   }
 
-  // Cria tudo já no formato da versão 4 (instalação nova)
-  Future<void> _criarTabelasV4(Database db) async {
+  // Cria tudo já no formato da versão 6 (instalação nova)
+  Future<void> _criarTabelasV6(Database db) async {
     // --------- TABELA DE LANÇAMENTOS ---------
     await db.execute('''
       CREATE TABLE lancamentos (
@@ -105,7 +121,9 @@ class DbService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         descricao TEXT NOT NULL,
         bandeira TEXT NOT NULL,
-        ultimos_4_digitos TEXT NOT NULL
+        ultimos_4_digitos TEXT NOT NULL,
+        foto_path TEXT,
+        dia_vencimento INTEGER
       );
     ''');
   }
