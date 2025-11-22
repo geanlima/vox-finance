@@ -10,9 +10,7 @@ class ResumoDiaCard extends StatelessWidget {
   final VoidCallback onDiaAnterior;
   final VoidCallback onProximoDia;
   final VoidCallback onSelecionarData;
-
-  /// Agora assume que a função pode ser assíncrona (ex: abrir bottom sheet)
-  final Future<void> Function() onTapTotal;
+  final VoidCallback onTapTotal;
 
   const ResumoDiaCard({
     super.key,
@@ -83,38 +81,42 @@ class ResumoDiaCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Total gasto no dia
+            // Total gasto no dia (ajustado p/ não dar overflow)
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Total gasto no dia',
-                  style: TextStyle(fontSize: 16),
+                const Expanded(
+                  child: Text(
+                    'Total gasto no dia',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
-                InkWell(
-                  onTap: () {
-                    // chama a função async, não precisa de await aqui
-                    onTapTotal();
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 2,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          totalGastoFormatado,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: InkWell(
+                    onTap: onTapTotal,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              totalGastoFormatado,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.bar_chart, size: 18),
-                      ],
+                          const SizedBox(width: 4),
+                          const Icon(Icons.bar_chart, size: 18),
+                        ],
+                      ),
                     ),
                   ),
                 ),
