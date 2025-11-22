@@ -340,7 +340,7 @@ class _HomePageState extends State<HomePage> {
                           Categoria.values.map((c) {
                             return DropdownMenuItem(
                               value: c,
-                              child: Text(c.name),
+                              child: Text(CategoriaService.toName(c)),
                             );
                           }).toList(),
                       onChanged: (nova) {

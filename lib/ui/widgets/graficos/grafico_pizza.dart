@@ -486,170 +486,195 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ====== LINHA 1: MÊS + ANO ======
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<int>(
-                value: _mesSelecionado,
-                decoration: const InputDecoration(
-                  labelText: 'Mês',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                items: List.generate(12, (i) {
-                  final mes = i + 1;
-                  return DropdownMenuItem(
-                    value: mes,
-                    child: Text(_nomeMes(mes)),
-                  );
-                }),
-                onChanged: (novoMes) {
-                  if (novoMes == null) return;
-                  setState(() {
-                    _mesSelecionado = novoMes;
-                  });
-                  _carregarDados();
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<int>(
-                value: _anoSelecionado,
-                decoration: const InputDecoration(
-                  labelText: 'Ano',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                items:
-                    _anosDisponiveis
-                        .map(
-                          (ano) => DropdownMenuItem(
-                            value: ano,
-                            child: Text(ano.toString()),
-                          ),
-                        )
-                        .toList(),
-                onChanged: (novoAno) {
-                  if (novoAno == null) return;
-                  setState(() {
-                    _anoSelecionado = novoAno;
-                  });
-                  _carregarDados();
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        // ====== LINHA 2: TIPO (AGRUPAR POR) ======
-        DropdownButtonFormField<TipoAgrupamentoPizza>(
-          value: _tipo,
-          decoration: const InputDecoration(
-            labelText: 'Agrupar por',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: TipoAgrupamentoPizza.categoria,
-              child: Text('Categoria'),
-            ),
-            DropdownMenuItem(
-              value: TipoAgrupamentoPizza.formaPagamento,
-              child: Text('Forma pgto / Cartão'),
-            ),
-            DropdownMenuItem(
-              value: TipoAgrupamentoPizza.dia,
-              child: Text('Dia'),
-            ),
-          ],
-          onChanged: (novo) {
-            if (novo == null) return;
-            setState(() {
-              _tipo = novo;
-            });
-          },
-        ),
-        const SizedBox(height: 16),
-
-        // MÊS / ANO
-        Text(
-          labelMesAno,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 8),
-
-        // ====== TOTAL GASTO NO MÊS (CLICÁVEL) ======
-        InkWell(
-          onTap: _mostrarResumoPorFormaPagamentoMes,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-            ),
-            child: Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: EdgeInsets.zero,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(
-                  Icons.summarize,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 20,
+                // ====== LINHA 1: MÊS + ANO ======
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _mesSelecionado,
+                        decoration: const InputDecoration(
+                          labelText: 'Mês',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: List.generate(12, (i) {
+                          final mes = i + 1;
+                          return DropdownMenuItem(
+                            value: mes,
+                            child: Text(_nomeMes(mes)),
+                          );
+                        }),
+                        onChanged: (novoMes) {
+                          if (novoMes == null) return;
+                          setState(() {
+                            _mesSelecionado = novoMes;
+                          });
+                          _carregarDados();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _anoSelecionado,
+                        decoration: const InputDecoration(
+                          labelText: 'Ano',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items:
+                            _anosDisponiveis
+                                .map(
+                                  (ano) => DropdownMenuItem(
+                                    value: ano,
+                                    child: Text(ano.toString()),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (novoAno) {
+                          if (novoAno == null) return;
+                          setState(() {
+                            _anoSelecionado = novoAno;
+                          });
+                          _carregarDados();
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Total gasto no mês:',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                const SizedBox(height: 8),
+
+                // ====== LINHA 2: TIPO (AGRUPAR POR) ======
+                DropdownButtonFormField<TipoAgrupamentoPizza>(
+                  value: _tipo,
+                  decoration: const InputDecoration(
+                    labelText: 'Agrupar por',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: TipoAgrupamentoPizza.categoria,
+                      child: Text('Categoria'),
+                    ),
+                    DropdownMenuItem(
+                      value: TipoAgrupamentoPizza.formaPagamento,
+                      child: Text('Forma pgto / Cartão'),
+                    ),
+                    DropdownMenuItem(
+                      value: TipoAgrupamentoPizza.dia,
+                      child: Text('Dia'),
+                    ),
+                  ],
+                  onChanged: (novo) {
+                    if (novo == null) return;
+                    setState(() {
+                      _tipo = novo;
+                    });
+                  },
                 ),
-                const Spacer(),
+                const SizedBox(height: 16),
+
+                // MÊS / ANO
                 Text(
-                  totalMesFormatado,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
+                  labelMesAno,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // ====== TOTAL GASTO NO MÊS (CLICÁVEL) ======
+                InkWell(
+                  onTap: _mostrarResumoPorFormaPagamentoMes,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.summarize,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Total gasto no mês:',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          totalMesFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                if (_carregando)
+                  const SizedBox(
+                    height: 240,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_lancamentos.isEmpty)
+                  const SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Text('Sem lançamentos neste período.'),
+                    ),
+                  )
+                else ...[
+                  SizedBox(
+                    height: 240,
+                    child: PieChart(
+                      PieChartData(
+                        sections: _buildSections(),
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_tipo == TipoAgrupamentoPizza.categoria)
+                    _buildLegendaCategoria()
+                  else if (_tipo == TipoAgrupamentoPizza.formaPagamento)
+                    _buildLegendaFormaPagamento()
+                  else
+                    _buildLegendaDia(),
+                ],
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-
-        if (_carregando)
-          const Expanded(child: Center(child: CircularProgressIndicator()))
-        else if (_lancamentos.isEmpty)
-          const Expanded(
-            child: Center(child: Text('Sem lançamentos neste período.')),
-          )
-        else ...[
-          SizedBox(
-            height: 240,
-            child: PieChart(
-              PieChartData(
-                sections: _buildSections(),
-                sectionsSpace: 2,
-                centerSpaceRadius: 0,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child:
-                _tipo == TipoAgrupamentoPizza.categoria
-                    ? _buildLegendaCategoria()
-                    : _tipo == TipoAgrupamentoPizza.formaPagamento
-                    ? _buildLegendaFormaPagamento()
-                    : _buildLegendaDia(),
-          ),
-        ],
-      ],
+        );
+      },
     );
   }
 
@@ -661,6 +686,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final entries = data.entries.toList();
 
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
@@ -703,6 +730,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final entries = dataResumo.values.toList();
 
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final grupo = entries[index];
@@ -751,6 +780,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final entries = data.entries.toList();
 
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
