@@ -663,6 +663,66 @@ class DbService {
   }
 
   // ============================================================
+  //  L A N Ç A M E N T O  À  V I S T A   NO   C A R T Ã O
+  //   → CRIA LANÇAMENTO PENDENTE NA DATA DA FATURA
+  // ============================================================
+
+  Future<void> salvarLancamentoDaFatura(Lancamento base) async {
+    final database = await db;
+
+    // se não tiver cartão vinculado, não faz nada
+    if (base.idCartao == null) return;
+
+    // busca o cartão
+    final result = await database.query(
+      'cartao_credito',
+      where: 'id = ?',
+      whereArgs: [base.idCartao],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return;
+
+    final cartao = CartaoCredito.fromMap(result.first);
+
+    // só aplica lógica se for crédito / ambos, controlar fatura e tiver config completa
+    final bool ehCreditoLike =
+        cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
+
+    if (!ehCreditoLike) return;
+    if (!cartao.controlaFatura) return;
+    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
+
+    final dataCompra = base.dataHora;
+    int ano = dataCompra.year;
+    int mes = dataCompra.month;
+    final int diaCompra = dataCompra.day;
+    final int diaFechamento = cartao.diaFechamento!;
+    final int diaVencimento = cartao.diaVencimento!;
+
+    // regra: compra após o fechamento vai para a fatura do próximo mês
+    if (diaCompra > diaFechamento) {
+      mes++;
+      if (mes > 12) {
+        mes = 1;
+        ano++;
+      }
+    }
+
+    final dataVencimento = DateTime(ano, mes, diaVencimento);
+
+    // cria o lançamento pendente na data da fatura
+    final lancFatura = base.copyWith(
+      id: null,
+      dataHora: dataVencimento,
+      pago: false,
+      dataPagamento: null,
+    );
+
+    await database.insert('lancamentos', lancFatura.toMap());
+  }
+
+  // ============================================================
   //  CRUD Cartões de crédito
   // ============================================================
 
