@@ -31,9 +31,9 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 8, // 👈 V8: usuarios com foto_path
+      version: 10, // 👈 V10: cartões com tipo/controla_fatura/limite/dia_fechamento
       onCreate: (db, version) async {
-        await _criarTabelasV7(db);
+        await _criarTabelasV9(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // ---- UPGRADE PARA V4 (id_cartao + tabela cartao_credito básica) ----
@@ -87,10 +87,59 @@ class DbService {
         if (oldVersion < 8) {
           try {
             await db.execute(
-              "ALTER TABLE usuarios ADD COLUMN foto_path TEXT;",
+              'ALTER TABLE usuarios ADD COLUMN foto_path TEXT;',
             );
           } catch (e) {
             // se já existir, ignora
+          }
+        }
+
+        // ---- UPGRADE PARA V9 (tipo, permite_parcelamento, limite, dia_fechamento no cartão) ----
+        // Mantemos "permite_parcelamento" só para poder copiar o valor depois.
+        if (oldVersion < 9) {
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN tipo INTEGER DEFAULT 0;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN permite_parcelamento INTEGER DEFAULT 1;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN limite REAL;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN dia_fechamento INTEGER;',
+            );
+          } catch (e) {}
+        }
+
+        // ---- UPGRADE PARA V10 (controla_fatura) ----
+        if (oldVersion < 10) {
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN controla_fatura INTEGER DEFAULT 1;',
+            );
+          } catch (e) {}
+
+          // tenta copiar o valor antigo de permite_parcelamento, se existir
+          try {
+            await db.execute('''
+              UPDATE cartao_credito
+              SET controla_fatura = permite_parcelamento
+              WHERE controla_fatura IS NULL
+                 OR controla_fatura = 0 AND permite_parcelamento = 1;
+            ''');
+          } catch (e) {
+            // se a coluna permite_parcelamento não existir, ignora
           }
         }
       },
@@ -109,25 +158,25 @@ class DbService {
 
         // Garante que as colunas existam mesmo em bancos antigos
         try {
-          await db.execute("ALTER TABLE usuarios ADD COLUMN senha TEXT;");
+          await db.execute('ALTER TABLE usuarios ADD COLUMN senha TEXT;');
         } catch (e) {}
         try {
-          await db.execute("ALTER TABLE usuarios ADD COLUMN foto_path TEXT;");
+          await db.execute('ALTER TABLE usuarios ADD COLUMN foto_path TEXT;');
         } catch (e) {}
 
         // Só um checkzinho que você já tinha
         final res = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='cartao_credito';",
         );
-        // print(res); // se quiser ver
+        // print(res);
       },
     );
 
     return _db!;
   }
 
-  // Cria tudo já no formato da versão 7/8 (instalação nova)
-  Future<void> _criarTabelasV7(Database db) async {
+  // Cria tudo já no formato da versão 9/10 (instalação nova)
+  Future<void> _criarTabelasV9(Database db) async {
     // --------- TABELA DE LANÇAMENTOS ---------
     await db.execute('''
       CREATE TABLE lancamentos (
@@ -170,7 +219,11 @@ class DbService {
         bandeira TEXT NOT NULL,
         ultimos_4_digitos TEXT NOT NULL,
         foto_path TEXT,
-        dia_vencimento INTEGER
+        dia_vencimento INTEGER,
+        tipo INTEGER DEFAULT 0,
+        controla_fatura INTEGER DEFAULT 1,   -- 👈 novo nome
+        limite REAL,
+        dia_fechamento INTEGER
       );
     ''');
 
@@ -348,9 +401,8 @@ class DbService {
       } else {
         final primeiro = lista.first;
         final total = lista.fold<double>(0.0, (acc, l) => acc + l.valor);
-        final menorData = lista
-            .map((l) => l.dataHora)
-            .reduce((a, b) => a.isBefore(b) ? a : b);
+        final menorData =
+            lista.map((l) => l.dataHora).reduce((a, b) => a.isBefore(b) ? a : b);
 
         agregados.add(
           primeiro.copyWith(
@@ -538,8 +590,6 @@ class DbService {
         );
         cartao.id = id;
 
-        final check = await database.query('cartao_credito');
-
         return id;
       } else {
         final linhas = await database.update(
@@ -548,8 +598,6 @@ class DbService {
           where: 'id = ?',
           whereArgs: [cartao.id],
         );
-
-        final check = await database.query('cartao_credito');
         return linhas;
       }
     } catch (e, s) {

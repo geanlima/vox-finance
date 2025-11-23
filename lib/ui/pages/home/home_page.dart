@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> {
 
   DateTime _dataSelecionada = DateTime.now();
 
-  // 🔹 Cartões carregados do banco
+  // Cartões carregados do banco
   List<CartaoCredito> _cartoes = [];
 
   @override
@@ -94,6 +94,40 @@ class _HomePageState extends State<HomePage> {
     final lista = [..._lancamentos];
     lista.sort((a, b) => b.dataHora.compareTo(a.dataHora));
     return lista;
+  }
+
+  // ============================================================
+  //  F I L T R A R   C A R T Õ E S   C O N F O R M E   R E G R A
+  // ============================================================
+
+  List<CartaoCredito> _filtrarCartoes(
+    FormaPagamento? forma,
+    bool pagamentoFatura,
+  ) {
+    // Pagamento de fatura → sempre cartão de CRÉDITO (ou ambos)
+    if (pagamentoFatura) {
+      return _cartoes.where((c) {
+        return c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos;
+      }).toList();
+    }
+
+    // Lançamento normal
+    if (forma == FormaPagamento.debito) {
+      // Só cartões de débito ou ambos
+      return _cartoes.where((c) {
+        return c.tipo == TipoCartao.debito || c.tipo == TipoCartao.ambos;
+      }).toList();
+    }
+
+    if (forma == FormaPagamento.credito) {
+      // Só cartões de crédito ou ambos
+      return _cartoes.where((c) {
+        return c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos;
+      }).toList();
+    }
+
+    // Outras formas não usam cartão
+    return const [];
   }
 
   // ============ AÇÕES BÁSICAS ============
@@ -228,10 +262,9 @@ class _HomePageState extends State<HomePage> {
     await _carregarCartoes();
 
     final valorController = TextEditingController(
-      text:
-          existente != null
-              ? _currency.format(existente.valor)
-              : (valorInicial != null ? _currency.format(valorInicial) : ''),
+      text: existente != null
+          ? _currency.format(existente.valor)
+          : (valorInicial != null ? _currency.format(valorInicial) : ''),
     );
     final descricaoController = TextEditingController(
       text: existente?.descricao ?? (descricaoInicial ?? ''),
@@ -265,13 +298,16 @@ class _HomePageState extends State<HomePage> {
     CartaoCredito? cartaoSelecionado;
     if (existente?.idCartao != null && _cartoes.isNotEmpty) {
       try {
-        cartaoSelecionado = _cartoes.firstWhere(
-          (c) => c.id == existente!.idCartao,
-        );
+        cartaoSelecionado =
+            _cartoes.firstWhere((c) => c.id == existente!.idCartao);
       } catch (_) {
         cartaoSelecionado = null;
       }
     }
+
+    // lista inicial de cartões filtrados
+    List<CartaoCredito> cartoesFiltrados =
+        _filtrarCartoes(formaSelecionada, pagamentoFatura);
 
     await showModalBottomSheet(
       context: context,
@@ -289,6 +325,40 @@ class _HomePageState extends State<HomePage> {
           ),
           child: StatefulBuilder(
             builder: (context, setModalState) {
+              void _recalcularCartoes() {
+                cartoesFiltrados =
+                    _filtrarCartoes(formaSelecionada, pagamentoFatura);
+
+                // Se o cartão selecionado não estiver mais disponível, limpa
+                if (cartaoSelecionado != null &&
+                    !cartoesFiltrados
+                        .any((c) => c.id == cartaoSelecionado!.id)) {
+                  cartaoSelecionado = null;
+                }
+              }
+
+              // Sempre recalcula no início do build desse frame
+              _recalcularCartoes();
+
+              // label do dropdown de cartão, mudando conforme o contexto
+              String _labelCartao() {
+                if (pagamentoFatura) {
+                  return 'Cartão cuja fatura está sendo paga';
+                }
+                if (formaSelecionada == FormaPagamento.debito) {
+                  return 'Cartão de débito';
+                }
+                if (formaSelecionada == FormaPagamento.credito) {
+                  return 'Cartão de crédito';
+                }
+                return 'Cartão';
+              }
+
+              final bool deveMostrarSecaoCartao =
+                  pagamentoFatura ||
+                  formaSelecionada == FormaPagamento.debito ||
+                  formaSelecionada == FormaPagamento.credito;
+
               return SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -336,13 +406,12 @@ class _HomePageState extends State<HomePage> {
                         labelText: 'Categoria',
                         border: OutlineInputBorder(),
                       ),
-                      items:
-                          Categoria.values.map((c) {
-                            return DropdownMenuItem(
-                              value: c,
-                              child: Text(CategoriaService.toName(c)),
-                            );
-                          }).toList(),
+                      items: Categoria.values.map((c) {
+                        return DropdownMenuItem(
+                          value: c,
+                          child: Text(CategoriaService.toName(c)),
+                        );
+                      }).toList(),
                       onChanged: (nova) {
                         setModalState(() {
                           categoriaSelecionada = nova;
@@ -358,66 +427,28 @@ class _HomePageState extends State<HomePage> {
                         labelText: 'Forma de pagamento',
                         border: OutlineInputBorder(),
                       ),
-                      items:
-                          FormaPagamento.values.map((f) {
-                            return DropdownMenuItem(
-                              value: f,
-                              child: Row(
-                                children: [
-                                  Icon(f.icon, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(f.label),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                      items: FormaPagamento.values.map((f) {
+                        return DropdownMenuItem(
+                          value: f,
+                          child: Row(
+                            children: [
+                              Icon(f.icon, size: 18),
+                              const SizedBox(width: 8),
+                              Text(f.label),
+                            ],
+                          ),
+                        );
+                      }).toList(),
                       onChanged: (novo) {
                         setModalState(() {
                           formaSelecionada = novo;
-                          // Se trocar para algo que não seja crédito, limpa cartão
-                          if (formaSelecionada != FormaPagamento.credito) {
-                            cartaoSelecionado = null;
-                          }
+
+                          // Ao mudar forma, recalcula cartões e zera seleção se não fizer mais sentido
+                          _recalcularCartoes();
                         });
                       },
                     ),
                     const SizedBox(height: 12),
-
-                    // Cartão de crédito (apenas se for crédito)
-                    if (formaSelecionada == FormaPagamento.credito) ...[
-                      if (_cartoes.isEmpty) ...[
-                        const Text(
-                          'Nenhum cartão cadastrado.\n'
-                          'Cadastre em: Menu → Cartões de crédito.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.redAccent,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ] else ...[
-                        DropdownButtonFormField<CartaoCredito>(
-                          value: cartaoSelecionado,
-                          decoration: const InputDecoration(
-                            labelText: 'Cartão de crédito',
-                            border: OutlineInputBorder(),
-                          ),
-                          items:
-                              _cartoes.map((c) {
-                                return DropdownMenuItem(
-                                  value: c,
-                                  child: Text(c.label),
-                                );
-                              }).toList(),
-                          onChanged: (novoCartao) {
-                            setModalState(() {
-                              cartaoSelecionado = novoCartao;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ],
 
                     // Pagamento de fatura
                     CheckboxListTile(
@@ -427,9 +458,55 @@ class _HomePageState extends State<HomePage> {
                       onChanged: (v) {
                         setModalState(() {
                           pagamentoFatura = v ?? false;
+                          _recalcularCartoes();
                         });
                       },
                     ),
+
+                    // Seção de cartão (para débito, crédito e/ou pagamento de fatura)
+                    if (deveMostrarSecaoCartao) ...[
+                      const SizedBox(height: 8),
+                      if (_cartoes.isEmpty) ...[
+                        const Text(
+                          'Nenhum cartão cadastrado.\n'
+                          'Cadastre em: Menu → Cartões.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      ] else if (cartoesFiltrados.isEmpty) ...[
+                        Text(
+                          pagamentoFatura
+                              ? 'Nenhum cartão de crédito (ou ambos) cadastrado para vincular a fatura.'
+                              : 'Nenhum cartão compatível com essa forma de pagamento.',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.deepOrange,
+                          ),
+                        ),
+                      ] else ...[
+                        DropdownButtonFormField<CartaoCredito>(
+                          value: cartaoSelecionado,
+                          decoration: InputDecoration(
+                            labelText: _labelCartao(),
+                            border: const OutlineInputBorder(),
+                          ),
+                          items: cartoesFiltrados.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text(c.label),
+                            );
+                          }).toList(),
+                          onChanged: (novoCartao) {
+                            setModalState(() {
+                              cartaoSelecionado = novoCartao;
+                            });
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                    ],
 
                     // Já está pago
                     CheckboxListTile(
@@ -551,9 +628,8 @@ class _HomePageState extends State<HomePage> {
                             if (formaSelecionada == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text(
-                                    'Selecione a forma de pagamento.',
-                                  ),
+                                  content:
+                                      Text('Selecione a forma de pagamento.'),
                                 ),
                               );
                               return;
@@ -568,15 +644,29 @@ class _HomePageState extends State<HomePage> {
                               return;
                             }
 
-                            // se for crédito e já existir cartão cadastrado,
-                            // obriga escolher um cartão
-                            if (formaSelecionada == FormaPagamento.credito &&
-                                _cartoes.isNotEmpty &&
-                                cartaoSelecionado == null) {
+                            // Recalcula cartões antes da validação final
+                            cartoesFiltrados =
+                                _filtrarCartoes(formaSelecionada, pagamentoFatura);
+
+                            // Regra de validação:
+                            // 1) Se for CRÉDITO normal e existir cartão compatível → obriga escolher
+                            // 2) Se for PAGAMENTO DE FATURA e existir cartão de crédito/ambos → obriga escolher
+                            final bool temCartaoCompativel =
+                                cartoesFiltrados.isNotEmpty;
+
+                            final bool precisaCartao =
+                                (formaSelecionada == FormaPagamento.credito &&
+                                    temCartaoCompativel &&
+                                    !pagamentoFatura) ||
+                                    (pagamentoFatura && temCartaoCompativel);
+
+                            if (precisaCartao && cartaoSelecionado == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Text(
-                                    'Selecione o cartão de crédito usado.',
+                                    pagamentoFatura
+                                        ? 'Selecione qual cartão você está pagando a fatura.'
+                                        : 'Selecione o cartão de crédito usado.',
                                   ),
                                 ),
                               );
@@ -590,35 +680,33 @@ class _HomePageState extends State<HomePage> {
 
                             final categoria = categoriaSelecionada!;
 
-                            final Lancamento lanc =
-                                ehEdicao
-                                    ? existente.copyWith(
-                                      valor: valor,
-                                      descricao: descricao,
-                                      formaPagamento: formaSelecionada!,
-                                      dataHora: dataLancamento,
-                                      pagamentoFatura: pagamentoFatura,
-                                      categoria: categoria,
-                                      pago: pago,
-                                      dataPagamento:
-                                          pago
-                                              ? (existente.dataPagamento ??
-                                                  DateTime.now())
-                                              : null,
-                                      idCartao: cartaoSelecionado?.id,
-                                    )
-                                    : Lancamento(
-                                      valor: valor,
-                                      descricao: descricao,
-                                      formaPagamento: formaSelecionada!,
-                                      dataHora: dataLancamento,
-                                      pagamentoFatura: pagamentoFatura,
-                                      categoria: categoria,
-                                      pago: pago,
-                                      dataPagamento:
-                                          pago ? DateTime.now() : null,
-                                      idCartao: cartaoSelecionado?.id,
-                                    );
+                            final Lancamento lanc = ehEdicao
+                                ? existente!.copyWith(
+                                    valor: valor,
+                                    descricao: descricao,
+                                    formaPagamento: formaSelecionada!,
+                                    dataHora: dataLancamento,
+                                    pagamentoFatura: pagamentoFatura,
+                                    categoria: categoria,
+                                    pago: pago,
+                                    dataPagamento: pago
+                                        ? (existente.dataPagamento ??
+                                            DateTime.now())
+                                        : null,
+                                    idCartao: cartaoSelecionado?.id,
+                                  )
+                                : Lancamento(
+                                    valor: valor,
+                                    descricao: descricao,
+                                    formaPagamento: formaSelecionada!,
+                                    dataHora: dataLancamento,
+                                    pagamentoFatura: pagamentoFatura,
+                                    categoria: categoria,
+                                    pago: pago,
+                                    dataPagamento:
+                                        pago ? DateTime.now() : null,
+                                    idCartao: cartaoSelecionado?.id,
+                                  );
 
                             // ======== LÓGICA DE SALVAR / PARCELAR ========
                             if (!ehEdicao && parcelado) {
@@ -642,11 +730,10 @@ class _HomePageState extends State<HomePage> {
                                 parcelaTotal: null,
                               );
 
-                              await _dbService
-                                  .salvarLancamentosParceladosFuturos(
-                                    base,
-                                    qtd,
-                                  );
+                              await _dbService.salvarLancamentosParceladosFuturos(
+                                base,
+                                qtd,
+                              );
                             } else {
                               await _dbService.salvarLancamento(lanc);
                             }
@@ -771,14 +858,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ===========================================
-//   NOVO "Gastos detalhados do dia"
-//   (mesmo layout da tela Gráficos)
-// ===========================================
-Future<void> _mostrarResumoPorFormaPagamento() async {
+  //   NOVO "Gastos detalhados do dia"
+  //   (mesmo layout da tela Gráficos)
+  // ===========================================
+  Future<void> _mostrarResumoPorFormaPagamento() async {
     // somente gastos pagos e que NÃO são pagamento de fatura
-    final lancamentosDia = _lancamentosDoDia
-        .where((l) => l.pago && !l.pagamentoFatura)
-        .toList();
+    final lancamentosDia =
+        _lancamentosDoDia.where((l) => l.pago && !l.pagamentoFatura).toList();
 
     if (lancamentosDia.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -812,8 +898,6 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
     }
 
     final totalGeral = lancamentosDia.fold<double>(0.0, (a, b) => a + b.valor);
-
-    // ====== Abrir o BottomSheet (mesmo estilo da tela de gráficos) ======
 
     final tema = Theme.of(context);
     final corPrimaria = tema.colorScheme.primary;
@@ -859,7 +943,7 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
                   ),
                   const SizedBox(height: 12),
 
-                  // ===== CABEÇALHO =====
+                  // CABEÇALHO
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -880,7 +964,7 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
                         ),
                         const SizedBox(height: 12),
 
-                        // ===== CARD COM TOTAL DO DIA =====
+                        // CARD TOTAL
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -941,13 +1025,13 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
                     ),
                   ),
 
-                  // ===== LISTA =====
+                  // LISTA
                   Expanded(
                     child: ListView(
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       children: [
-                        // --- OUTRAS FORMAS ---
+                        // OUTRAS FORMAS
                         if (totaisOutros.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           ...totaisOutros.entries.map((entry) {
@@ -963,7 +1047,7 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
                           }),
                         ],
 
-                        // --- CARTÕES ---
+                        // CARTÕES
                         if (totaisPorCartao.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           ...totaisPorCartao.entries.map((entry) {
@@ -983,12 +1067,11 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
                             final titulo =
                                 cartao?.descricao ?? 'Cartão de crédito';
 
-                            final sub =
-                                cartao != null
-                                    ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
-                                    : (idCartao == null
-                                        ? 'Sem cartão vinculado'
-                                        : 'Cartão (id $idCartao)');
+                            final sub = cartao != null
+                                ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
+                                : (idCartao == null
+                                    ? 'Sem cartão vinculado'
+                                    : 'Cartão (id $idCartao)');
 
                             return _cardAgrupamentoItem(
                               icone: Icons.credit_card,
@@ -1063,5 +1146,5 @@ Future<void> _mostrarResumoPorFormaPagamento() async {
         ],
       ),
     );
-  }  
+  }
 }
