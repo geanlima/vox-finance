@@ -130,6 +130,16 @@ class _HomePageState extends State<HomePage> {
     return const [];
   }
 
+  bool _cartaoControlaFatura(CartaoCredito? c) {
+    if (c == null) return false;
+    final ehCreditoLike =
+        c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos;
+    return ehCreditoLike &&
+        c.controlaFatura &&
+        c.diaFechamento != null &&
+        c.diaVencimento != null;
+  }
+
   // ============ AÇÕES BÁSICAS ============
 
   void _onAddLancamento() {
@@ -656,8 +666,8 @@ class _HomePageState extends State<HomePage> {
 
                             final bool precisaCartao =
                                 (formaSelecionada == FormaPagamento.credito &&
-                                    temCartaoCompativel &&
-                                    !pagamentoFatura) ||
+                                        temCartaoCompativel &&
+                                        !pagamentoFatura) ||
                                     (pagamentoFatura && temCartaoCompativel);
 
                             if (precisaCartao && cartaoSelecionado == null) {
@@ -674,12 +684,13 @@ class _HomePageState extends State<HomePage> {
                             }
 
                             final descricao =
-                                descricaoController.text.trim().isEmpty
-                                    ? 'Sem descrição'
-                                    : descricaoController.text.trim();
+                                descricaoController.text.trim().isNotEmpty
+                                    ? descricaoController.text.trim()
+                                    : 'Sem descrição';
 
                             final categoria = categoriaSelecionada!;
 
+                            // lançamento base (compra / pagamento)
                             final Lancamento lanc = ehEdicao
                                 ? existente!.copyWith(
                                     valor: valor,
@@ -708,6 +719,15 @@ class _HomePageState extends State<HomePage> {
                                     idCartao: cartaoSelecionado?.id,
                                   );
 
+                            final bool ehCredito =
+                                formaSelecionada == FormaPagamento.credito;
+                            final bool ehCompraCreditoComCartao =
+                                !pagamentoFatura &&
+                                    !ehEdicao &&
+                                    ehCredito &&
+                                    cartaoSelecionado != null &&
+                                    _cartaoControlaFatura(cartaoSelecionado);
+
                             // ======== LÓGICA DE SALVAR / PARCELAR ========
                             if (!ehEdicao && parcelado) {
                               final qtd =
@@ -724,18 +744,53 @@ class _HomePageState extends State<HomePage> {
                                 return;
                               }
 
+                              // base sem info de parcela
                               final base = lanc.copyWith(
                                 grupoParcelas: null,
                                 parcelaNumero: null,
                                 parcelaTotal: null,
                               );
 
-                              await _dbService.salvarLancamentosParceladosFuturos(
-                                base,
-                                qtd,
-                              );
+                              if (ehCompraCreditoComCartao) {
+                                // OPÇÃO 1:
+                                // compra no crédito com cartão que controla fatura →
+                                // cria APENAS lançamentos de fatura pendentes
+                                final baseFatura = base.copyWith(
+                                  pagamentoFatura: true,
+                                  pago: false,
+                                  dataPagamento: null,
+                                );
+
+                                await _dbService
+                                    .salvarLancamentosParceladosFuturos(
+                                  baseFatura,
+                                  qtd,
+                                );
+                              } else {
+                                // comportamento padrão anterior
+                                await _dbService
+                                    .salvarLancamentosParceladosFuturos(
+                                  base,
+                                  qtd,
+                                );
+                              }
                             } else {
-                              await _dbService.salvarLancamento(lanc);
+                              if (ehCompraCreditoComCartao) {
+                                // Crédito à vista com cartão que controla fatura:
+                                // não grava na data da compra,
+                                // só grava lançamento de fatura pendente
+                                final baseFatura = lanc.copyWith(
+                                  pagamentoFatura: true,
+                                  pago: false,
+                                  dataPagamento: null,
+                                );
+
+                                await _dbService
+                                    .salvarLancamentoDaFatura(baseFatura);
+                              } else {
+                                // Demais casos: salva normal
+                                await _dbService.salvarLancamento(lanc);
+                              }
                             }
 
                             await _carregarDoBanco();

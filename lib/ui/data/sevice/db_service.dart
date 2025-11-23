@@ -638,6 +638,8 @@ class DbService {
         parcelaTotal: qtdParcelas,
         pago: pagoParcela,
         dataPagamento: dataPagamentoParcela,
+        // 👇 quando for fatura controlada, essas parcelas são PAGAMENTO DE FATURA
+        pagamentoFatura: usarRegraFatura ? true : base.pagamentoFatura,
       );
 
       await database.insert('lancamentos', lancParcela.toMap());
@@ -711,12 +713,13 @@ class DbService {
 
     final dataVencimento = DateTime(ano, mes, diaVencimento);
 
-    // cria o lançamento pendente na data da fatura
+    // cria o lançamento pendente na data da fatura, marcado como pagamento de fatura
     final lancFatura = base.copyWith(
       id: null,
       dataHora: dataVencimento,
       pago: false,
       dataPagamento: null,
+      pagamentoFatura: true,
     );
 
     await database.insert('lancamentos', lancFatura.toMap());
