@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
+import 'package:vox_finance/ui/data/models/usuario.dart'; // 👈 modelo do usuário local
 
 class DbService {
   DbService._internal();
@@ -30,9 +31,9 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 6, // 👈 subimos para 6 para garantir o upgrade
+      version: 7, // 👈 subimos para 7 (inclui tabela usuarios)
       onCreate: (db, version) async {
-        await _criarTabelasV6(db);
+        await _criarTabelasV7(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // ---- UPGRADE PARA V4 (id_cartao + tabela cartao_credito básica) ----
@@ -67,9 +68,40 @@ class DbService {
             );
           } catch (e) {}
         }
+
+        // ---- UPGRADE PARA V7 (tabela USUARIOS) ----
+        if (oldVersion < 7) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+              id INTEGER PRIMARY KEY,
+              email TEXT NOT NULL,
+              nome TEXT,
+              senha TEXT NOT NULL,
+              criado_em TEXT NOT NULL
+            );
+          ''');
+        }
       },
       onOpen: (db) async {
-        // ignore: unused_local_variable
+        // Garante que a tabela USUARIOS exista (sem apagar nada)
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY,
+            email TEXT NOT NULL,
+            nome TEXT,
+            senha TEXT NOT NULL,
+            criado_em TEXT NOT NULL
+          );
+        ''');
+
+        // Garante que a coluna SENHA exista mesmo em bancos antigos
+        try {
+          await db.execute("ALTER TABLE usuarios ADD COLUMN senha TEXT;");
+        } catch (e) {
+          // se já existe, ignora
+        }
+
+        // Só um checkzinho que você já tinha
         final res = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='cartao_credito';",
         );
@@ -79,8 +111,8 @@ class DbService {
     return _db!;
   }
 
-  // Cria tudo já no formato da versão 6 (instalação nova)
-  Future<void> _criarTabelasV6(Database db) async {
+  // Cria tudo já no formato da versão 7 (instalação nova)
+  Future<void> _criarTabelasV7(Database db) async {
     // --------- TABELA DE LANÇAMENTOS ---------
     await db.execute('''
       CREATE TABLE lancamentos (
@@ -126,6 +158,74 @@ class DbService {
         dia_vencimento INTEGER
       );
     ''');
+
+    // --------- TABELA DE USUÁRIOS ---------
+    await db.execute('''
+      CREATE TABLE usuarios (
+        id INTEGER PRIMARY KEY,
+        email TEXT NOT NULL,
+        nome TEXT,
+        senha TEXT NOT NULL,
+        criado_em TEXT NOT NULL
+      );
+    ''');
+  }
+
+  // ============================================================
+  //  C R U D   U S U Á R I O   L O C A L
+  // ============================================================
+
+  Future<void> salvarUsuario(Usuario usuario) async {
+    final database = await db;
+
+    final id = await database.insert(
+      'usuarios',
+      usuario.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    print('✅ Usuário salvo/atualizado. RowId: $id');
+
+    // debug opcional
+    final check = await database.query('usuarios');
+    print('📌 Conteúdo da tabela usuarios: $check');
+  }
+
+  Future<Usuario?> loginUsuario(String email, String senha) async {
+    final database = await db;
+
+    print('🔍 Login - buscando usuário $email');
+
+    final result = await database.query(
+      'usuarios',
+      where: 'email = ? AND senha = ?',
+      whereArgs: [email, senha],
+      limit: 1,
+    );
+
+    print('📌 Resultado login usuarios: $result');
+
+    if (result.isEmpty) return null;
+
+    return Usuario.fromMap(result.first);
+  }
+
+  Future<Usuario?> obterUsuario() async {
+    final database = await db;
+
+    final result = await database.query(
+      'usuarios',
+      limit: 1,
+    );
+
+    if (result.isEmpty) return null;
+
+    return Usuario.fromMap(result.first);
+  }
+
+  Future<void> limparUsuario() async {
+    final database = await db;
+    await database.delete('usuarios');
   }
 
   // ============================================================

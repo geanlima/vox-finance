@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
+import 'package:vox_finance/ui/pages/auth/login_page.dart'; // 👈 IMPORTANTE
 import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
-
 import 'package:vox_finance/ui/pages/home/home_page.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/contas_pagar_page.dart';
 import 'package:vox_finance/ui/pages/grafico/graficos_page.dart';
@@ -34,19 +34,15 @@ class VoxFinanceApp extends StatelessWidget {
         scrollbars: false,
       ),
 
-      initialRoute: '/',
+      // 👉 PRIMEIRA TELA DO APP
+      initialRoute: '/login',
+
       routes: {
+        '/login': (_) => const LoginPage(),          // 👈 LOGIN PRIMEIRO
         '/': (_) => const HomePage(),
-
-        // 💰 Lançamentos / Contas
         '/contas-pagar': (_) => const ContasPagarPage(),
-        // '/lancamentos-futuros': (_) => const LancamentosFuturosPage(),
-
-        // 📊 Gráficos
-        // '/grafico-mensal': (_) => const GraficoMensalPage(),
-        // '/config-grafico': (_) => const ConfigGraficoPage(),
         '/cartoes-credito': (_) => const CartaoCreditoPage(),
-        '/graficos': (_) => const GraficosPage(), // tela com gráfico pizza
+        '/graficos': (_) => const GraficosPage(),
       },
     );
   }
