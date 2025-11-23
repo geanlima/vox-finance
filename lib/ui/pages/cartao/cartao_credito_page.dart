@@ -27,12 +27,30 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
 
   Future<void> _carregar() async {
     setState(() => _carregando = true);
-    final lista = await _db.getCartoesCredito();
-    setState(() {
-      _cartoes = lista;
-      _carregando = false;
-    });
+
+    try {
+      final lista = await _db.getCartoesCredito();
+
+      // se a tela já foi fechada, não tenta mais dar setState
+      if (!mounted) return;
+
+      setState(() {
+        _cartoes = lista;
+        _carregando = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _carregando = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao carregar cartões: $e'),
+        ),
+      );
+    }
   }
+
 
   Color _corBandeira(String bandeira) {
     final b = bandeira.toLowerCase();
@@ -194,6 +212,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // "pegador"
                         Container(
                           width: 50,
                           height: 4,
@@ -203,6 +222,8 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
+
+                        // Título
                         Row(
                           children: [
                             Icon(
@@ -498,8 +519,9 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                             const SizedBox(width: 8),
                             ElevatedButton.icon(
                               icon: Icon(ehEdicao ? Icons.save : Icons.add),
-                              label:
-                                  Text(ehEdicao ? 'Salvar alterações' : 'Adicionar'),
+                              label: Text(
+                                ehEdicao ? 'Salvar alterações' : 'Adicionar',
+                              ),
                               onPressed: () async {
                                 final desc = descricaoCtrl.text.trim();
                                 final band = bandeiraCtrl.text.trim();

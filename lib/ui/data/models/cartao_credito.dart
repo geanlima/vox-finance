@@ -1,85 +1,74 @@
-// ignore_for_file: override_on_non_overriding_member
+// ignore_for_file: public_member_api_docs
 
-enum TipoCartao {
-  credito,
-  debito,
-  ambos,
-}
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart'; // se o enum TipoCartao estiver em outro lugar, ajuste o import
+
+enum TipoCartao { credito, debito, ambos }
 
 class CartaoCredito {
   int? id;
   String descricao;
   String bandeira;
   String ultimos4Digitos;
-
-  // Gerenciamento
-  TipoCartao tipo;
-  bool controlaFatura;       // 👈 novo no lugar de permiteParcelamento
-  double? limite;           // opcional
-
-  // Fechamento e vencimento
-  int? diaFechamento;
-  int? diaVencimento;
-
-  // Foto do cartão
   String? fotoPath;
+  int? diaVencimento;
+  int? diaFechamento;
+  TipoCartao tipo;
+  bool controlaFatura;
+  double? limite;
 
   CartaoCredito({
     this.id,
     required this.descricao,
     required this.bandeira,
     required this.ultimos4Digitos,
-    this.tipo = TipoCartao.credito,
-    this.controlaFatura = true,   // 👈 default: controla fatura
-    this.limite,
-    this.diaFechamento,
-    this.diaVencimento,
     this.fotoPath,
+    this.diaVencimento,
+    this.diaFechamento,
+    this.tipo = TipoCartao.credito,
+    this.controlaFatura = true,
+    this.limite,
   });
 
-  // ---------- TO MAP ----------
-  @override
+  /// Usado nos dropdowns da Home
+  String get label => '$descricao • **** $ultimos4Digitos';
+
+  factory CartaoCredito.fromMap(Map<String, dynamic> map) {
+    return CartaoCredito(
+      id: map['id'] as int?,
+
+      // se vier null do banco, joga string vazia para não quebrar
+      descricao: (map['descricao'] ?? '') as String,
+      bandeira: (map['bandeira'] ?? '') as String,
+      ultimos4Digitos: (map['ultimos4'] ?? '') as String,
+
+      // campos opcionais
+      fotoPath: map['foto_path'] as String?,
+      diaVencimento: map['dia_vencimento'] as int?,
+      diaFechamento: map['dia_fechamento'] as int?,
+
+      // se ainda não tiver sido preenchido, assume crédito (0)
+      tipo: TipoCartao.values[(map['tipo'] as int?) ?? 0],
+
+      // controla_fatura: se for 1 → true, senão false
+      controlaFatura: (map['controla_fatura'] as int?) == 1,
+
+      // limite pode vir null
+      limite: (map['limite'] as num?)?.toDouble(),
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'descricao': descricao,
       'bandeira': bandeira,
-      'ultimos_4_digitos': ultimos4Digitos,
-      'tipo': tipo.index,
-      'controla_fatura': controlaFatura ? 1 : 0,  // 👈 mudou aqui
-      'limite': limite,
-      'dia_fechamento': diaFechamento,
-      'dia_vencimento': diaVencimento,
+      'ultimos4': ultimos4Digitos,
       'foto_path': fotoPath,
+      'dia_vencimento': diaVencimento,
+      'dia_fechamento': diaFechamento,
+      'tipo': tipo.index,
+      'controla_fatura': controlaFatura ? 1 : 0,
+      'limite': limite,
     };
-  }
-
-  // ---------- FROM MAP ----------
-  factory CartaoCredito.fromMap(Map<String, Object?> map) {
-    return CartaoCredito(
-      id: map['id'] as int?,
-      descricao: map['descricao'] as String,
-      bandeira: map['bandeira'] as String,
-      ultimos4Digitos:
-          (map['ultimos_4_digitos'] ?? map['ultimos4'] ?? '') as String,
-      tipo: TipoCartao.values[(map['tipo'] ?? 0) as int],
-      controlaFatura: (map['controla_fatura'] ?? 1) == 1,   // 👈 mudou aqui
-      limite: map['limite'] != null
-          ? (map['limite'] as num).toDouble()
-          : null,
-      diaFechamento: map['dia_fechamento'] as int?,
-      diaVencimento: map['dia_vencimento'] as int?,
-      fotoPath: map['foto_path'] as String?,
-    );
-  }
-
-  String get label {
-    final t = {
-      TipoCartao.credito: 'Crédito',
-      TipoCartao.debito: 'Débito',
-      TipoCartao.ambos: 'Débito/Crédito',
-    }[tipo]!;
-
-    return '$descricao • $t • **** $ultimos4Digitos';
   }
 }

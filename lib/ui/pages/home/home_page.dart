@@ -271,7 +271,7 @@ class _HomePageState extends State<HomePage> {
     );
 
     FormaPagamento? formaSelecionada =
-        existente?.formaPagamento ?? (formaInicial ?? FormaPagamento.debito);
+        existente?.formaPagamento ?? (formaInicial ?? FormaPagamento.credito);
 
     bool pagamentoFatura =
         existente?.pagamentoFatura ?? (pagamentoFaturaInicial ?? false);
