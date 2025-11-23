@@ -631,6 +631,19 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
 
+    // título da lista de detalhe, de acordo com o agrupamento
+    String _tituloDetalhe() {
+      switch (_tipo) {
+        case TipoAgrupamentoPizza.categoria:
+          return 'Detalhado por categoria';
+        case TipoAgrupamentoPizza.formaPagamento:
+          return 'Detalhado por forma / cartão';
+        case TipoAgrupamentoPizza.dia:
+        default:
+          return 'Detalhado por dia';
+      }
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -797,17 +810,41 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   )
                 else ...[
-                  SizedBox(
-                    height: 240,
-                    child: PieChart(
-                      PieChartData(
-                        sections: _buildSections(),
-                        sectionsSpace: 2,
-                        centerSpaceRadius: 0,
+                  // Card com o gráfico
+                  Card(
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SizedBox(
+                        height: 210,
+                        child: PieChart(
+                          PieChartData(
+                            sections: _buildSections(),
+                            sectionsSpace: 2,
+                            centerSpaceRadius: 0,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Título da listagem detalhada
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      _tituloDetalhe(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
                   if (_tipo == TipoAgrupamentoPizza.categoria)
                     _buildLegendaCategoria()
                   else if (_tipo == TipoAgrupamentoPizza.formaPagamento)
