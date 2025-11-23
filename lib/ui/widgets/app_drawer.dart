@@ -170,7 +170,7 @@ class _AppDrawerState extends State<AppDrawer> {
             _menuItem(
               context,
               icon: Icons.bar_chart,
-              label: 'Gráfico',
+              label: 'Resumo do mês',
               route: '/graficos',
             ),
             _menuItem(

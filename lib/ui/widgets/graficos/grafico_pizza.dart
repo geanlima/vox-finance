@@ -400,7 +400,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     }
   }
 
-  // ======= DETALHAMENTO =======
+  // ======= DETALHAMENTO (VISUAL NOVO) =======
 
   void _mostrarDetalheLancamentos({
     required String titulo,
@@ -419,52 +419,197 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
+        final tema = Theme.of(context);
+        final corPrimaria = tema.colorScheme.primary;
+
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
+          initialChildSize: 0.65,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
           builder: (context, scrollController) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(titulo, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitulo,
-                    style: const TextStyle(fontSize: 13, color: Colors.grey),
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Total: ${_currency.format(total)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
+
+                  // CABEÇALHO
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          titulo,
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitulo,
+                          style: tema.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Card com total
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: corPrimaria.withOpacity(0.06),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: corPrimaria.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  Icons.pie_chart_rounded,
+                                  color: corPrimaria,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Total',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                  Text(
+                                    _currency.format(total),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Lançamentos',
+                          style: tema.textTheme.labelMedium?.copyWith(
+                            color: Colors.grey[700],
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // LISTA
                   Expanded(
-                    child: ListView.builder(
+                    child: ListView.separated(
                       controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       itemCount: lancamentos.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final l = lancamentos[index];
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l.descricao),
-                          subtitle: Text(
-                            '${_dateHoraFormat.format(l.dataHora)} • '
-                            '${CategoriaService.toName(l.categoria)}',
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
                           ),
-                          trailing: Text(
-                            _currency.format(l.valor),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          decoration: BoxDecoration(
+                            color: tema.colorScheme.surfaceVariant
+                                .withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: corPrimaria.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.receipt_long,
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      l.descricao,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${_dateHoraFormat.format(l.dataHora)} • '
+                                      '${CategoriaService.toName(l.categoria)}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _currency.format(l.valor),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       },
@@ -485,6 +630,19 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   Widget build(BuildContext context) {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
+
+    // título da lista de detalhe, de acordo com o agrupamento
+    String _tituloDetalhe() {
+      switch (_tipo) {
+        case TipoAgrupamentoPizza.categoria:
+          return 'Detalhado por categoria';
+        case TipoAgrupamentoPizza.formaPagamento:
+          return 'Detalhado por forma / cartão';
+        case TipoAgrupamentoPizza.dia:
+        default:
+          return 'Detalhado por dia';
+      }
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -531,15 +689,14 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
-                        items:
-                            _anosDisponiveis
-                                .map(
-                                  (ano) => DropdownMenuItem(
-                                    value: ano,
-                                    child: Text(ano.toString()),
-                                  ),
-                                )
-                                .toList(),
+                        items: _anosDisponiveis
+                            .map(
+                              (ano) => DropdownMenuItem(
+                                value: ano,
+                                child: Text(ano.toString()),
+                              ),
+                            )
+                            .toList(),
                         onChanged: (novoAno) {
                           if (novoAno == null) return;
                           setState(() {
@@ -605,9 +762,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.08),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.08),
                     ),
                     child: Row(
                       children: [
@@ -652,17 +810,41 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   )
                 else ...[
-                  SizedBox(
-                    height: 240,
-                    child: PieChart(
-                      PieChartData(
-                        sections: _buildSections(),
-                        sectionsSpace: 2,
-                        centerSpaceRadius: 0,
+                  // Card com o gráfico
+                  Card(
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SizedBox(
+                        height: 210,
+                        child: PieChart(
+                          PieChartData(
+                            sections: _buildSections(),
+                            sectionsSpace: 2,
+                            centerSpaceRadius: 0,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Título da listagem detalhada
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      _tituloDetalhe(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
                   if (_tipo == TipoAgrupamentoPizza.categoria)
                     _buildLegendaCategoria()
                   else if (_tipo == TipoAgrupamentoPizza.formaPagamento)
@@ -678,7 +860,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     );
   }
 
-  // ======= LEGENDAS =======
+  // ======= LEGENDAS – VISUAL EM CARD =======
 
   Widget _buildLegendaCategoria() {
     final data = _totaisPorCategoria();
@@ -696,27 +878,68 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         final percent = total == 0 ? 0 : (valor / total) * 100;
         final color = _colorForIndex(index);
 
-        return ListTile(
-          onTap: () {
-            final lancs =
-                _lancamentos.where((l) => l.categoria == cat).toList();
-            _mostrarDetalheLancamentos(
-              titulo: 'Detalhe por categoria',
-              subtitulo:
-                  '${CategoriaService.toName(cat)} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
-              lancamentos: lancs,
-            );
-          },
-          leading: Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          title: Text(CategoriaService.toName(cat)),
-          subtitle: Text('${percent.toStringAsFixed(1)}%'),
-          trailing: Text(
-            _currency.format(valor),
-            style: const TextStyle(fontWeight: FontWeight.bold),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              final lancs =
+                  _lancamentos.where((l) => l.categoria == cat).toList();
+              _mostrarDetalheLancamentos(
+                titulo: 'Detalhe por categoria',
+                subtitulo:
+                    '${CategoriaService.toName(cat)} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                lancamentos: lancs,
+              );
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceVariant
+                    .withOpacity(0.3),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          CategoriaService.toName(cat),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '${percent.toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    _currency.format(valor),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -739,33 +962,69 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         final percent = total == 0 ? 0 : (valor / total) * 100;
         final color = _colorForIndex(index);
 
-        return ListTile(
-          onTap: () {
-            final lancs = dataLancs[grupo.label] ?? const <Lancamento>[];
-            _mostrarDetalheLancamentos(
-              titulo: 'Detalhe por forma / cartão',
-              subtitulo:
-                  '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
-              lancamentos: lancs,
-            );
-          },
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              final lancs = dataLancs[grupo.label] ?? const <Lancamento>[];
+              _mostrarDetalheLancamentos(
+                titulo: 'Detalhe por forma / cartão',
+                subtitulo:
+                    '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                lancamentos: lancs,
+              );
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceVariant
+                    .withOpacity(0.3),
               ),
-              const SizedBox(width: 8),
-              Icon(grupo.icon, size: 18),
-            ],
-          ),
-          title: Text(grupo.label),
-          subtitle: Text('${percent.toStringAsFixed(1)}%'),
-          trailing: Text(
-            _currency.format(valor),
-            style: const TextStyle(fontWeight: FontWeight.bold),
+              child: Row(
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(grupo.icon, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          grupo.label,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '${percent.toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    _currency.format(valor),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -790,25 +1049,66 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         final percent = total == 0 ? 0 : (valor / total) * 100;
         final color = _colorForIndex(index);
 
-        return ListTile(
-          onTap: () {
-            final lancs = dataLancs[dia] ?? const <Lancamento>[];
-            _mostrarDetalheLancamentos(
-              titulo: 'Detalhe do dia',
-              subtitulo: _dateDiaFormat.format(dia),
-              lancamentos: lancs,
-            );
-          },
-          leading: Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          title: Text('Dia ${_dateDiaFormat.format(dia)}'),
-          subtitle: Text('${percent.toStringAsFixed(1)}%'),
-          trailing: Text(
-            _currency.format(valor),
-            style: const TextStyle(fontWeight: FontWeight.bold),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              final lancs = dataLancs[dia] ?? const <Lancamento>[];
+              _mostrarDetalheLancamentos(
+                titulo: 'Detalhe do dia',
+                subtitulo: _dateDiaFormat.format(dia),
+                lancamentos: lancs,
+              );
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceVariant
+                    .withOpacity(0.3),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Dia ${_dateDiaFormat.format(dia)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '${percent.toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    _currency.format(valor),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },

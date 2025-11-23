@@ -770,12 +770,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ============ RESUMO POR FORMA / DETALHES ============
-
-  Future<void> _mostrarResumoPorFormaPagamento() async {
-    // só gastos pagos e que NÃO são pagamento de fatura
-    final lancamentosDia =
-        _lancamentosDoDia.where((l) => l.pago && !l.pagamentoFatura).toList();
+  // ===========================================
+//   NOVO "Gastos detalhados do dia"
+//   (mesmo layout da tela Gráficos)
+// ===========================================
+Future<void> _mostrarResumoPorFormaPagamento() async {
+    // somente gastos pagos e que NÃO são pagamento de fatura
+    final lancamentosDia = _lancamentosDoDia
+        .where((l) => l.pago && !l.pagamentoFatura)
+        .toList();
 
     if (lancamentosDia.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -784,135 +787,281 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // garante que lista de cartões está atualizada
+    // garante cartões atualizados
     await _carregarCartoes();
 
-    // Outros meios (débito, pix, dinheiro, etc.)
-    final Map<FormaPagamento, double> totaisOutros = {};
+    // ===== AGRUPAMENTOS =====
 
-    // Cartão de crédito → agrupar por cartão (id_cartao)
+    final Map<FormaPagamento, double> totaisOutros = {};
     final Map<int?, double> totaisPorCartao = {};
 
     for (final lanc in lancamentosDia) {
       if (lanc.formaPagamento == FormaPagamento.credito) {
-        // agrupa pelo idCartao; null fica em um grupo separado
         totaisPorCartao.update(
           lanc.idCartao,
-          (valorAtual) => valorAtual + lanc.valor,
+          (v) => v + lanc.valor,
           ifAbsent: () => lanc.valor,
         );
       } else {
         totaisOutros.update(
           lanc.formaPagamento,
-          (valorAtual) => valorAtual + lanc.valor,
+          (v) => v + lanc.valor,
           ifAbsent: () => lanc.valor,
         );
       }
     }
 
+    final totalGeral = lancamentosDia.fold<double>(0.0, (a, b) => a + b.valor);
+
+    // ====== Abrir o BottomSheet (mesmo estilo da tela de gráficos) ======
+
+    final tema = Theme.of(context);
+    final corPrimaria = tema.colorScheme.primary;
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Gastos detalhados',
-                  style: Theme.of(context).textTheme.titleMedium,
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.65,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _dateDiaFormat.format(_dataSelecionada),
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-
-                // ========= OUTRAS FORMAS =========
-                if (totaisOutros.isNotEmpty) ...[
-                  Text(
-                    'Outras formas de pagamento',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelLarge?.copyWith(color: Colors.grey[700]),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
                   ),
-                  const SizedBox(height: 8),
-                  ...totaisOutros.entries.map((entry) {
-                    final forma = entry.key;
-                    final valor = entry.value;
-
-                    return ListTile(
-                      dense: true,
-                      leading: CircleAvatar(
-                        radius: 16,
-                        child: Icon(forma.icon, size: 18),
-                      ),
-                      title: Text(forma.label),
-                      trailing: Text(
-                        _currency.format(valor),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 16),
                 ],
-
-                // ========= CARTÕES DE CRÉDITO =========
-                if (totaisPorCartao.isNotEmpty) ...[
-                  Text(
-                    'Cartões de crédito',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelLarge?.copyWith(color: Colors.grey[700]),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  ...totaisPorCartao.entries.map((entry) {
-                    final int? idCartao = entry.key;
-                    final double valor = entry.value;
+                  const SizedBox(height: 12),
 
-                    CartaoCredito? cartao;
-                    if (idCartao != null) {
-                      try {
-                        cartao = _cartoes.firstWhere((c) => c.id == idCartao);
-                      } catch (_) {
-                        cartao = null;
-                      }
-                    }
+                  // ===== CABEÇALHO =====
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gastos detalhados',
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _dateDiaFormat.format(_dataSelecionada),
+                          style: tema.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
 
-                    final titulo = cartao?.descricao ?? 'Cartão de crédito';
-                    final subtitulo =
-                        cartao != null
-                            ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
-                            : (idCartao == null
-                                ? 'Sem cartão vinculado'
-                                : 'Cartão (id $idCartao)');
+                        // ===== CARD COM TOTAL DO DIA =====
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: corPrimaria.withOpacity(0.06),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: corPrimaria.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  Icons.payments,
+                                  color: corPrimaria,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Total do dia',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                  Text(
+                                    _currency.format(totalGeral),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
 
-                    return ListTile(
-                      dense: true,
-                      leading: const CircleAvatar(
-                        radius: 16,
-                        child: Icon(Icons.credit_card, size: 18),
-                      ),
-                      title: Text(titulo),
-                      subtitle: Text(subtitulo),
-                      trailing: Text(
-                        _currency.format(valor),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    );
-                  }),
+                        Text(
+                          'Detalhado por forma de pagamento',
+                          style: tema.textTheme.labelMedium?.copyWith(
+                            color: Colors.grey[700],
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                    ),
+                  ),
+
+                  // ===== LISTA =====
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      children: [
+                        // --- OUTRAS FORMAS ---
+                        if (totaisOutros.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          ...totaisOutros.entries.map((entry) {
+                            final forma = entry.key;
+                            final valor = entry.value;
+
+                            return _cardAgrupamentoItem(
+                              icone: forma.icon,
+                              titulo: forma.label,
+                              valor: valor,
+                              color: corPrimaria,
+                            );
+                          }),
+                        ],
+
+                        // --- CARTÕES ---
+                        if (totaisPorCartao.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          ...totaisPorCartao.entries.map((entry) {
+                            final idCartao = entry.key;
+                            final valor = entry.value;
+
+                            CartaoCredito? cartao;
+                            if (idCartao != null) {
+                              try {
+                                cartao =
+                                    _cartoes.firstWhere((c) => c.id == idCartao);
+                              } catch (_) {
+                                cartao = null;
+                              }
+                            }
+
+                            final titulo =
+                                cartao?.descricao ?? 'Cartão de crédito';
+
+                            final sub =
+                                cartao != null
+                                    ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
+                                    : (idCartao == null
+                                        ? 'Sem cartão vinculado'
+                                        : 'Cartão (id $idCartao)');
+
+                            return _cardAgrupamentoItem(
+                              icone: Icons.credit_card,
+                              titulo: titulo,
+                              subtitulo: sub,
+                              valor: valor,
+                              color: corPrimaria,
+                            );
+                          }),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
+
+  // ===========================================
+  //   WIDGET PARA ITENS DO AGRUPAMENTO
+  // ===========================================
+  Widget _cardAgrupamentoItem({
+    required IconData icone,
+    required String titulo,
+    required double valor,
+    required Color color,
+    String? subtitulo,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: color.withOpacity(0.06),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icone, size: 18, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  titulo,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                if (subtitulo != null)
+                  Text(
+                    subtitulo,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            _currency.format(valor),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }  
 }
