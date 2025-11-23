@@ -38,7 +38,7 @@ class VoxFinanceApp extends StatelessWidget {
       initialRoute: '/login',
 
       routes: {
-        '/login': (_) => const LoginPage(),          // 👈 LOGIN PRIMEIRO
+        '/login': (_) => LoginPage(),
         '/': (_) => const HomePage(),
         '/contas-pagar': (_) => const ContasPagarPage(),
         '/cartoes-credito': (_) => const CartaoCreditoPage(),

@@ -31,7 +31,7 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 7, // 👈 subimos para 7 (inclui tabela usuarios)
+      version: 8, // 👈 V8: usuarios com foto_path
       onCreate: (db, version) async {
         await _criarTabelasV7(db);
       },
@@ -77,9 +77,21 @@ class DbService {
               email TEXT NOT NULL,
               nome TEXT,
               senha TEXT NOT NULL,
+              foto_path TEXT,
               criado_em TEXT NOT NULL
             );
           ''');
+        }
+
+        // ---- UPGRADE PARA V8 (foto_path em bancos antigos que já tinham usuarios) ----
+        if (oldVersion < 8) {
+          try {
+            await db.execute(
+              "ALTER TABLE usuarios ADD COLUMN foto_path TEXT;",
+            );
+          } catch (e) {
+            // se já existir, ignora
+          }
         }
       },
       onOpen: (db) async {
@@ -90,28 +102,31 @@ class DbService {
             email TEXT NOT NULL,
             nome TEXT,
             senha TEXT NOT NULL,
+            foto_path TEXT,
             criado_em TEXT NOT NULL
           );
         ''');
 
-        // Garante que a coluna SENHA exista mesmo em bancos antigos
+        // Garante que as colunas existam mesmo em bancos antigos
         try {
           await db.execute("ALTER TABLE usuarios ADD COLUMN senha TEXT;");
-        } catch (e) {
-          // se já existe, ignora
-        }
+        } catch (e) {}
+        try {
+          await db.execute("ALTER TABLE usuarios ADD COLUMN foto_path TEXT;");
+        } catch (e) {}
 
         // Só um checkzinho que você já tinha
         final res = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='cartao_credito';",
         );
+        // print(res); // se quiser ver
       },
     );
 
     return _db!;
   }
 
-  // Cria tudo já no formato da versão 7 (instalação nova)
+  // Cria tudo já no formato da versão 7/8 (instalação nova)
   Future<void> _criarTabelasV7(Database db) async {
     // --------- TABELA DE LANÇAMENTOS ---------
     await db.execute('''
@@ -166,6 +181,7 @@ class DbService {
         email TEXT NOT NULL,
         nome TEXT,
         senha TEXT NOT NULL,
+        foto_path TEXT,
         criado_em TEXT NOT NULL
       );
     ''');

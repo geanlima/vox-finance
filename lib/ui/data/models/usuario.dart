@@ -1,8 +1,11 @@
+// lib/ui/data/models/usuario.dart
+
 class Usuario {
   final int id;
   final String email;
   final String nome;
-  final String senha;      // 👈 importante
+  final String senha;
+  final String? fotoPath;
   final DateTime criadoEm;
 
   Usuario({
@@ -10,6 +13,7 @@ class Usuario {
     required this.email,
     required this.nome,
     required this.senha,
+    this.fotoPath,
     required this.criadoEm,
   });
 
@@ -19,17 +23,19 @@ class Usuario {
       'email': email,
       'nome': nome,
       'senha': senha,
+      'foto_path': fotoPath,                // coluna no banco
       'criado_em': criadoEm.toIso8601String(),
     };
   }
 
   factory Usuario.fromMap(Map<String, dynamic> map) {
     return Usuario(
-      id: map['id'],
-      email: map['email'],
+      id: map['id'] as int,
+      email: map['email'] ?? '',
       nome: map['nome'] ?? '',
-      senha: map['senha'],
-      criadoEm: DateTime.parse(map['criado_em']),
+      senha: map['senha'] ?? '',
+      fotoPath: map['foto_path'] as String?, // pode ser null
+      criadoEm: DateTime.parse(map['criado_em'] as String),
     );
   }
 }
