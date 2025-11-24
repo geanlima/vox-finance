@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart' show FormaPagamento;
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
@@ -253,17 +254,14 @@ class DbService {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
 
-    print('✅ Usuário salvo/atualizado. RowId: $id');
 
     // debug opcional
     final check = await database.query('usuarios');
-    print('📌 Conteúdo da tabela usuarios: $check');
   }
 
   Future<Usuario?> loginUsuario(String email, String senha) async {
     final database = await db;
 
-    print('🔍 Login - buscando usuário $email');
 
     final result = await database.query(
       'usuarios',
@@ -272,7 +270,6 @@ class DbService {
       limit: 1,
     );
 
-    print('📌 Resultado login usuarios: $result');
 
     if (result.isEmpty) return null;
 
@@ -565,11 +562,11 @@ class DbService {
     // - tipo = crédito ou ambos
     // - dia_fechamento e dia_vencimento preenchidos
     final bool usarRegraFatura = cartao != null &&
-        cartao!.controlaFatura &&
-        (cartao!.tipo == TipoCartao.credito ||
-            cartao!.tipo == TipoCartao.ambos) &&
-        cartao!.diaFechamento != null &&
-        cartao!.diaVencimento != null;
+        cartao.controlaFatura &&
+        (cartao.tipo == TipoCartao.credito ||
+            cartao.tipo == TipoCartao.ambos) &&
+        cartao.diaFechamento != null &&
+        cartao.diaVencimento != null;
 
     // ==========================
     // Cálculo das datas de cada parcela
@@ -581,8 +578,8 @@ class DbService {
       int ano = dataCompra.year;
       int mes = dataCompra.month;
       final int diaCompra = dataCompra.day;
-      final int diaFechamento = cartao!.diaFechamento!;
-      final int diaVencimento = cartao!.diaVencimento!;
+      final int diaFechamento = cartao.diaFechamento!;
+      final int diaVencimento = cartao.diaVencimento!;
 
       // Se passou do fechamento, vai para a fatura do próximo mês
       if (diaCompra > diaFechamento) {
@@ -672,10 +669,9 @@ class DbService {
   Future<void> salvarLancamentoDaFatura(Lancamento base) async {
     final database = await db;
 
-    // se não tiver cartão vinculado, não faz nada
     if (base.idCartao == null) return;
 
-    // busca o cartão
+    // Carrega o cartão
     final result = await database.query(
       'cartao_credito',
       where: 'id = ?',
@@ -687,7 +683,6 @@ class DbService {
 
     final cartao = CartaoCredito.fromMap(result.first);
 
-    // só aplica lógica se for crédito / ambos, controlar fatura e tiver config completa
     final bool ehCreditoLike =
         cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
 
@@ -695,15 +690,14 @@ class DbService {
     if (!cartao.controlaFatura) return;
     if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
 
+    // -----------------------------
+    // CÁLCULO DA DATA DA FATURA
+    // -----------------------------
     final dataCompra = base.dataHora;
     int ano = dataCompra.year;
     int mes = dataCompra.month;
-    final int diaCompra = dataCompra.day;
-    final int diaFechamento = cartao.diaFechamento!;
-    final int diaVencimento = cartao.diaVencimento!;
 
-    // regra: compra após o fechamento vai para a fatura do próximo mês
-    if (diaCompra > diaFechamento) {
+    if (dataCompra.day > cartao.diaFechamento!) {
       mes++;
       if (mes > 12) {
         mes = 1;
@@ -711,19 +705,52 @@ class DbService {
       }
     }
 
-    final dataVencimento = DateTime(ano, mes, diaVencimento);
+    final dataFatura = DateTime(ano, mes, cartao.diaVencimento!);
 
-    // cria o lançamento pendente na data da fatura, marcado como pagamento de fatura
-    final lancFatura = base.copyWith(
-      id: null,
-      dataHora: dataVencimento,
-      pago: false,
-      dataPagamento: null,
+    // =======================================================
+    //  🔍 VERIFICA SE JÁ EXISTE UMA FATURA PENDENTE NO MÊS
+    // =======================================================
+    final existente = await database.query(
+      'lancamentos',
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND pago = 0 AND data_hora = ?',
+      whereArgs: [base.idCartao, dataFatura.millisecondsSinceEpoch],
+      limit: 1,
+    );
+
+    if (existente.isNotEmpty) {
+      // Já existe → SOMA o valor
+      final existenteLanc = Lancamento.fromMap(existente.first);
+
+      final novoValor = existenteLanc.valor + base.valor;
+
+      await database.update(
+        'lancamentos',
+        {'valor': novoValor},
+        where: 'id = ?',
+        whereArgs: [existenteLanc.id],
+      );
+
+      return;
+    }
+
+    // =======================================================
+    //  ❌ NÃO EXISTE → CRIA O LANÇAMENTO DE FATURA
+    // =======================================================
+    final lancFatura = Lancamento(
+      valor: base.valor,
+      descricao: '${base.descricao} (Pagamento de fatura)',
+      formaPagamento: FormaPagamento.credito,
+      dataHora: dataFatura,
       pagamentoFatura: true,
+      categoria: base.categoria,
+      pago: false,
+      idCartao: base.idCartao,
     );
 
     await database.insert('lancamentos', lancFatura.toMap());
   }
+
 
   // ============================================================
   //  CRUD Cartões de crédito

@@ -1,7 +1,5 @@
 // ignore_for_file: public_member_api_docs
 
-import 'package:vox_finance/ui/core/enum/forma_pagamento.dart'; // se o enum TipoCartao estiver em outro lugar, ajuste o import
-
 enum TipoCartao { credito, debito, ambos }
 
 class CartaoCredito {

@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -692,7 +692,7 @@ class _HomePageState extends State<HomePage> {
 
                             // lançamento base (compra / pagamento)
                             final Lancamento lanc = ehEdicao
-                                ? existente!.copyWith(
+                                ? existente.copyWith(
                                     valor: valor,
                                     descricao: descricao,
                                     formaPagamento: formaSelecionada!,
@@ -752,9 +752,10 @@ class _HomePageState extends State<HomePage> {
                               );
 
                               if (ehCompraCreditoComCartao) {
-                                // OPÇÃO 1:
-                                // compra no crédito com cartão que controla fatura →
-                                // cria APENAS lançamentos de fatura pendentes
+                                // 1) REGISTRO DA COMPRA HOJE (valor total)
+                                await _dbService.salvarLancamento(base);
+
+                                // 2) LANÇAMENTOS PENDENTES DE FATURA (1 por parcela)
                                 final baseFatura = base.copyWith(
                                   pagamentoFatura: true,
                                   pago: false,
@@ -777,8 +778,15 @@ class _HomePageState extends State<HomePage> {
                             } else {
                               if (ehCompraCreditoComCartao) {
                                 // Crédito à vista com cartão que controla fatura:
-                                // não grava na data da compra,
-                                // só grava lançamento de fatura pendente
+
+                                // 1) REGISTRA COMPRA NA DATA ESCOLHIDA (gasto normal)
+                                await _dbService.salvarLancamento(
+                                  lanc.copyWith(
+                                    pagamentoFatura: false,
+                                  ),
+                                );
+
+                                // 2) CRIA LANÇAMENTO PENDENTE NA DATA DA FATURA
                                 final baseFatura = lanc.copyWith(
                                   pagamentoFatura: true,
                                   pago: false,
