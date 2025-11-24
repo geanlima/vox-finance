@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,10 +29,7 @@ class _LoginPageState extends State<LoginPage> {
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -74,9 +71,9 @@ class _LoginPageState extends State<LoginPage> {
 
     if (logged) {
       // já logado → vai direto pra Home
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
     } else {
       await _loadSavedCredentials();
     }
@@ -103,9 +100,9 @@ class _LoginPageState extends State<LoginPage> {
 
       _showMessage('Login efetuado com sucesso.');
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
     } catch (e) {
       _showMessage('Erro inesperado ao fazer login.');
     } finally {
@@ -157,8 +154,7 @@ class _LoginPageState extends State<LoginPage> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Column(
@@ -183,8 +179,8 @@ class _LoginPageState extends State<LoginPage> {
                           'Seu controle financeiro em um só lugar',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.white.withOpacity(0.85),
-                              ),
+                            color: Colors.white.withOpacity(0.85),
+                          ),
                         ),
                       ],
                     ),
@@ -220,17 +216,14 @@ class _LoginPageState extends State<LoginPage> {
                             key: _formKey,
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.stretch,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 Text(
                                   'Entre para controlar suas finanças',
                                   textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodyMedium
-                                      ?.copyWith(
+                                  style: theme.textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.w500,
-                                    color: theme
-                                        .textTheme.bodyMedium?.color
+                                    color: theme.textTheme.bodyMedium?.color
                                         ?.withOpacity(0.8),
                                   ),
                                 ),
@@ -239,8 +232,7 @@ class _LoginPageState extends State<LoginPage> {
                                 // E-mail
                                 TextFormField(
                                   controller: _emailController,
-                                  keyboardType:
-                                      TextInputType.emailAddress,
+                                  keyboardType: TextInputType.emailAddress,
                                   decoration: InputDecoration(
                                     labelText: 'E-mail',
                                     prefixIcon: const Icon(
@@ -248,13 +240,11 @@ class _LoginPageState extends State<LoginPage> {
                                       size: 22,
                                     ),
                                     border: OutlineInputBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(18),
+                                      borderRadius: BorderRadius.circular(18),
                                     ),
                                   ),
                                   validator: (value) {
-                                    if (value == null ||
-                                        value.trim().isEmpty) {
+                                    if (value == null || value.trim().isEmpty) {
                                       return 'Informe o e-mail';
                                     }
                                     if (!value.contains('@')) {
@@ -278,25 +268,23 @@ class _LoginPageState extends State<LoginPage> {
                                     suffixIcon: IconButton(
                                       icon: Icon(
                                         _obscurePassword
-                                            ? Icons
-                                                .visibility_off_rounded
+                                            ? Icons.visibility_off_rounded
                                             : Icons.visibility_rounded,
                                       ),
                                       onPressed: () {
                                         setState(
-                                          () => _obscurePassword =
-                                              !_obscurePassword,
+                                          () =>
+                                              _obscurePassword =
+                                                  !_obscurePassword,
                                         );
                                       },
                                     ),
                                     border: OutlineInputBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(18),
+                                      borderRadius: BorderRadius.circular(18),
                                     ),
                                   ),
                                   validator: (value) {
-                                    if (value == null ||
-                                        value.trim().isEmpty) {
+                                    if (value == null || value.trim().isEmpty) {
                                       return 'Informe a senha';
                                     }
                                     if (value.trim().length < 4) {
@@ -317,24 +305,21 @@ class _LoginPageState extends State<LoginPage> {
                                         children: [
                                           Checkbox(
                                             value: _rememberMe,
-                                            onChanged:
-                                                _toggleRememberMe,
+                                            onChanged: _toggleRememberMe,
                                             visualDensity:
                                                 VisualDensity.compact,
                                           ),
                                           Flexible(
                                             child: Text(
                                               'Manter conectado',
-                                              style: theme
-                                                  .textTheme.bodySmall
+                                              style: theme.textTheme.bodySmall
                                                   ?.copyWith(
-                                                color: theme
-                                                    .textTheme
-                                                    .bodyMedium
-                                                    ?.color
-                                                    ?.withOpacity(
-                                                        0.85),
-                                              ),
+                                                    color: theme
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color
+                                                        ?.withOpacity(0.85),
+                                                  ),
                                             ),
                                           ),
                                         ],
@@ -350,17 +335,14 @@ class _LoginPageState extends State<LoginPage> {
                                         padding: EdgeInsets.zero,
                                         minimumSize: const Size(0, 32),
                                         tapTargetSize:
-                                            MaterialTapTargetSize
-                                                .shrinkWrap,
+                                            MaterialTapTargetSize.shrinkWrap,
                                       ),
                                       child: Text(
                                         'Esqueceu a senha?',
-                                        style: theme
-                                            .textTheme.bodySmall
+                                        style: theme.textTheme.bodySmall
                                             ?.copyWith(
-                                          color:
-                                              colorScheme.primary,
-                                        ),
+                                              color: colorScheme.primary,
+                                            ),
                                       ),
                                     ),
                                   ],
@@ -372,35 +354,32 @@ class _LoginPageState extends State<LoginPage> {
                                 SizedBox(
                                   height: 48,
                                   child: ElevatedButton(
-                                    onPressed: _isLoading
-                                        ? null
-                                        : _loginEmailSenha,
+                                    onPressed:
+                                        _isLoading ? null : _loginEmailSenha,
                                     style: ElevatedButton.styleFrom(
                                       shape: const StadiumBorder(),
-                                      backgroundColor:
-                                          const Color(0xFF0F7F5A),
+                                      backgroundColor: const Color(0xFF0F7F5A),
                                       elevation: 4,
                                       shadowColor: Colors.black26,
                                     ),
-                                    child: _isLoading
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child:
-                                                CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
+                                    child:
+                                        _isLoading
+                                            ? const SizedBox(
+                                              height: 20,
+                                              width: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                            : const Text(
+                                              'Entrar',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 16,
+                                              ),
                                             ),
-                                          )
-                                        : const Text(
-                                            'Entrar',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight:
-                                                  FontWeight.w600,
-                                              fontSize: 16,
-                                            ),
-                                          ),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -409,17 +388,18 @@ class _LoginPageState extends State<LoginPage> {
                                 SizedBox(
                                   height: 48,
                                   child: OutlinedButton(
-                                    onPressed: _isLoading
-                                        ? null
-                                        : () {
-                                            Navigator.of(context)
-                                                .push(
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const RegisterPage(),
-                                              ),
-                                            );
-                                          },
+                                    onPressed:
+                                        _isLoading
+                                            ? null
+                                            : () {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder:
+                                                      (_) =>
+                                                          const RegisterPage(),
+                                                ),
+                                              );
+                                            },
                                     style: OutlinedButton.styleFrom(
                                       shape: const StadiumBorder(),
                                     ),
