@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart' show FormaPagamento;
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
@@ -31,9 +32,9 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 8, // 👈 V8: usuarios com foto_path
+      version: 10, // 👈 V10: cartões com tipo/controla_fatura/limite/dia_fechamento
       onCreate: (db, version) async {
-        await _criarTabelasV7(db);
+        await _criarTabelasV9(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // ---- UPGRADE PARA V4 (id_cartao + tabela cartao_credito básica) ----
@@ -49,7 +50,7 @@ class DbService {
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               descricao TEXT NOT NULL,
               bandeira TEXT NOT NULL,
-              ultimos_4_digitos TEXT NOT NULL
+              ultimos4 TEXT NOT NULL
             );
           ''');
         }
@@ -87,10 +88,59 @@ class DbService {
         if (oldVersion < 8) {
           try {
             await db.execute(
-              "ALTER TABLE usuarios ADD COLUMN foto_path TEXT;",
+              'ALTER TABLE usuarios ADD COLUMN foto_path TEXT;',
             );
           } catch (e) {
             // se já existir, ignora
+          }
+        }
+
+        // ---- UPGRADE PARA V9 (tipo, permite_parcelamento, limite, dia_fechamento no cartão) ----
+        // Mantemos "permite_parcelamento" só para poder copiar o valor depois.
+        if (oldVersion < 9) {
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN tipo INTEGER DEFAULT 0;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN permite_parcelamento INTEGER DEFAULT 1;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN limite REAL;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN dia_fechamento INTEGER;',
+            );
+          } catch (e) {}
+        }
+
+        // ---- UPGRADE PARA V10 (controla_fatura) ----
+        if (oldVersion < 10) {
+          try {
+            await db.execute(
+              'ALTER TABLE cartao_credito ADD COLUMN controla_fatura INTEGER DEFAULT 1;',
+            );
+          } catch (e) {}
+
+          // tenta copiar o valor antigo de permite_parcelamento, se existir
+          try {
+            await db.execute('''
+              UPDATE cartao_credito
+              SET controla_fatura = permite_parcelamento
+              WHERE controla_fatura IS NULL
+                 OR (controla_fatura = 0 AND permite_parcelamento = 1);
+            ''');
+          } catch (e) {
+            // se a coluna permite_parcelamento não existir, ignora
           }
         }
       },
@@ -109,25 +159,25 @@ class DbService {
 
         // Garante que as colunas existam mesmo em bancos antigos
         try {
-          await db.execute("ALTER TABLE usuarios ADD COLUMN senha TEXT;");
+          await db.execute('ALTER TABLE usuarios ADD COLUMN senha TEXT;');
         } catch (e) {}
         try {
-          await db.execute("ALTER TABLE usuarios ADD COLUMN foto_path TEXT;");
+          await db.execute('ALTER TABLE usuarios ADD COLUMN foto_path TEXT;');
         } catch (e) {}
 
         // Só um checkzinho que você já tinha
         final res = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='cartao_credito';",
         );
-        // print(res); // se quiser ver
+        // print(res);
       },
     );
 
     return _db!;
   }
 
-  // Cria tudo já no formato da versão 7/8 (instalação nova)
-  Future<void> _criarTabelasV7(Database db) async {
+  // Cria tudo já no formato da versão 9/10 (instalação nova)
+  Future<void> _criarTabelasV9(Database db) async {
     // --------- TABELA DE LANÇAMENTOS ---------
     await db.execute('''
       CREATE TABLE lancamentos (
@@ -168,9 +218,13 @@ class DbService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         descricao TEXT NOT NULL,
         bandeira TEXT NOT NULL,
-        ultimos_4_digitos TEXT NOT NULL,
+        ultimos4 TEXT NOT NULL,
         foto_path TEXT,
-        dia_vencimento INTEGER
+        dia_vencimento INTEGER,
+        tipo INTEGER DEFAULT 0,
+        controla_fatura INTEGER DEFAULT 1,
+        limite REAL,
+        dia_fechamento INTEGER
       );
     ''');
 
@@ -200,17 +254,14 @@ class DbService {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
 
-    print('✅ Usuário salvo/atualizado. RowId: $id');
 
     // debug opcional
     final check = await database.query('usuarios');
-    print('📌 Conteúdo da tabela usuarios: $check');
   }
 
   Future<Usuario?> loginUsuario(String email, String senha) async {
     final database = await db;
 
-    print('🔍 Login - buscando usuário $email');
 
     final result = await database.query(
       'usuarios',
@@ -219,7 +270,6 @@ class DbService {
       limit: 1,
     );
 
-    print('📌 Resultado login usuarios: $result');
 
     if (result.isEmpty) return null;
 
@@ -348,9 +398,8 @@ class DbService {
       } else {
         final primeiro = lista.first;
         final total = lista.fold<double>(0.0, (acc, l) => acc + l.valor);
-        final menorData = lista
-            .map((l) => l.dataHora)
-            .reduce((a, b) => a.isBefore(b) ? a : b);
+        final menorData =
+            lista.map((l) => l.dataHora).reduce((a, b) => a.isBefore(b) ? a : b);
 
         agregados.add(
           primeiro.copyWith(
@@ -469,6 +518,11 @@ class DbService {
     );
   }
 
+  // ============================================================
+  //  L A N Ç A M E N T O S   P A R C E L A D O S
+  //   (COM REGRA DE FATURA QUANDO HOUVER CARTÃO)
+  // ============================================================
+
   Future<void> salvarLancamentosParceladosFuturos(
     Lancamento base,
     int qtdParcelas,
@@ -479,17 +533,98 @@ class DbService {
         base.grupoParcelas ?? DateTime.now().millisecondsSinceEpoch.toString();
 
     final double valorParcela = base.valor / qtdParcelas;
-    final DateTime dataBase = base.dataHora;
+    final DateTime dataCompra = base.dataHora;
     final bool pagoBase = base.pago;
     final DateTime? dataPagamentoBase =
         pagoBase ? (base.dataPagamento ?? DateTime.now()) : null;
 
+    // 🔍 tenta carregar o cartão, se houver
+    CartaoCredito? cartao;
+    if (base.idCartao != null) {
+      try {
+        final res = await database.query(
+          'cartao_credito',
+          where: 'id = ?',
+          whereArgs: [base.idCartao],
+          limit: 1,
+        );
+        if (res.isNotEmpty) {
+          cartao = CartaoCredito.fromMap(res.first);
+        }
+      } catch (e) {
+        cartao = null;
+      }
+    }
+
+    // Regra: só aplicamos lógica de fatura se:
+    // - existe cartão
+    // - controla_fatura = true
+    // - tipo = crédito ou ambos
+    // - dia_fechamento e dia_vencimento preenchidos
+    final bool usarRegraFatura = cartao != null &&
+        cartao.controlaFatura &&
+        (cartao.tipo == TipoCartao.credito ||
+            cartao.tipo == TipoCartao.ambos) &&
+        cartao.diaFechamento != null &&
+        cartao.diaVencimento != null;
+
+    // ==========================
+    // Cálculo das datas de cada parcela
+    // ==========================
+    final List<DateTime> datasParcelas = [];
+
+    if (usarRegraFatura) {
+      // 1) Decide em qual fatura cai a primeira parcela
+      int ano = dataCompra.year;
+      int mes = dataCompra.month;
+      final int diaCompra = dataCompra.day;
+      final int diaFechamento = cartao.diaFechamento!;
+      final int diaVencimento = cartao.diaVencimento!;
+
+      // Se passou do fechamento, vai para a fatura do próximo mês
+      if (diaCompra > diaFechamento) {
+        mes++;
+        if (mes > 12) {
+          mes = 1;
+          ano++;
+        }
+      }
+
+      // Primeira parcela vence no dia do vencimento da fatura calculada
+      DateTime primeiraVenc = DateTime(ano, mes, diaVencimento);
+      datasParcelas.add(primeiraVenc);
+
+      // Demais parcelas: vencimento do mesmo dia nos meses seguintes
+      for (int i = 1; i < qtdParcelas; i++) {
+        int mesParc = primeiraVenc.month + i;
+        int anoParc = primeiraVenc.year + ((mesParc - 1) ~/ 12);
+        mesParc = ((mesParc - 1) % 12) + 1;
+
+        datasParcelas.add(DateTime(anoParc, mesParc, diaVencimento));
+      }
+    } else {
+      // 🔁 Comportamento antigo: data base + i meses,
+      // forçando dia <= 28 para evitar problemas de mês
+      for (int i = 0; i < qtdParcelas; i++) {
+        int mes = dataCompra.month + i;
+        int ano = dataCompra.year + ((mes - 1) ~/ 12);
+        mes = ((mes - 1) % 12) + 1;
+
+        final int dia = min(dataCompra.day, 28);
+        datasParcelas.add(DateTime(ano, mes, dia));
+      }
+    }
+
+    // ==========================
+    // Gravação das parcelas
+    // ==========================
     for (int i = 0; i < qtdParcelas; i++) {
-      final DateTime dataParcela = DateTime(
-        dataBase.year,
-        dataBase.month + i,
-        min(dataBase.day, 28),
-      );
+      final DateTime dataParcela = datasParcelas[i];
+
+      // Regra: se estiver usando fatura, todas as parcelas começam pendentes
+      final bool pagoParcela = usarRegraFatura ? false : pagoBase;
+      final DateTime? dataPagamentoParcela =
+          usarRegraFatura ? null : dataPagamentoBase;
 
       final lancParcela = base.copyWith(
         id: null,
@@ -498,13 +633,17 @@ class DbService {
         grupoParcelas: grupo,
         parcelaNumero: i + 1,
         parcelaTotal: qtdParcelas,
-        pago: pagoBase,
-        dataPagamento: dataPagamentoBase,
+        pago: pagoParcela,
+        dataPagamento: dataPagamentoParcela,
+        // 👇 quando for fatura controlada, essas parcelas são PAGAMENTO DE FATURA
+        pagamentoFatura: usarRegraFatura ? true : base.pagamentoFatura,
       );
 
       await database.insert('lancamentos', lancParcela.toMap());
 
-      if (!pagoBase) {
+      // Se NÃO está usando regra de fatura, mantém comportamento antigo:
+      // cria registro em conta_pagar para a parcela futura (se não estiver paga)
+      if (!usarRegraFatura && !pagoBase) {
         final conta = ContaPagar(
           id: null,
           descricao: lancParcela.descricao,
@@ -523,6 +662,97 @@ class DbService {
   }
 
   // ============================================================
+  //  L A N Ç A M E N T O  À  V I S T A   NO   C A R T Ã O
+  //   → CRIA LANÇAMENTO PENDENTE NA DATA DA FATURA
+  // ============================================================
+
+  Future<void> salvarLancamentoDaFatura(Lancamento base) async {
+    final database = await db;
+
+    if (base.idCartao == null) return;
+
+    // Carrega o cartão
+    final result = await database.query(
+      'cartao_credito',
+      where: 'id = ?',
+      whereArgs: [base.idCartao],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return;
+
+    final cartao = CartaoCredito.fromMap(result.first);
+
+    final bool ehCreditoLike =
+        cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
+
+    if (!ehCreditoLike) return;
+    if (!cartao.controlaFatura) return;
+    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
+
+    // -----------------------------
+    // CÁLCULO DA DATA DA FATURA
+    // -----------------------------
+    final dataCompra = base.dataHora;
+    int ano = dataCompra.year;
+    int mes = dataCompra.month;
+
+    if (dataCompra.day > cartao.diaFechamento!) {
+      mes++;
+      if (mes > 12) {
+        mes = 1;
+        ano++;
+      }
+    }
+
+    final dataFatura = DateTime(ano, mes, cartao.diaVencimento!);
+
+    // =======================================================
+    //  🔍 VERIFICA SE JÁ EXISTE UMA FATURA PENDENTE NO MÊS
+    // =======================================================
+    final existente = await database.query(
+      'lancamentos',
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND pago = 0 AND data_hora = ?',
+      whereArgs: [base.idCartao, dataFatura.millisecondsSinceEpoch],
+      limit: 1,
+    );
+
+    if (existente.isNotEmpty) {
+      // Já existe → SOMA o valor
+      final existenteLanc = Lancamento.fromMap(existente.first);
+
+      final novoValor = existenteLanc.valor + base.valor;
+
+      await database.update(
+        'lancamentos',
+        {'valor': novoValor},
+        where: 'id = ?',
+        whereArgs: [existenteLanc.id],
+      );
+
+      return;
+    }
+
+    // =======================================================
+    //  ❌ NÃO EXISTE → CRIA O LANÇAMENTO DE FATURA
+    // =======================================================
+    final lancFatura = Lancamento(
+      valor: base.valor,
+      descricao: '${base.descricao} (Pagamento de fatura)',
+      formaPagamento: FormaPagamento.credito,
+      dataHora: dataFatura,
+      pagamentoFatura: true,
+      categoria: base.categoria,
+      pago: false,
+      idCartao: base.idCartao,
+    );
+
+    await database.insert('lancamentos', lancFatura.toMap());
+  }
+
+
+  // ============================================================
   //  CRUD Cartões de crédito
   // ============================================================
 
@@ -538,8 +768,6 @@ class DbService {
         );
         cartao.id = id;
 
-        final check = await database.query('cartao_credito');
-
         return id;
       } else {
         final linhas = await database.update(
@@ -548,8 +776,6 @@ class DbService {
           where: 'id = ?',
           whereArgs: [cartao.id],
         );
-
-        final check = await database.query('cartao_credito');
         return linhas;
       }
     } catch (e, s) {
@@ -567,6 +793,22 @@ class DbService {
       return result.map((e) => CartaoCredito.fromMap(e)).toList();
     } catch (e, s) {
       rethrow;
+    }
+  }
+
+  Future<CartaoCredito?> getCartaoCreditoById(int id) async {
+    final database = await db;
+    try {
+      final result = await database.query(
+        'cartao_credito',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (result.isEmpty) return null;
+      return CartaoCredito.fromMap(result.first);
+    } catch (e, s) {
+      return null;
     }
   }
 

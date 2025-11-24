@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, unused_field, unnecessary_null_comparison
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,8 +72,8 @@ class _AppDrawerState extends State<AppDrawer> {
       subtitulo = 'Toque em "Criar conta" ou faça login';
     } else {
       nomeOuEmail = (_usuario!.nome != null &&
-              _usuario!.nome!.trim().isNotEmpty)
-          ? _usuario!.nome!
+              _usuario!.nome.trim().isNotEmpty)
+          ? _usuario!.nome
           : _usuario!.email;
       subtitulo = _usuario!.email;
     }
@@ -82,8 +82,8 @@ class _AppDrawerState extends State<AppDrawer> {
     String iniciais = '';
     if (_usuario != null) {
       final base = (_usuario!.nome != null &&
-              _usuario!.nome!.trim().isNotEmpty)
-          ? _usuario!.nome!.trim()
+              _usuario!.nome.trim().isNotEmpty)
+          ? _usuario!.nome.trim()
           : _usuario!.email.trim();
       final partes = base.split(' ');
       if (partes.length == 1) {

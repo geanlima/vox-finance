@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, unreachable_switch_default, no_leading_underscores_for_local_identifiers
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
