@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers, unused_local_variable
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -94,6 +94,67 @@ class _HomePageState extends State<HomePage> {
     final lista = [..._lancamentos];
     lista.sort((a, b) => b.dataHora.compareTo(a.dataHora));
     return lista;
+  }
+
+  // ============================================================
+  //  R E G R A   P /   M O S T R A R   B O T Ã O   D E   F A T U R A
+  //  (usa o DIA SELECIONADO, não o "hoje" do aparelho)
+  // ============================================================
+
+  /// Verdadeiro se o DIA SELECIONADO é dia de fechamento
+  /// de pelo menos um cartão de crédito que controla fatura.
+  bool get _diaSelecionadoEhFechamentoDeAlgumCartao {
+    final diaSelecionado = _dataSelecionada.day;
+
+    return _cartoes.any((c) {
+      final ehCreditoLike =
+          c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos;
+
+      return ehCreditoLike &&
+          c.controlaFatura &&
+          c.diaFechamento != null &&
+          c.diaVencimento != null &&
+          c.diaFechamento == diaSelecionado;
+    });
+  }
+
+  Future<void> _gerarFaturasDoDiaSelecionado() async {
+    final diaSelecionado = _dataSelecionada;
+
+    final cartoesFechandoNoDia =
+        _cartoes.where((c) {
+          final ehCreditoLike =
+              c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos;
+
+          return ehCreditoLike &&
+              c.controlaFatura &&
+              c.diaFechamento != null &&
+              c.diaVencimento != null &&
+              c.diaFechamento == diaSelecionado.day;
+        }).toList();
+
+    if (cartoesFechandoNoDia.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nenhuma fatura para gerar nesse dia.')),
+      );
+      return;
+    }
+
+    for (final c in cartoesFechandoNoDia) {
+      if (c.id != null) {
+        await _dbService.gerarFaturaDoCartao(
+          c.id!,
+          referencia:
+              diaSelecionado, // 👈 esse "diaSelecionado" é o mês da fatura
+        );
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fatura(s) gerada(s) com sucesso.')),
+    );
+
+    await _carregarDoBanco(); // recarrega a tela (pode aparecer o lançamento da fatura)
   }
 
   // ============================================================
@@ -272,9 +333,10 @@ class _HomePageState extends State<HomePage> {
     await _carregarCartoes();
 
     final valorController = TextEditingController(
-      text: existente != null
-          ? _currency.format(existente.valor)
-          : (valorInicial != null ? _currency.format(valorInicial) : ''),
+      text:
+          existente != null
+              ? _currency.format(existente.valor)
+              : (valorInicial != null ? _currency.format(valorInicial) : ''),
     );
     final descricaoController = TextEditingController(
       text: existente?.descricao ?? (descricaoInicial ?? ''),
@@ -308,16 +370,19 @@ class _HomePageState extends State<HomePage> {
     CartaoCredito? cartaoSelecionado;
     if (existente?.idCartao != null && _cartoes.isNotEmpty) {
       try {
-        cartaoSelecionado =
-            _cartoes.firstWhere((c) => c.id == existente!.idCartao);
+        cartaoSelecionado = _cartoes.firstWhere(
+          (c) => c.id == existente!.idCartao,
+        );
       } catch (_) {
         cartaoSelecionado = null;
       }
     }
 
     // lista inicial de cartões filtrados
-    List<CartaoCredito> cartoesFiltrados =
-        _filtrarCartoes(formaSelecionada, pagamentoFatura);
+    List<CartaoCredito> cartoesFiltrados = _filtrarCartoes(
+      formaSelecionada,
+      pagamentoFatura,
+    );
 
     await showModalBottomSheet(
       context: context,
@@ -336,13 +401,16 @@ class _HomePageState extends State<HomePage> {
           child: StatefulBuilder(
             builder: (context, setModalState) {
               void _recalcularCartoes() {
-                cartoesFiltrados =
-                    _filtrarCartoes(formaSelecionada, pagamentoFatura);
+                cartoesFiltrados = _filtrarCartoes(
+                  formaSelecionada,
+                  pagamentoFatura,
+                );
 
                 // Se o cartão selecionado não estiver mais disponível, limpa
                 if (cartaoSelecionado != null &&
-                    !cartoesFiltrados
-                        .any((c) => c.id == cartaoSelecionado!.id)) {
+                    !cartoesFiltrados.any(
+                      (c) => c.id == cartaoSelecionado!.id,
+                    )) {
                   cartaoSelecionado = null;
                 }
               }
@@ -416,12 +484,13 @@ class _HomePageState extends State<HomePage> {
                         labelText: 'Categoria',
                         border: OutlineInputBorder(),
                       ),
-                      items: Categoria.values.map((c) {
-                        return DropdownMenuItem(
-                          value: c,
-                          child: Text(CategoriaService.toName(c)),
-                        );
-                      }).toList(),
+                      items:
+                          Categoria.values.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text(CategoriaService.toName(c)),
+                            );
+                          }).toList(),
                       onChanged: (nova) {
                         setModalState(() {
                           categoriaSelecionada = nova;
@@ -437,18 +506,19 @@ class _HomePageState extends State<HomePage> {
                         labelText: 'Forma de pagamento',
                         border: OutlineInputBorder(),
                       ),
-                      items: FormaPagamento.values.map((f) {
-                        return DropdownMenuItem(
-                          value: f,
-                          child: Row(
-                            children: [
-                              Icon(f.icon, size: 18),
-                              const SizedBox(width: 8),
-                              Text(f.label),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                      items:
+                          FormaPagamento.values.map((f) {
+                            return DropdownMenuItem(
+                              value: f,
+                              child: Row(
+                                children: [
+                                  Icon(f.icon, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(f.label),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                       onChanged: (novo) {
                         setModalState(() {
                           formaSelecionada = novo;
@@ -502,12 +572,13 @@ class _HomePageState extends State<HomePage> {
                             labelText: _labelCartao(),
                             border: const OutlineInputBorder(),
                           ),
-                          items: cartoesFiltrados.map((c) {
-                            return DropdownMenuItem(
-                              value: c,
-                              child: Text(c.label),
-                            );
-                          }).toList(),
+                          items:
+                              cartoesFiltrados.map((c) {
+                                return DropdownMenuItem(
+                                  value: c,
+                                  child: Text(c.label),
+                                );
+                              }).toList(),
                           onChanged: (novoCartao) {
                             setModalState(() {
                               cartaoSelecionado = novoCartao;
@@ -638,8 +709,9 @@ class _HomePageState extends State<HomePage> {
                             if (formaSelecionada == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content:
-                                      Text('Selecione a forma de pagamento.'),
+                                  content: Text(
+                                    'Selecione a forma de pagamento.',
+                                  ),
                                 ),
                               );
                               return;
@@ -655,8 +727,10 @@ class _HomePageState extends State<HomePage> {
                             }
 
                             // Recalcula cartões antes da validação final
-                            cartoesFiltrados =
-                                _filtrarCartoes(formaSelecionada, pagamentoFatura);
+                            cartoesFiltrados = _filtrarCartoes(
+                              formaSelecionada,
+                              pagamentoFatura,
+                            );
 
                             // Regra de validação:
                             // 1) Se for CRÉDITO normal e existir cartão compatível → obriga escolher
@@ -666,9 +740,9 @@ class _HomePageState extends State<HomePage> {
 
                             final bool precisaCartao =
                                 (formaSelecionada == FormaPagamento.credito &&
-                                        temCartaoCompativel &&
-                                        !pagamentoFatura) ||
-                                    (pagamentoFatura && temCartaoCompativel);
+                                    temCartaoCompativel &&
+                                    !pagamentoFatura) ||
+                                (pagamentoFatura && temCartaoCompativel);
 
                             if (precisaCartao && cartaoSelecionado == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -691,44 +765,50 @@ class _HomePageState extends State<HomePage> {
                             final categoria = categoriaSelecionada!;
 
                             // lançamento base (compra / pagamento)
-                            final Lancamento lanc = ehEdicao
-                                ? existente.copyWith(
-                                    valor: valor,
-                                    descricao: descricao,
-                                    formaPagamento: formaSelecionada!,
-                                    dataHora: dataLancamento,
-                                    pagamentoFatura: pagamentoFatura,
-                                    categoria: categoria,
-                                    pago: pago,
-                                    dataPagamento: pago
-                                        ? (existente.dataPagamento ??
-                                            DateTime.now())
-                                        : null,
-                                    idCartao: cartaoSelecionado?.id,
-                                  )
-                                : Lancamento(
-                                    valor: valor,
-                                    descricao: descricao,
-                                    formaPagamento: formaSelecionada!,
-                                    dataHora: dataLancamento,
-                                    pagamentoFatura: pagamentoFatura,
-                                    categoria: categoria,
-                                    pago: pago,
-                                    dataPagamento:
-                                        pago ? DateTime.now() : null,
-                                    idCartao: cartaoSelecionado?.id,
-                                  );
+                            final Lancamento lanc =
+                                ehEdicao
+                                    ? existente.copyWith(
+                                      valor: valor,
+                                      descricao: descricao,
+                                      formaPagamento: formaSelecionada!,
+                                      dataHora: dataLancamento,
+                                      pagamentoFatura: pagamentoFatura,
+                                      categoria: categoria,
+                                      pago: pago,
+                                      dataPagamento:
+                                          pago
+                                              ? (existente.dataPagamento ??
+                                                  DateTime.now())
+                                              : null,
+                                      idCartao: cartaoSelecionado?.id,
+                                    )
+                                    : Lancamento(
+                                      valor: valor,
+                                      descricao: descricao,
+                                      formaPagamento: formaSelecionada!,
+                                      dataHora: dataLancamento,
+                                      pagamentoFatura: pagamentoFatura,
+                                      categoria: categoria,
+                                      pago: pago,
+                                      dataPagamento:
+                                          pago ? DateTime.now() : null,
+                                      idCartao: cartaoSelecionado?.id,
+                                    );
 
                             final bool ehCredito =
                                 formaSelecionada == FormaPagamento.credito;
                             final bool ehCompraCreditoComCartao =
                                 !pagamentoFatura &&
-                                    !ehEdicao &&
-                                    ehCredito &&
-                                    cartaoSelecionado != null &&
-                                    _cartaoControlaFatura(cartaoSelecionado);
+                                !ehEdicao &&
+                                ehCredito &&
+                                cartaoSelecionado != null &&
+                                _cartaoControlaFatura(cartaoSelecionado);
 
                             // ======== LÓGICA DE SALVAR / PARCELAR ========
+                            // Agora: NENHUMA geração automática de fatura aqui.
+                            // Compra no crédito (à vista ou parcelado) fica na data da compra.
+                            // A fatura será gerada só pelo botão "Gerar fatura dos cartões".
+
                             if (!ehEdicao && parcelado) {
                               final qtd =
                                   int.tryParse(qtdParcelasController.text) ?? 1;
@@ -751,54 +831,14 @@ class _HomePageState extends State<HomePage> {
                                 parcelaTotal: null,
                               );
 
-                              if (ehCompraCreditoComCartao) {
-                                // 1) REGISTRO DA COMPRA HOJE (valor total)
-                                await _dbService.salvarLancamento(base);
-
-                                // 2) LANÇAMENTOS PENDENTES DE FATURA (1 por parcela)
-                                final baseFatura = base.copyWith(
-                                  pagamentoFatura: true,
-                                  pago: false,
-                                  dataPagamento: null,
-                                );
-
-                                await _dbService
-                                    .salvarLancamentosParceladosFuturos(
-                                  baseFatura,
-                                  qtd,
-                                );
-                              } else {
-                                // comportamento padrão anterior
-                                await _dbService
-                                    .salvarLancamentosParceladosFuturos(
-                                  base,
-                                  qtd,
-                                );
-                              }
+                              await _dbService
+                                  .salvarLancamentosParceladosFuturos(
+                                    base,
+                                    qtd,
+                                  );
                             } else {
-                              if (ehCompraCreditoComCartao) {
-                                // Crédito à vista com cartão que controla fatura:
-
-                                // 1) REGISTRA COMPRA NA DATA ESCOLHIDA (gasto normal)
-                                await _dbService.salvarLancamento(
-                                  lanc.copyWith(
-                                    pagamentoFatura: false,
-                                  ),
-                                );
-
-                                // 2) CRIA LANÇAMENTO PENDENTE NA DATA DA FATURA
-                                final baseFatura = lanc.copyWith(
-                                  pagamentoFatura: true,
-                                  pago: false,
-                                  dataPagamento: null,
-                                );
-
-                                await _dbService
-                                    .salvarLancamentoDaFatura(baseFatura);
-                              } else {
-                                // Demais casos: salva normal
-                                await _dbService.salvarLancamento(lanc);
-                              }
+                              // Edição ou lançamento simples (não parcelado)
+                              await _dbService.salvarLancamento(lanc);
                             }
 
                             await _carregarDoBanco();
@@ -857,6 +897,7 @@ class _HomePageState extends State<HomePage> {
     final lancamentosDia = _lancamentosDoDia;
     final ehHoje = _mesmoDia(_dataSelecionada, DateTime.now());
     final dataFormatada = _dateDiaFormat.format(_dataSelecionada);
+    final fechamentoNoDiaSelecionado = _diaSelecionadoEhFechamentoDeAlgumCartao;
 
     final totalGastoFormatado = _currency.format(_totalGastoDia);
     final String totalPagamentoFaturaFormatado =
@@ -894,6 +935,18 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (fechamentoNoDiaSelecionado)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.receipt_long),
+                    label: const Text('Gerar fatura dos cartões'),
+                    onPressed: _gerarFaturasDoDiaSelecionado,
+                  ),
+                ),
+              ),
             ResumoDiaCard(
               ehHoje: ehHoje,
               dataFormatada: dataFormatada,
@@ -1120,8 +1173,9 @@ class _HomePageState extends State<HomePage> {
                             CartaoCredito? cartao;
                             if (idCartao != null) {
                               try {
-                                cartao =
-                                    _cartoes.firstWhere((c) => c.id == idCartao);
+                                cartao = _cartoes.firstWhere(
+                                  (c) => c.id == idCartao,
+                                );
                               } catch (_) {
                                 cartao = null;
                               }
@@ -1130,11 +1184,12 @@ class _HomePageState extends State<HomePage> {
                             final titulo =
                                 cartao?.descricao ?? 'Cartão de crédito';
 
-                            final sub = cartao != null
-                                ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
-                                : (idCartao == null
-                                    ? 'Sem cartão vinculado'
-                                    : 'Cartão (id $idCartao)');
+                            final sub =
+                                cartao != null
+                                    ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
+                                    : (idCartao == null
+                                        ? 'Sem cartão vinculado'
+                                        : 'Cartão (id $idCartao)');
 
                             return _cardAgrupamentoItem(
                               icone: Icons.credit_card,
