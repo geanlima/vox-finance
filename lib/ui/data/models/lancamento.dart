@@ -67,22 +67,22 @@ class Lancamento {
   }
 
   Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'valor': valor,
-      'descricao': descricao,
-      'forma_pagamento': formaPagamento.index,
-      'data_hora': dataHora.millisecondsSinceEpoch,
-      'pagamento_fatura': pagamentoFatura ? 1 : 0,
-      'pago': pago ? 1 : 0,
-      'data_pagamento': dataPagamento?.millisecondsSinceEpoch,
-      'categoria': categoria.index,
-      'grupo_parcelas': grupoParcelas,
-      'parcela_numero': parcelaNumero,
-      'parcela_total': parcelaTotal,
-      'id_cartao': idCartao, // 👈 novo campo no banco
-    };
-  }
+  return {
+    if (id != null) 'id': id, // <--- id só entra no UPDATE
+    'valor': valor,
+    'descricao': descricao,
+    'forma_pagamento': formaPagamento.index,
+    'data_hora': dataHora.millisecondsSinceEpoch,
+    'pagamento_fatura': pagamentoFatura ? 1 : 0,
+    'pago': pago ? 1 : 0,
+    'data_pagamento': dataPagamento?.millisecondsSinceEpoch,
+    'categoria': categoria.index,
+    'grupo_parcelas': grupoParcelas,
+    'parcela_numero': parcelaNumero,
+    'parcela_total': parcelaTotal,
+    'id_cartao': idCartao,
+  };
+}
 
   factory Lancamento.fromMap(Map<String, Object?> map) {
     return Lancamento(
