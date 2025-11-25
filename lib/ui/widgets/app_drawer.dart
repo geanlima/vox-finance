@@ -1,9 +1,9 @@
-// ignore_for_file: deprecated_member_use, unused_field, unnecessary_null_comparison
+// ignore_for_file: deprecated_member_use, unused_field, unnecessary_null_comparison, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/usuario.dart';
 
 class AppDrawer extends StatefulWidget {
@@ -42,22 +42,12 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Future<void> _logout() async {
-    Navigator.pop(context); // fecha o drawer
+    Navigator.pop(context);
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
 
-    // se quiser limpar o usuário salvo localmente, descomente:
-    // await DbService.instance.limparUsuario();
-
-    if (!mounted) return;
-
-    // volta pra tela de login limpando a pilha
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      '/login',
-      (route) => false,
-    );
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
   }
 
   @override
@@ -71,29 +61,26 @@ class _AppDrawerState extends State<AppDrawer> {
       nomeOuEmail = 'Bem-vindo';
       subtitulo = 'Toque em "Criar conta" ou faça login';
     } else {
-      nomeOuEmail = (_usuario!.nome != null &&
-              _usuario!.nome.trim().isNotEmpty)
-          ? _usuario!.nome
-          : _usuario!.email;
+      nomeOuEmail =
+          (_usuario!.nome != null && _usuario!.nome.trim().isNotEmpty)
+              ? _usuario!.nome
+              : _usuario!.email;
       subtitulo = _usuario!.email;
     }
 
-    // iniciais pro avatar
+    // Iniciais para o avatar
     String iniciais = '';
     if (_usuario != null) {
-      final base = (_usuario!.nome != null &&
-              _usuario!.nome.trim().isNotEmpty)
-          ? _usuario!.nome.trim()
-          : _usuario!.email.trim();
+      final base =
+          (_usuario!.nome != null && _usuario!.nome.trim().isNotEmpty)
+              ? _usuario!.nome.trim()
+              : _usuario!.email.trim();
       final partes = base.split(' ');
       if (partes.length == 1) {
-        iniciais = partes.first.isNotEmpty
-            ? partes.first.characters.first.toUpperCase()
-            : '';
+        iniciais = partes.first.characters.first.toUpperCase();
       } else {
-        final primeira = partes.first.characters.first.toUpperCase();
-        final ultima = partes.last.characters.first.toUpperCase();
-        iniciais = '$primeira$ultima';
+        iniciais =
+            '${partes.first.characters.first.toUpperCase()}${partes.last.characters.first.toUpperCase()}';
       }
     }
 
@@ -104,21 +91,20 @@ class _AppDrawerState extends State<AppDrawer> {
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: colors.primary),
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 26,
-                      backgroundColor: colors.onPrimary.withOpacity(0.1),
-                      child: _usuario == null
-                          ? Icon(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: colors.onPrimary.withOpacity(0.1),
+                    child:
+                        _usuario == null
+                            ? Icon(
                               Icons.person,
                               color: colors.onPrimary,
                               size: 28,
                             )
-                          : Text(
+                            : Text(
                               iniciais,
                               style: TextStyle(
                                 color: colors.onPrimary,
@@ -126,59 +112,64 @@ class _AppDrawerState extends State<AppDrawer> {
                                 fontSize: 20,
                               ),
                             ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            nomeOuEmail,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: colors.onPrimary,
-                            ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          nomeOuEmail,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: colors.onPrimary,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitulo,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colors.onPrimary.withOpacity(0.8),
-                            ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitulo,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.onPrimary.withOpacity(0.8),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
 
+            // ==========================
+            // 📌 ÍTENS DO MENU
+            // ==========================
             _menuItem(
               context,
               icon: Icons.table_rows,
               label: 'Lançamentos',
               route: '/',
             ),
+
             _menuItem(
               context,
               icon: Icons.bar_chart,
               label: 'Resumo do mês',
               route: '/graficos',
             ),
+
             _menuItem(
               context,
               icon: Icons.credit_card,
               label: 'Cartão',
               route: '/cartoes-credito',
             ),
+
             _menuItem(
               context,
               icon: Icons.receipt_long,
@@ -186,14 +177,21 @@ class _AppDrawerState extends State<AppDrawer> {
               route: '/contas-pagar',
             ),
 
+            // ➕ NOVO MENU AQUI
+            _menuItem(
+              context,
+              icon: Icons.account_balance,
+              label: 'Contas bancárias',
+              route: '/contas-bancarias',
+            ),
+
             const Spacer(),
 
-            // ====== BOTÃO SAIR ======
+            // ==========================
+            // 🚪 SAIR
+            // ==========================
             ListTile(
-              leading: Icon(
-                Icons.logout,
-                color: colors.error,
-              ),
+              leading: Icon(Icons.logout, color: colors.error),
               title: Text(
                 'Sair',
                 style: TextStyle(
@@ -238,9 +236,8 @@ class _AppDrawerState extends State<AppDrawer> {
       title: Text(
         label,
         style: TextStyle(
-          color: selected
-              ? colors.primary
-              : colors.onBackground.withOpacity(0.85),
+          color:
+              selected ? colors.primary : colors.onBackground.withOpacity(0.85),
           fontWeight: selected ? FontWeight.bold : FontWeight.normal,
         ),
       ),

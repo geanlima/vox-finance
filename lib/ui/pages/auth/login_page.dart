@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/pages/auth/register_page.dart';
 import 'package:vox_finance/ui/pages/home/home_page.dart';
 

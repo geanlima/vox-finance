@@ -9,7 +9,7 @@ import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class ContaPagarDetalhePage extends StatefulWidget {
   final String grupoParcelas;

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class CartaoCreditoPage extends StatefulWidget {
   const CartaoCreditoPage({super.key});

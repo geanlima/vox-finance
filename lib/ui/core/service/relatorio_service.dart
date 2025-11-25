@@ -1,7 +1,7 @@
 // ignore_for_file: curly_braces_in_flow_control_structures
 
 import 'package:vox_finance/ui/core/enum/categoria.dart';
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class MesValor {
   final int mes;
