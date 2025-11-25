@@ -158,13 +158,13 @@ class _AppDrawerState extends State<AppDrawer> {
 
             _menuItem(
               context,
-              icon: Icons.bar_chart,
+              icon: Icons.calendar_month,
               label: 'Resumo do mês',
               route: '/graficos',
             ),
 
             ListTile(
-              leading: const Icon(Icons.bar_chart),
+              leading: const Icon(Icons.compare_arrows),
               title: const Text('Comparativo de meses'),
               onTap: () {
                 Navigator.pushNamed(context, '/comparativo-mes');
