@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:vox_finance/ui/data/models/usuario.dart';
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});

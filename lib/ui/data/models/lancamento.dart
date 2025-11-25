@@ -8,15 +8,18 @@ class Lancamento {
   FormaPagamento formaPagamento;
   DateTime dataHora;
   bool pagamentoFatura;
-  bool pago = true;
+  bool pago;
   DateTime? dataPagamento;
   Categoria categoria;
   String? grupoParcelas;
   int? parcelaNumero;
   int? parcelaTotal;
 
-  /// 👇 novo: cartão de crédito usado (pode ser null)
+  /// Cartão usado (crédito / débito)
   int? idCartao;
+
+  /// 👇 NOVO: conta bancária usada (PIX, boleto, transferência)
+  int? idConta;
 
   Lancamento({
     this.id,
@@ -31,7 +34,8 @@ class Lancamento {
     this.grupoParcelas,
     this.parcelaNumero,
     this.parcelaTotal,
-    this.idCartao, // 👈 novo
+    this.idCartao,
+    this.idConta, // 👈 NOVO
   });
 
   Lancamento copyWith({
@@ -48,6 +52,7 @@ class Lancamento {
     int? parcelaNumero,
     int? parcelaTotal,
     int? idCartao,
+    int? idConta, // 👈 NOVO
   }) {
     return Lancamento(
       id: id ?? this.id,
@@ -62,34 +67,36 @@ class Lancamento {
       grupoParcelas: grupoParcelas ?? this.grupoParcelas,
       parcelaNumero: parcelaNumero ?? this.parcelaNumero,
       parcelaTotal: parcelaTotal ?? this.parcelaTotal,
-      idCartao: idCartao ?? this.idCartao, // 👈 novo
+      idCartao: idCartao ?? this.idCartao,
+      idConta: idConta ?? this.idConta, // 👈 NOVO
     );
   }
 
   Map<String, dynamic> toMap() {
-  return {
-    if (id != null) 'id': id, // <--- id só entra no UPDATE
-    'valor': valor,
-    'descricao': descricao,
-    'forma_pagamento': formaPagamento.index,
-    'data_hora': dataHora.millisecondsSinceEpoch,
-    'pagamento_fatura': pagamentoFatura ? 1 : 0,
-    'pago': pago ? 1 : 0,
-    'data_pagamento': dataPagamento?.millisecondsSinceEpoch,
-    'categoria': categoria.index,
-    'grupo_parcelas': grupoParcelas,
-    'parcela_numero': parcelaNumero,
-    'parcela_total': parcelaTotal,
-    'id_cartao': idCartao,
-  };
-}
+    return {
+      'id': id,
+      'valor': valor,
+      'descricao': descricao,
+      'forma_pagamento': formaPagamento.index,
+      'data_hora': dataHora.millisecondsSinceEpoch,
+      'pagamento_fatura': pagamentoFatura ? 1 : 0,
+      'pago': pago ? 1 : 0,
+      'data_pagamento': dataPagamento?.millisecondsSinceEpoch,
+      'categoria': categoria.index,
+      'grupo_parcelas': grupoParcelas,
+      'parcela_numero': parcelaNumero,
+      'parcela_total': parcelaTotal,
+      'id_cartao': idCartao,
+      'id_conta': idConta, // 👈 aqui
+    };
+  }
 
   factory Lancamento.fromMap(Map<String, Object?> map) {
     return Lancamento(
       id: map['id'] as int?,
       valor: (map['valor'] as num).toDouble(),
       descricao: map['descricao'] as String,
-      formaPagamento: FormaPagamento.values[(map['forma_pagamento'] as int)],
+      formaPagamento: FormaPagamento.values[map['forma_pagamento'] as int],
       dataHora: DateTime.fromMillisecondsSinceEpoch(map['data_hora'] as int),
       pagamentoFatura: (map['pagamento_fatura'] as int) == 1,
       pago: (map['pago'] as int) == 1,
@@ -99,11 +106,12 @@ class Lancamento {
               : DateTime.fromMillisecondsSinceEpoch(
                 map['data_pagamento'] as int,
               ),
-      categoria: Categoria.values[(map['categoria'] as int)],
+      categoria: Categoria.values[map['categoria'] as int],
       grupoParcelas: map['grupo_parcelas'] as String?,
       parcelaNumero: map['parcela_numero'] as int?,
       parcelaTotal: map['parcela_total'] as int?,
-      idCartao: map['id_cartao'] as int?, // 👈 novo
+      idCartao: map['id_cartao'] as int?,
+      idConta: map['id_conta'] as int?, // 👈 e aqui
     );
   }
 }
