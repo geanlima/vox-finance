@@ -3,8 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
@@ -57,6 +58,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   // 🔹 Cartões carregados do banco
   List<CartaoCredito> _cartoes = [];
+
+  // 🔹 Contas bancárias carregadas do banco
+  List<ContaBancaria> _contas = [];
 
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
@@ -114,6 +118,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
     final lista = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
     final cards = await _db.getCartoesCredito();
+    final contas = await _db.getContasBancarias(); // 👈 NOVO
 
     Iterable<Lancamento> filtrados = lista;
 
@@ -128,6 +133,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     setState(() {
       _lancamentos = filtrados.toList();
       _cartoes = cards;
+      _contas = contas; // 👈 NOVO
       _carregando = false;
     });
   }
@@ -146,55 +152,76 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return totais;
   }
 
+  /// 🔹 Monta o label do grupo:
+  /// - Crédito → por cartão (como já era antes)
+  /// - Outras formas → por conta + forma pagamento (se tiver conta vinculada)
+  String _labelGrupoForma(Lancamento l) {
+    // Crédito: mantém a mesma lógica atual
+    if (l.formaPagamento == FormaPagamento.credito) {
+      CartaoCredito? cartao;
+      if (l.idCartao != null) {
+        try {
+          cartao = _cartoes.firstWhere((c) => c.id == l.idCartao);
+        } catch (_) {
+          cartao = null;
+        }
+      }
+
+      if (cartao != null) {
+        return '${cartao.descricao} • ${cartao.bandeira} • **** ${cartao.ultimos4Digitos}';
+      } else if (l.idCartao == null) {
+        return 'Crédito (sem cartão vinculado)';
+      } else {
+        return 'Crédito (cartão id ${l.idCartao})';
+      }
+    }
+
+    // Demais formas: tenta detalhar por CONTA
+    ContaBancaria? conta;
+    if (l.idConta != null) {
+      try {
+        conta = _contas.firstWhere((c) => c.id == l.idConta);
+      } catch (_) {
+        conta = null;
+      }
+    }
+
+    final formaLabel = l.formaPagamento.label;
+
+    if (conta != null) {
+      // Ex.: "NuBank • Débito", "Itaú • Pix"
+      return '${conta.descricao} • $formaLabel';
+    }
+
+    if (l.idConta == null) {
+      return '$formaLabel (sem conta vinculada)';
+    }
+
+    // fallback se não achou a conta pelo id
+    return '$formaLabel (conta id ${l.idConta})';
+  }
+
   /// 🔹 Forma pagamento: débito/pix/dinheiro etc. normal,
   /// crédito agrupado por CARTÃO (descrição + bandeira + últimos 4 dígitos)
+  /// 🔹 Forma pagamento:
+  /// - Crédito agrupado por CARTÃO
+  /// - Demais formas agrupadas por CONTA + forma (quando tiver conta)
   Map<String, _GrupoFormaPagamento> _totaisPorFormaPagamentoAgrupado() {
     final Map<String, _GrupoFormaPagamento> mapa = {};
 
     for (final l in _lancamentos) {
-      if (l.formaPagamento == FormaPagamento.credito) {
-        CartaoCredito? cartao;
-        if (l.idCartao != null) {
-          try {
-            cartao = _cartoes.firstWhere((c) => c.id == l.idCartao);
-          } catch (_) {
-            cartao = null;
-          }
-        }
+      final label = _labelGrupoForma(l);
+      final bool isCredito = l.formaPagamento == FormaPagamento.credito;
+      final icon = isCredito ? Icons.credit_card : l.formaPagamento.icon;
 
-        final String label;
-        if (cartao != null) {
-          label =
-              '${cartao.descricao} • ${cartao.bandeira} • **** ${cartao.ultimos4Digitos}';
-        } else if (l.idCartao == null) {
-          label = 'Crédito (sem cartão vinculado)';
-        } else {
-          label = 'Crédito (cartão id ${l.idCartao})';
-        }
-
-        final key = label;
-        if (mapa.containsKey(key)) {
-          mapa[key]!.total += l.valor;
-        } else {
-          mapa[key] = _GrupoFormaPagamento(
-            label: label,
-            icon: Icons.credit_card,
-            total: l.valor,
-          );
-        }
+      if (mapa.containsKey(label)) {
+        mapa[label]!.total += l.valor;
       } else {
-        final label = l.formaPagamento.label;
-        final key = label;
-
-        if (mapa.containsKey(key)) {
-          mapa[key]!.total += l.valor;
-        } else {
-          mapa[key] = _GrupoFormaPagamento(
-            label: label,
-            icon: l.formaPagamento.icon,
-            total: l.valor,
-          );
-        }
+        mapa[label] = _GrupoFormaPagamento(
+          label: label,
+          icon: icon,
+          total: l.valor,
+        );
       }
     }
 
@@ -202,34 +229,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   }
 
   /// 🔹 Mapa: label (forma/cartão) → lista de lançamentos
+  /// 🔹 Mapa: label (forma/cartão/conta) → lista de lançamentos
   Map<String, List<Lancamento>> _lancamentosPorGrupoFormaPagamento() {
     final Map<String, List<Lancamento>> mapa = {};
 
     for (final l in _lancamentos) {
-      String label;
-
-      if (l.formaPagamento == FormaPagamento.credito) {
-        CartaoCredito? cartao;
-        if (l.idCartao != null) {
-          try {
-            cartao = _cartoes.firstWhere((c) => c.id == l.idCartao);
-          } catch (_) {
-            cartao = null;
-          }
-        }
-
-        if (cartao != null) {
-          label =
-              '${cartao.descricao} • ${cartao.bandeira} • **** ${cartao.ultimos4Digitos}';
-        } else if (l.idCartao == null) {
-          label = 'Crédito (sem cartão vinculado)';
-        } else {
-          label = 'Crédito (cartão id ${l.idCartao})';
-        }
-      } else {
-        label = l.formaPagamento.label;
-      }
-
+      final label = _labelGrupoForma(l);
       mapa.putIfAbsent(label, () => []).add(l);
     }
 
@@ -559,8 +564,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: tema.colorScheme.surfaceVariant
-                                .withOpacity(0.25),
+                            color: tema.colorScheme.surfaceVariant.withOpacity(
+                              0.25,
+                            ),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -572,10 +578,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                                   color: corPrimaria.withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Icon(
-                                  Icons.receipt_long,
-                                  size: 18,
-                                ),
+                                child: const Icon(Icons.receipt_long, size: 18),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -689,14 +692,15 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
-                        items: _anosDisponiveis
-                            .map(
-                              (ano) => DropdownMenuItem(
-                                value: ano,
-                                child: Text(ano.toString()),
-                              ),
-                            )
-                            .toList(),
+                        items:
+                            _anosDisponiveis
+                                .map(
+                                  (ano) => DropdownMenuItem(
+                                    value: ano,
+                                    child: Text(ano.toString()),
+                                  ),
+                                )
+                                .toList(),
                         onChanged: (novoAno) {
                           if (novoAno == null) return;
                           setState(() {
@@ -762,10 +766,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withOpacity(0.08),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.08),
                     ),
                     child: Row(
                       children: [
@@ -893,14 +896,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
               );
             },
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceVariant
-                    .withOpacity(0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceVariant.withOpacity(0.3),
               ),
               child: Row(
                 children: [
@@ -919,9 +920,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       children: [
                         Text(
                           CategoriaService.toName(cat),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         Text(
                           '${percent.toStringAsFixed(1)}%',
@@ -976,14 +975,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
               );
             },
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceVariant
-                    .withOpacity(0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceVariant.withOpacity(0.3),
               ),
               child: Row(
                 children: [
@@ -1004,9 +1001,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       children: [
                         Text(
                           grupo.label,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         Text(
                           '${percent.toStringAsFixed(1)}%',
@@ -1062,14 +1057,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
               );
             },
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceVariant
-                    .withOpacity(0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceVariant.withOpacity(0.3),
               ),
               child: Row(
                 children: [
@@ -1088,9 +1081,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       children: [
                         Text(
                           'Dia ${_dateDiaFormat.format(dia)}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         Text(
                           '${percent.toStringAsFixed(1)}%',

@@ -1,17 +1,19 @@
-// ignore_for_file: unused_local_variable, duplicate_ignore, unused_catch_stack, empty_catches
+// ignore_for_file: unused_local_variable, unused_catch_stack, empty_catches
 
 import 'dart:async';
 import 'dart:math';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart'
     show FormaPagamento;
-
-import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
-import 'package:vox_finance/ui/data/models/usuario.dart'; // 👈 modelo do usuário local
+import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/models/usuario.dart';
 
 class DbService {
   DbService._internal();
@@ -33,13 +35,12 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version:
-          11, // 👈 V10: cartões com tipo/controla_fatura/limite/dia_fechamento
+      version: 15, // ⬅️ aumentei para 13 por causa do ajuste de 'ultimos4'
       onCreate: (db, version) async {
         await _criarTabelasV9(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // ---- UPGRADE PARA V4 (id_cartao + tabela cartao_credito básica) ----
+        // ---- V4: id_cartao em lancamentos + tabela cartao_credito básica ----
         if (oldVersion < 4) {
           try {
             await db.execute(
@@ -57,7 +58,7 @@ class DbService {
           ''');
         }
 
-        // ---- UPGRADE PARA V6 (foto + dia_vencimento no cartão) ----
+        // ---- V6: foto_path + dia_vencimento no cartão ----
         if (oldVersion < 6) {
           try {
             await db.execute(
@@ -72,7 +73,7 @@ class DbService {
           } catch (e) {}
         }
 
-        // ---- UPGRADE PARA V7 (tabela USUARIOS) ----
+        // ---- V7: tabela USUARIOS ----
         if (oldVersion < 7) {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
@@ -86,17 +87,14 @@ class DbService {
           ''');
         }
 
-        // ---- UPGRADE PARA V8 (foto_path em bancos antigos que já tinham usuarios) ----
+        // ---- V8: adiciona foto_path em bancos antigos (se faltar) ----
         if (oldVersion < 8) {
           try {
             await db.execute('ALTER TABLE usuarios ADD COLUMN foto_path TEXT;');
-          } catch (e) {
-            // se já existir, ignora
-          }
+          } catch (e) {}
         }
 
-        // ---- UPGRADE PARA V9 (tipo, permite_parcelamento, limite, dia_fechamento no cartão) ----
-        // Mantemos "permite_parcelamento" só para poder copiar o valor depois.
+        // ---- V9: tipo, permite_parcelamento, limite, dia_fechamento ----
         if (oldVersion < 9) {
           try {
             await db.execute(
@@ -123,7 +121,7 @@ class DbService {
           } catch (e) {}
         }
 
-        // ---- UPGRADE PARA V10 (controla_fatura) ----
+        // ---- V10: controla_fatura ----
         if (oldVersion < 10) {
           try {
             await db.execute(
@@ -131,7 +129,7 @@ class DbService {
             );
           } catch (e) {}
 
-          // tenta copiar o valor antigo de permite_parcelamento, se existir
+          // copia valor antigo de permite_parcelamento, se existir
           try {
             await db.execute('''
               UPDATE cartao_credito
@@ -139,13 +137,114 @@ class DbService {
               WHERE controla_fatura IS NULL
                  OR (controla_fatura = 0 AND permite_parcelamento = 1);
             ''');
+          } catch (e) {}
+        }
+
+        // ---- V11: conta_bancaria + id_conta em lancamentos ----
+        if (oldVersion < 11) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS conta_bancaria (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              descricao TEXT NOT NULL,
+              banco TEXT,
+              agencia TEXT,
+              numero TEXT,
+              tipo TEXT,
+              ativa INTEGER NOT NULL DEFAULT 1
+            );
+          ''');
+
+          try {
+            await db.execute(
+              'ALTER TABLE lancamentos ADD COLUMN id_conta INTEGER;',
+            );
+          } catch (e) {}
+        }
+
+        // ---- V13: normaliza nome da coluna 'ultimos4' em cartao_credito ----
+        if (oldVersion < 13) {
+          try {
+            final info = await db.rawQuery(
+              'PRAGMA table_info(cartao_credito);',
+            );
+
+            bool temUltimos4 = info.any(
+              (col) => (col['name'] as String).toLowerCase() == 'ultimos4',
+            );
+
+            // possíveis nomes antigos
+            const possiveisAntigos = [
+              'ultimo_4_digitos',
+              'ultimo_4_digito',
+              'ultimos_4_digito',
+              'ultimos_4_digitos',
+              'ultimos4_digitos',
+              'ultimos_4',
+              'ultimos_digitos',
+            ];
+
+            String? colunaAntiga;
+            for (final col in info) {
+              final nome = (col['name'] as String).toLowerCase();
+              if (possiveisAntigos.contains(nome)) {
+                colunaAntiga = nome;
+                break;
+              }
+            }
+
+            if (!temUltimos4 && colunaAntiga != null) {
+              await db.execute(
+                'ALTER TABLE cartao_credito '
+                'RENAME COLUMN $colunaAntiga TO ultimos4;',
+              );
+            }
           } catch (e) {
-            // se a coluna permite_parcelamento não existir, ignora
+            // se der erro (sqlite antigo ou coluna já renomeada), ignora
           }
         }
+
+                // ---- V14: garante que a coluna id_conta exista em lancamentos ----
+        if (oldVersion < 14) {
+          try {
+            final infoLanc =
+                await db.rawQuery('PRAGMA table_info(lancamentos);');
+
+            final temIdConta = infoLanc.any(
+              (col) => (col['name'] as String).toLowerCase() == 'id_conta',
+            );
+
+            if (!temIdConta) {
+              await db.execute(
+                'ALTER TABLE lancamentos ADD COLUMN id_conta INTEGER;',
+              );
+            }
+          } catch (e) {
+            // ignora erro pra não quebrar abertura
+          }
+        }
+
+        // ---- V15: caso alguém já tenha ido pra 14 sem o bloco acima ----
+        if (oldVersion < 15) {
+          try {
+            final infoLanc =
+                await db.rawQuery('PRAGMA table_info(lancamentos);');
+
+            final temIdConta = infoLanc.any(
+              (col) => (col['name'] as String).toLowerCase() == 'id_conta',
+            );
+
+            if (!temIdConta) {
+              await db.execute(
+                'ALTER TABLE lancamentos ADD COLUMN id_conta INTEGER;',
+              );
+            }
+          } catch (e) {}
+        }
+
+
       },
       onOpen: (db) async {
-        // Garante que a tabela USUARIOS exista (sem apagar nada)
+        // Garante que a tabela USUARIOS exista
         await db.execute('''
           CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY,
@@ -157,7 +256,7 @@ class DbService {
           );
         ''');
 
-        // Garante que as colunas existam mesmo em bancos antigos
+        // Garante colunas de usuarios
         try {
           await db.execute('ALTER TABLE usuarios ADD COLUMN senha TEXT;');
         } catch (e) {}
@@ -165,6 +264,18 @@ class DbService {
           await db.execute('ALTER TABLE usuarios ADD COLUMN foto_path TEXT;');
         } catch (e) {}
 
+        // ✅ Garante que a tabela CONTA_BANCARIA exista em QUALQUER VERSÃO
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS conta_bancaria (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              descricao TEXT NOT NULL,
+              banco TEXT,
+              agencia TEXT,
+              numero TEXT,
+              tipo TEXT,
+              ativa INTEGER NOT NULL DEFAULT 1
+            );
+        ''');
         // Só um checkzinho que você já tinha
         final res = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='cartao_credito';",
@@ -177,123 +288,85 @@ class DbService {
   }
 
   // ============================================================
-  //  G E R A R   F A T U R A   D O   C A R T Ã O   (FECHAMENTO)
+  //  C R I A Ç Ã O   I N I C I A L   D A S   T A B E L A S
   // ============================================================
 
-  Future<void> gerarFaturaDoCartao(int idCartao, {DateTime? referencia}) async {
-    final database = await db;
-    final hoje = referencia ?? DateTime.now();
-
-    // 1) Busca o cartão
-    final res = await database.query(
-      'cartao_credito',
-      where: 'id = ?',
-      whereArgs: [idCartao],
-      limit: 1,
-    );
-    if (res.isEmpty) return;
-
-    final cartao = CartaoCredito.fromMap(res.first);
-
-    final bool ehCreditoLike =
-        cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
-
-    // Só gera fatura se for cartão de crédito/ambos e controlar fatura
-    if (!ehCreditoLike) return;
-    if (!cartao.controlaFatura) return;
-    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
-
-    final int diaFechamento = cartao.diaFechamento!;
-    final int diaVencimento = cartao.diaVencimento!;
-
-    // 2) Calcula período de consumo:
-    //    do dia seguinte ao fechamento anterior ATÉ o fechamento atual (inclusive)
-    int anoAtual = hoje.year;
-    int mesAtual = hoje.month;
-
-    int mesAnterior = mesAtual - 1;
-    int anoAnterior = anoAtual;
-    if (mesAnterior == 0) {
-      mesAnterior = 12;
-      anoAnterior--;
-    }
-
-    // Ex.: fechamento dia 4 -> período 05/mesAnterior até 04/mesAtual
-    final inicioPeriodo = DateTime(anoAnterior, mesAnterior, diaFechamento + 1);
-    final fimPeriodo = DateTime(
-      anoAtual,
-      mesAtual,
-      diaFechamento,
-      23,
-      59,
-      59,
-      999,
-    );
-
-    final inicioMs = inicioPeriodo.millisecondsSinceEpoch;
-    final fimMs = fimPeriodo.millisecondsSinceEpoch;
-
-    // 3) Busca todos os lançamentos de CRÉDITO desse cartão no período,
-    //    que NÃO são pagamento de fatura (pagamento_fatura = 0)
-    final compras = await database.query(
-      'lancamentos',
-      where:
-          'id_cartao = ? AND forma_pagamento = ? AND pagamento_fatura = 0 AND data_hora >= ? AND data_hora <= ?',
-      whereArgs: [idCartao, FormaPagamento.credito.index, inicioMs, fimMs],
-    );
-
-    if (compras.isEmpty) return;
-
-    // Soma o valor de todas as compras
-    final total = compras.fold<double>(
-      0.0,
-      (acc, row) => acc + (row['valor'] as num).toDouble(),
-    );
-
-    if (total <= 0) return;
-
-    // 4) Data do vencimento desta fatura
-    final dataVencimento = DateTime(anoAtual, mesAtual, diaVencimento);
-    final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
-
-    // Evita criar fatura duplicada: se já existir para este mês, atualiza o valor
-    final faturaExistente = await database.query(
-      'lancamentos',
-      where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
-      whereArgs: [idCartao, dataVencimentoMs],
-      limit: 1,
-    );
-
-    if (faturaExistente.isNotEmpty) {
-      final idFatura = faturaExistente.first['id'] as int;
-      await database.update(
-        'lancamentos',
-        {'valor': total},
-        where: 'id = ?',
-        whereArgs: [idFatura],
+  Future<void> _criarTabelasV9(Database db) async {
+    // CONTAS BANCÁRIAS
+    await db.execute('''
+      CREATE TABLE conta_bancaria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        banco TEXT,
+        agencia TEXT,
+        numero TEXT,
+        tipo TEXT,
+        ativa INTEGER NOT NULL DEFAULT 1
       );
-      return;
-    }
+    ''');
 
-    // Usa a categoria da primeira compra só para não ficar nulo
-    final primeiraCompra = Lancamento.fromMap(compras.first);
+    // LANÇAMENTOS
+    await db.execute('''
+      CREATE TABLE lancamentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        valor REAL NOT NULL,
+        descricao TEXT NOT NULL,
+        forma_pagamento INTEGER NOT NULL,
+        data_hora INTEGER NOT NULL,
+        pagamento_fatura INTEGER NOT NULL,
+        pago INTEGER NOT NULL,
+        data_pagamento INTEGER,
+        categoria INTEGER NOT NULL,
+        grupo_parcelas TEXT,
+        parcela_numero INTEGER,
+        parcela_total INTEGER,
+        id_cartao INTEGER,
+        id_conta INTEGER
+      );
+    ''');
 
-    final descricaoFatura =
-        'Fatura ${cartao.descricao} ${mesAtual.toString().padLeft(2, '0')}/$anoAtual';
+    // CONTAS A PAGAR
+    await db.execute('''
+      CREATE TABLE conta_pagar (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        valor REAL NOT NULL,
+        data_vencimento INTEGER NOT NULL,
+        pago INTEGER NOT NULL,
+        data_pagamento INTEGER,
+        parcela_numero INTEGER,
+        parcela_total INTEGER,
+        grupo_parcelas TEXT NOT NULL
+      );
+    ''');
 
-    final lancFatura = Lancamento(
-      valor: total,
-      descricao: descricaoFatura,
-      formaPagamento: FormaPagamento.credito,
-      dataHora: dataVencimento,
-      pagamentoFatura: true,
-      categoria: primeiraCompra.categoria,
-      pago: false,
-      dataPagamento: null,
-      idCartao: idCartao,
-    );
+    // CARTÕES DE CRÉDITO
+    await db.execute('''
+      CREATE TABLE cartao_credito (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        bandeira TEXT NOT NULL,
+        ultimos4 TEXT NOT NULL,
+        foto_path TEXT,
+        dia_vencimento INTEGER,
+        tipo INTEGER DEFAULT 0,
+        controla_fatura INTEGER DEFAULT 1,
+        limite REAL,
+        dia_fechamento INTEGER
+      );
+    ''');
 
-    await database.insert('lancamentos', lancFatura.toMap());
+    // USUÁRIOS
+    await db.execute('''
+      CREATE TABLE usuarios (
+        id INTEGER PRIMARY KEY,
+        email TEXT NOT NULL,
+        nome TEXT,
+        senha TEXT NOT NULL,
+        foto_path TEXT,
+        criado_em TEXT NOT NULL
+      );
+    ''');
   }
 
   String mesNome(int mes) {
@@ -315,86 +388,64 @@ class DbService {
     return meses[mes];
   }
 
-  // Cria tudo já no formato da versão 9/10 (instalação nova)
-  Future<void> _criarTabelasV9(Database db) async {
-    // --------- TABELA DE LANÇAMENTOS ---------
-    await db.execute('''
-      CREATE TABLE lancamentos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        valor REAL NOT NULL,
-        descricao TEXT NOT NULL,
-        forma_pagamento INTEGER NOT NULL,
-        data_hora INTEGER NOT NULL,
-        pagamento_fatura INTEGER NOT NULL,
-        pago INTEGER NOT NULL,
-        data_pagamento INTEGER,
-        categoria INTEGER NOT NULL,
-        grupo_parcelas TEXT,
-        parcela_numero INTEGER,
-        parcela_total INTEGER,
-        id_cartao INTEGER
-      );
-    ''');
+  // ============================================================
+  //  CRUD  C O N T A   B A N C Á R I A
+  // ============================================================
 
-    // --------- TABELA DE CONTAS A PAGAR ---------
-    await db.execute('''
-      CREATE TABLE conta_pagar (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        descricao TEXT NOT NULL,
-        valor REAL NOT NULL,
-        data_vencimento INTEGER NOT NULL,
-        pago INTEGER NOT NULL,
-        data_pagamento INTEGER,
-        parcela_numero INTEGER,
-        parcela_total INTEGER,
-        grupo_parcelas TEXT NOT NULL
-      );
-    ''');
+  Future<int> salvarContaBancaria(ContaBancaria conta) async {
+    final database = await db;
+    final dados = conta.toMap();
 
-    // --------- TABELA DE CARTÕES DE CRÉDITO ---------
-    await db.execute('''
-      CREATE TABLE cartao_credito (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        descricao TEXT NOT NULL,
-        bandeira TEXT NOT NULL,
-        ultimos4 TEXT NOT NULL,
-        foto_path TEXT,
-        dia_vencimento INTEGER,
-        tipo INTEGER DEFAULT 0,
-        controla_fatura INTEGER DEFAULT 1,
-        limite REAL,
-        dia_fechamento INTEGER
+    if (conta.id == null) {
+      dados.remove('id');
+      final id = await database.insert(
+        'conta_bancaria',
+        dados,
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
-    ''');
+      conta.id = id;
+      return id;
+    } else {
+      return await database.update(
+        'conta_bancaria',
+        dados,
+        where: 'id = ?',
+        whereArgs: [conta.id],
+      );
+    }
+  }
 
-    // --------- TABELA DE USUÁRIOS ---------
-    await db.execute('''
-      CREATE TABLE usuarios (
-        id INTEGER PRIMARY KEY,
-        email TEXT NOT NULL,
-        nome TEXT,
-        senha TEXT NOT NULL,
-        foto_path TEXT,
-        criado_em TEXT NOT NULL
-      );
-    ''');
+  Future<List<ContaBancaria>> getContasBancarias({
+    bool apenasAtivas = false,
+  }) async {
+    final database = await db;
+
+    final result = await database.query(
+      'conta_bancaria',
+      where: apenasAtivas ? 'ativa = 1' : null,
+      orderBy: 'descricao ASC',
+    );
+
+    return result.map((e) => ContaBancaria.fromMap(e)).toList();
+  }
+
+  Future<void> deletarContaBancaria(int id) async {
+    final database = await db;
+    await database.delete('conta_bancaria', where: 'id = ?', whereArgs: [id]);
   }
 
   // ============================================================
-  //  C R U D   U S U Á R I O   L O C A L
+  //  CRUD  U S U Á R I O   L O C A L
   // ============================================================
 
   Future<void> salvarUsuario(Usuario usuario) async {
     final database = await db;
 
-    final id = await database.insert(
+    await database.insert(
       'usuarios',
       usuario.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-
-    // debug opcional
-    final check = await database.query('usuarios');
   }
 
   Future<Usuario?> loginUsuario(String email, String senha) async {
@@ -408,7 +459,6 @@ class DbService {
     );
 
     if (result.isEmpty) return null;
-
     return Usuario.fromMap(result.first);
   }
 
@@ -416,7 +466,6 @@ class DbService {
     final database = await db;
 
     final result = await database.query('usuarios', limit: 1);
-
     if (result.isEmpty) return null;
 
     return Usuario.fromMap(result.first);
@@ -428,14 +477,13 @@ class DbService {
   }
 
   // ============================================================
-  //  C R U D   L A N Ç A M E N T O S
+  //  CRUD  L A N Ç A M E N T O S
   // ============================================================
 
   Future<int> salvarLancamento(Lancamento lanc) async {
     final database = await db;
 
     if (lanc.id == null) {
-      // ⚠️ NUNCA envia o id no insert
       final dados = lanc.toMap();
       dados.remove('id');
 
@@ -444,11 +492,9 @@ class DbService {
         dados,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-
       lanc.id = id;
       return id;
     } else {
-      // Aqui pode mandar id normalmente (UPDATE)
       return await database.update(
         'lancamentos',
         lanc.toMap(),
@@ -463,7 +509,6 @@ class DbService {
     await database.delete('lancamentos', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// Lançamentos de 1 dia específico
   Future<List<Lancamento>> getLancamentosByDay(DateTime dia) async {
     final database = await db;
 
@@ -480,7 +525,6 @@ class DbService {
     return result.map((e) => Lancamento.fromMap(e)).toList();
   }
 
-  /// Lançamentos em um período (inclusive início e fim)
   Future<List<Lancamento>> getLancamentosByPeriodo(
     DateTime inicio,
     DateTime fim,
@@ -521,7 +565,6 @@ class DbService {
 
     final todos = result.map((e) => Lancamento.fromMap(e)).toList();
 
-    // ==== AGRUPAMENTO POR GRUPO_PARCELAS ====
     final Map<String, List<Lancamento>> grupos = {};
 
     for (final lanc in todos) {
@@ -569,13 +612,11 @@ class DbService {
     return result.map((e) => Lancamento.fromMap(e)).toList();
   }
 
-  /// Soma o valor de todos os lançamentos futuros até o limite
   Future<double> getTotalLancamentosFuturosAte(DateTime limite) async {
     final lista = await getLancamentosFuturosAte(limite);
     return lista.fold<double>(0.0, (acc, l) => acc + l.valor);
   }
 
-  /// Marca / desmarca um lançamento como pago
   Future<void> marcarLancamentoComoPago(int id, bool pago) async {
     final database = await db;
 
@@ -591,7 +632,7 @@ class DbService {
   }
 
   // ============================================================
-  //  C R U D   C O N T A S   A   P A G A R
+  //  CRUD  C O N T A S   A   P A G A R
   // ============================================================
 
   Future<int> salvarContaPagar(ContaPagar conta) async {
@@ -660,7 +701,6 @@ class DbService {
 
   // ============================================================
   //  L A N Ç A M E N T O S   P A R C E L A D O S
-  //   (COM REGRA DE FATURA QUANDO HOUVER CARTÃO)
   // ============================================================
 
   Future<void> salvarLancamentosParceladosFuturos(
@@ -669,7 +709,6 @@ class DbService {
   ) async {
     final database = await db;
 
-    // grupo único para essas parcelas
     final String grupo =
         base.grupoParcelas ?? DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -679,12 +718,6 @@ class DbService {
     final DateTime? dataPagamentoBase =
         pagoBase ? (base.dataPagamento ?? DateTime.now()) : null;
 
-    // ==========================
-    // Cálculo das datas de cada parcela
-    // → sempre na data da compra + i meses
-    //   (forçando dia <= 28 p/ evitar problemas
-    //    com meses menores)
-    // ==========================
     final List<DateTime> datasParcelas = [];
 
     for (int i = 0; i < qtdParcelas; i++) {
@@ -696,9 +729,6 @@ class DbService {
       datasParcelas.add(DateTime(ano, mes, dia));
     }
 
-    // ==========================
-    // Gravação das parcelas
-    // ==========================
     for (int i = 0; i < qtdParcelas; i++) {
       final DateTime dataParcela = datasParcelas[i];
 
@@ -711,15 +741,11 @@ class DbService {
         parcelaTotal: qtdParcelas,
         pago: pagoBase,
         dataPagamento: dataPagamentoBase,
-        // aqui NÃO marcamos como pagamento de fatura,
-        // é um gasto normal; a fatura será gerada
-        // depois pelo botão "Gerar fatura"
         pagamentoFatura: base.pagamentoFatura,
       );
 
       await database.insert('lancamentos', lancParcela.toMap());
 
-      // se não está pago, também cria entrada em conta_pagar
       if (!pagoBase) {
         final conta = ContaPagar(
           id: null,
@@ -739,8 +765,7 @@ class DbService {
   }
 
   // ============================================================
-  //  L A N Ç A M E N T O  À  V I S T A   NO   C A R T Ã O
-  //   → CRIA LANÇAMENTO PENDENTE NA DATA DA FATURA
+  //  L A N Ç A M E N T O  À  V I S T A   N O   C A R T Ã O
   // ============================================================
 
   Future<void> salvarLancamentoDaFatura(Lancamento base) async {
@@ -790,7 +815,6 @@ class DbService {
 
     if (existente.isNotEmpty) {
       final existenteLanc = Lancamento.fromMap(existente.first);
-
       final novoValor = existenteLanc.valor + base.valor;
 
       await database.update(
@@ -799,7 +823,6 @@ class DbService {
         where: 'id = ?',
         whereArgs: [existenteLanc.id],
       );
-
       return;
     }
 
@@ -815,13 +838,122 @@ class DbService {
     );
 
     final dados = lancFatura.toMap();
-    dados.remove('id'); // 👈 não manda id no insert
+    dados.remove('id');
 
     await database.insert('lancamentos', dados);
   }
 
   // ============================================================
-  //  CRUD Cartões de crédito
+  //  G E R A R   F A T U R A   D O   C A R T Ã O   (FECHAMENTO)
+  // ============================================================
+
+  Future<void> gerarFaturaDoCartao(int idCartao, {DateTime? referencia}) async {
+    final database = await db;
+    final hoje = referencia ?? DateTime.now();
+
+    final res = await database.query(
+      'cartao_credito',
+      where: 'id = ?',
+      whereArgs: [idCartao],
+      limit: 1,
+    );
+    if (res.isEmpty) return;
+
+    final cartao = CartaoCredito.fromMap(res.first);
+
+    final bool ehCreditoLike =
+        cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
+
+    if (!ehCreditoLike) return;
+    if (!cartao.controlaFatura) return;
+    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
+
+    final int diaFechamento = cartao.diaFechamento!;
+    final int diaVencimento = cartao.diaVencimento!;
+
+    int anoAtual = hoje.year;
+    int mesAtual = hoje.month;
+
+    int mesAnterior = mesAtual - 1;
+    int anoAnterior = anoAtual;
+    if (mesAnterior == 0) {
+      mesAnterior = 12;
+      anoAnterior--;
+    }
+
+    final inicioPeriodo = DateTime(anoAnterior, mesAnterior, diaFechamento + 1);
+    final fimPeriodo = DateTime(
+      anoAtual,
+      mesAtual,
+      diaFechamento,
+      23,
+      59,
+      59,
+      999,
+    );
+
+    final inicioMs = inicioPeriodo.millisecondsSinceEpoch;
+    final fimMs = fimPeriodo.millisecondsSinceEpoch;
+
+    final compras = await database.query(
+      'lancamentos',
+      where:
+          'id_cartao = ? AND forma_pagamento = ? AND pagamento_fatura = 0 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, FormaPagamento.credito.index, inicioMs, fimMs],
+    );
+
+    if (compras.isEmpty) return;
+
+    final total = compras.fold<double>(
+      0.0,
+      (acc, row) => acc + (row['valor'] as num).toDouble(),
+    );
+
+    if (total <= 0) return;
+
+    final dataVencimento = DateTime(anoAtual, mesAtual, diaVencimento);
+    final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
+
+    final faturaExistente = await database.query(
+      'lancamentos',
+      where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
+      whereArgs: [idCartao, dataVencimentoMs],
+      limit: 1,
+    );
+
+    if (faturaExistente.isNotEmpty) {
+      final idFatura = faturaExistente.first['id'] as int;
+      await database.update(
+        'lancamentos',
+        {'valor': total},
+        where: 'id = ?',
+        whereArgs: [idFatura],
+      );
+      return;
+    }
+
+    final primeiraCompra = Lancamento.fromMap(compras.first);
+
+    final descricaoFatura =
+        'Fatura ${cartao.descricao} ${mesAtual.toString().padLeft(2, '0')}/$anoAtual';
+
+    final lancFatura = Lancamento(
+      valor: total,
+      descricao: descricaoFatura,
+      formaPagamento: FormaPagamento.credito,
+      dataHora: dataVencimento,
+      pagamentoFatura: true,
+      categoria: primeiraCompra.categoria,
+      pago: false,
+      dataPagamento: null,
+      idCartao: idCartao,
+    );
+
+    await database.insert('lancamentos', lancFatura.toMap());
+  }
+
+  // ============================================================
+  //  CRUD  C A R T Õ E S   D E   C R É D I T O
   // ============================================================
 
   Future<int> salvarCartaoCredito(CartaoCredito cartao) async {
@@ -835,16 +967,14 @@ class DbService {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
         cartao.id = id;
-
         return id;
       } else {
-        final linhas = await database.update(
+        return await database.update(
           'cartao_credito',
           cartao.toMapUpdate(),
           where: 'id = ?',
           whereArgs: [cartao.id],
         );
-        return linhas;
       }
     } catch (e, s) {
       rethrow;

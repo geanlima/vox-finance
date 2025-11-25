@@ -7,7 +7,8 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-import 'package:vox_finance/ui/data/sevice/db_service.dart';
+import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
@@ -23,6 +24,20 @@ class HomePage extends StatefulWidget {
 
   @override
   State<HomePage> createState() => _HomePageState();
+}
+
+class _GrupoResumoDia {
+  final String label;
+  final String? subtitulo;
+  final IconData icon;
+  double total;
+
+  _GrupoResumoDia({
+    required this.label,
+    this.subtitulo,
+    required this.icon,
+    required this.total,
+  });
 }
 
 class _HomePageState extends State<HomePage> {
@@ -42,6 +57,7 @@ class _HomePageState extends State<HomePage> {
 
   // Cartões carregados do banco
   List<CartaoCredito> _cartoes = [];
+  List<ContaBancaria> _contas = [];
 
   @override
   void initState() {
@@ -50,6 +66,14 @@ class _HomePageState extends State<HomePage> {
     _initSpeech();
     _carregarDoBanco();
     _carregarCartoes();
+    _carregarContas();
+  }
+
+  Future<void> _carregarContas() async {
+    final lista = await _dbService.getContasBancarias(apenasAtivas: true);
+    setState(() {
+      _contas = lista;
+    });
   }
 
   Future<void> _initSpeech() async {
@@ -332,6 +356,11 @@ class _HomePageState extends State<HomePage> {
     // garante que os cartões estão atualizados antes de abrir o form
     await _carregarCartoes();
 
+    // 🔹 carrega contas bancárias ativas
+    final List<ContaBancaria> contas = await _dbService.getContasBancarias(
+      apenasAtivas: true,
+    );
+
     final valorController = TextEditingController(
       text:
           existente != null
@@ -375,6 +404,16 @@ class _HomePageState extends State<HomePage> {
         );
       } catch (_) {
         cartaoSelecionado = null;
+      }
+    }
+
+    // 🔹 Conta bancária selecionada (se vier do lançamento)
+    ContaBancaria? contaSelecionada;
+    if (existente?.idConta != null && contas.isNotEmpty) {
+      try {
+        contaSelecionada = contas.firstWhere((c) => c.id == existente!.idConta);
+      } catch (_) {
+        contaSelecionada = null;
       }
     }
 
@@ -436,6 +475,12 @@ class _HomePageState extends State<HomePage> {
                   pagamentoFatura ||
                   formaSelecionada == FormaPagamento.debito ||
                   formaSelecionada == FormaPagamento.credito;
+
+              // 🔹 PIX / boleto / transferência usam CONTA BANCÁRIA
+              final bool deveMostrarSecaoConta =
+                  formaSelecionada == FormaPagamento.pix ||
+                  formaSelecionada == FormaPagamento.boleto ||
+                  formaSelecionada == FormaPagamento.transferencia;
 
               return SingleChildScrollView(
                 child: Column(
@@ -582,6 +627,43 @@ class _HomePageState extends State<HomePage> {
                           onChanged: (novoCartao) {
                             setModalState(() {
                               cartaoSelecionado = novoCartao;
+                            });
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                    ],
+                    // 🔹 Seção CONTA BANCÁRIA (PIX / boleto / transferência)
+                    if (deveMostrarSecaoConta) ...[
+                      const SizedBox(height: 8),
+                      if (contas.isEmpty) ...[
+                        const Text(
+                          'Nenhuma conta bancária ativa.\n'
+                          'Cadastre em: Menu → Contas bancárias.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      ] else ...[
+                        DropdownButtonFormField<ContaBancaria>(
+                          value: contaSelecionada,
+                          decoration: const InputDecoration(
+                            labelText: 'Conta bancária',
+                            border: OutlineInputBorder(),
+                          ),
+                          items:
+                              contas.map((c) {
+                                final texto =
+                                    '${c.descricao} ${c.banco != null && c.banco!.isNotEmpty ? "(${c.banco})" : ""}';
+                                return DropdownMenuItem(
+                                  value: c,
+                                  child: Text(texto),
+                                );
+                              }).toList(),
+                          onChanged: (novaConta) {
+                            setModalState(() {
+                              contaSelecionada = novaConta;
                             });
                           },
                         ),
@@ -756,7 +838,25 @@ class _HomePageState extends State<HomePage> {
                               );
                               return;
                             }
+                            // 🔹 Validação da conta bancária (PIX / boleto / transferência)
+                            final bool precisaContaBancaria =
+                                (formaSelecionada == FormaPagamento.pix ||
+                                    formaSelecionada == FormaPagamento.boleto ||
+                                    formaSelecionada ==
+                                        FormaPagamento.transferencia) &&
+                                contas.isNotEmpty;
 
+                            if (precisaContaBancaria &&
+                                contaSelecionada == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Selecione a conta bancária utilizada.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
                             final descricao =
                                 descricaoController.text.trim().isNotEmpty
                                     ? descricaoController.text.trim()
@@ -781,6 +881,7 @@ class _HomePageState extends State<HomePage> {
                                                   DateTime.now())
                                               : null,
                                       idCartao: cartaoSelecionado?.id,
+                                      idConta: contaSelecionada?.id, // ✅ edição
                                     )
                                     : Lancamento(
                                       valor: valor,
@@ -793,6 +894,9 @@ class _HomePageState extends State<HomePage> {
                                       dataPagamento:
                                           pago ? DateTime.now() : null,
                                       idCartao: cartaoSelecionado?.id,
+                                      idConta:
+                                          contaSelecionada
+                                              ?.id, // ✅ novo lançamento
                                     );
 
                             final bool ehCredito =
@@ -989,26 +1093,79 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // garante cartões atualizados
+    // garante cartões E contas atualizados
     await _carregarCartoes();
+    await _carregarContas();
 
-    // ===== AGRUPAMENTOS =====
+    final Map<String, _GrupoResumoDia> grupos = {};
 
-    final Map<FormaPagamento, double> totaisOutros = {};
-    final Map<int?, double> totaisPorCartao = {};
+    String _key(String label, String? subtitulo) => '$label|${subtitulo ?? ""}';
 
     for (final lanc in lancamentosDia) {
-      if (lanc.formaPagamento == FormaPagamento.credito) {
-        totaisPorCartao.update(
-          lanc.idCartao,
-          (v) => v + lanc.valor,
-          ifAbsent: () => lanc.valor,
-        );
+      final forma = lanc.formaPagamento;
+
+      String label;
+      String? subtitulo;
+      IconData icon;
+
+      if (forma == FormaPagamento.credito) {
+        // 🔹 Crédito → agrupa por cartão
+        CartaoCredito? cartao;
+        if (lanc.idCartao != null) {
+          try {
+            cartao = _cartoes.firstWhere((c) => c.id == lanc.idCartao);
+          } catch (_) {
+            cartao = null;
+          }
+        }
+
+        if (cartao != null) {
+          label = cartao.descricao;
+          subtitulo = '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}';
+        } else if (lanc.idCartao == null) {
+          label = 'Crédito (sem cartão vinculado)';
+          subtitulo = null;
+        } else {
+          label = 'Crédito (cartão id ${lanc.idCartao})';
+          subtitulo = null;
+        }
+
+        icon = Icons.credit_card;
       } else {
-        totaisOutros.update(
-          lanc.formaPagamento,
-          (v) => v + lanc.valor,
-          ifAbsent: () => lanc.valor,
+        // 🔹 Outras formas → agrupa por CONTA + FORMA
+        ContaBancaria? conta;
+        if (lanc.idConta != null) {
+          try {
+            conta = _contas.firstWhere((c) => c.id == lanc.idConta);
+          } catch (_) {
+            conta = null;
+          }
+        }
+
+        if (conta != null) {
+          label = conta.descricao;
+          subtitulo = forma.label; // Ex.: "Pix", "Boleto", "Transferência"
+        } else if (lanc.idConta == null) {
+          label = forma.label;
+          subtitulo = 'Sem conta vinculada';
+        } else {
+          label = forma.label;
+          subtitulo = 'Conta id ${lanc.idConta}';
+        }
+
+        icon = forma.icon;
+      }
+
+      final key = _key(label, subtitulo);
+
+      if (grupos.containsKey(key)) {
+        grupos[key]!.total += lanc.valor;
+      } else {
+        grupos[key] = _GrupoResumoDia(
+          label: label,
+          subtitulo: subtitulo,
+          icon: icon,
+          total: lanc.valor,
         );
       }
     }
@@ -1130,7 +1287,7 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(height: 16),
 
                         Text(
-                          'Detalhado por forma de pagamento',
+                          'Detalhado por forma / cartão / conta',
                           style: tema.textTheme.labelMedium?.copyWith(
                             color: Colors.grey[700],
                             letterSpacing: 0.3,
@@ -1146,61 +1303,16 @@ class _HomePageState extends State<HomePage> {
                     child: ListView(
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      children: [
-                        // OUTRAS FORMAS
-                        if (totaisOutros.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          ...totaisOutros.entries.map((entry) {
-                            final forma = entry.key;
-                            final valor = entry.value;
-
+                      children:
+                          grupos.values.map((g) {
                             return _cardAgrupamentoItem(
-                              icone: forma.icon,
-                              titulo: forma.label,
-                              valor: valor,
+                              icone: g.icon,
+                              titulo: g.label,
+                              subtitulo: g.subtitulo,
+                              valor: g.total,
                               color: corPrimaria,
                             );
-                          }),
-                        ],
-
-                        // CARTÕES
-                        if (totaisPorCartao.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          ...totaisPorCartao.entries.map((entry) {
-                            final idCartao = entry.key;
-                            final valor = entry.value;
-
-                            CartaoCredito? cartao;
-                            if (idCartao != null) {
-                              try {
-                                cartao = _cartoes.firstWhere(
-                                  (c) => c.id == idCartao,
-                                );
-                              } catch (_) {
-                                cartao = null;
-                              }
-                            }
-
-                            final titulo =
-                                cartao?.descricao ?? 'Cartão de crédito';
-
-                            final sub =
-                                cartao != null
-                                    ? '${cartao.bandeira} • **** ${cartao.ultimos4Digitos}'
-                                    : (idCartao == null
-                                        ? 'Sem cartão vinculado'
-                                        : 'Cartão (id $idCartao)');
-
-                            return _cardAgrupamentoItem(
-                              icone: Icons.credit_card,
-                              titulo: titulo,
-                              subtitulo: sub,
-                              valor: valor,
-                              color: corPrimaria,
-                            );
-                          }),
-                        ],
-                      ],
+                          }).toList(),
                     ),
                   ),
                 ],
