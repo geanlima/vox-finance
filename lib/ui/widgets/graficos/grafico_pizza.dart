@@ -118,7 +118,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
     final lista = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
     final cards = await _db.getCartoesCredito();
-    final contas = await _db.getContasBancarias(); // 👈 NOVO
+    final contas = await _db.getContasBancarias();
 
     Iterable<Lancamento> filtrados = lista;
 
@@ -133,12 +133,24 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     setState(() {
       _lancamentos = filtrados.toList();
       _cartoes = cards;
-      _contas = contas; // 👈 NOVO
+      _contas = contas;
       _carregando = false;
     });
   }
 
   // ======= TOTAIS =======
+
+  // 🔹 Média de gasto diário considerando apenas os dias que tiveram gasto
+  double get _mediaDiariaMes {
+    final totaisDia = _totaisPorDia();
+
+    if (totaisDia.isEmpty) return 0;
+
+    final totalMes = totaisDia.values.fold<double>(0.0, (a, b) => a + b);
+    final qtdeDiasComGasto = totaisDia.length;
+
+    return qtdeDiasComGasto == 0 ? 0 : totalMes / qtdeDiasComGasto;
+  }
 
   double get _totalMes {
     return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
@@ -201,11 +213,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return '$formaLabel (conta id ${l.idConta})';
   }
 
-  /// 🔹 Forma pagamento: débito/pix/dinheiro etc. normal,
-  /// crédito agrupado por CARTÃO (descrição + bandeira + últimos 4 dígitos)
-  /// 🔹 Forma pagamento:
-  /// - Crédito agrupado por CARTÃO
-  /// - Demais formas agrupadas por CONTA + forma (quando tiver conta)
+  /// 🔹 Forma pagamento agrupada:
+  /// - Crédito por CARTÃO
+  /// - Demais por CONTA + forma (quando tiver conta)
   Map<String, _GrupoFormaPagamento> _totaisPorFormaPagamentoAgrupado() {
     final Map<String, _GrupoFormaPagamento> mapa = {};
 
@@ -228,7 +238,6 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return mapa;
   }
 
-  /// 🔹 Mapa: label (forma/cartão) → lista de lançamentos
   /// 🔹 Mapa: label (forma/cartão/conta) → lista de lançamentos
   Map<String, List<Lancamento>> _lancamentosPorGrupoFormaPagamento() {
     final Map<String, List<Lancamento>> mapa = {};
@@ -241,7 +250,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return mapa;
   }
 
-  /// 🔹 Total por dia do mês (cada dia é um "grupo")
+  // 🔹 Total por dia do mês (cada dia é um "grupo")
   Map<DateTime, double> _totaisPorDia() {
     final Map<DateTime, double> totais = {};
     for (final l in _lancamentos) {
@@ -262,6 +271,96 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       mapa.putIfAbsent(d, () => []).add(l);
     }
     return mapa;
+  }
+
+  // ======= DIA MAIOR / MENOR GASTO =======
+
+  DateTime? get _diaMaiorGasto {
+    final mapa = _totaisPorDia();
+    if (mapa.isEmpty) return null;
+    return mapa.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+  }
+
+  DateTime? get _diaMenorGasto {
+    final mapa = _totaisPorDia();
+    if (mapa.isEmpty) return null;
+    return mapa.entries.reduce((a, b) => a.value < b.value ? a : b).key;
+  }
+
+  double get _valorDiaMaiorGasto {
+    final dia = _diaMaiorGasto;
+    if (dia == null) return 0;
+    return _totaisPorDia()[dia] ?? 0;
+  }
+
+  double get _valorDiaMenorGasto {
+    final dia = _diaMenorGasto;
+    if (dia == null) return 0;
+    return _totaisPorDia()[dia] ?? 0;
+  }
+
+  // ======= MÉDIA DIÁRIA + DIA DE MAIOR GASTO (BOTTOM SHEET) =======
+
+  // ======= MÉDIA DIÁRIA → DETALHE IGUAL AO "DETALHE DO DIA" =======
+
+  void _mostrarDiaMaiorGasto() {
+    final totaisDia = _totaisPorDia();
+
+    if (totaisDia.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há lançamentos neste mês para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    // pega o dia com maior gasto
+    final entryMaior = totaisDia.entries.reduce(
+      (a, b) => a.value >= b.value ? a : b,
+    );
+    final melhorDia = entryMaior.key;
+
+    // lançamentos desse dia
+    final lancsPorDia = _lancamentosPorDia();
+    final lancsDoMelhorDia = lancsPorDia[melhorDia] ?? const <Lancamento>[];
+
+    if (lancsDoMelhorDia.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há lançamentos nesse dia para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    // reaproveita o MESMO layout do "Detalhe do dia" (igual da imagem)
+    _mostrarDetalheLancamentos(
+      titulo: 'Detalhe do dia',
+      subtitulo: _dateDiaFormat.format(melhorDia),
+      lancamentos: lancsDoMelhorDia,
+    );
+  }
+
+  /// 🔹 Bottom sheet genérico para um dia (usado pelos cards maior/menor gasto)
+  void _mostrarDetalheDoDia(DateTime dia) {
+    final dataLancs = _lancamentosPorDia();
+    final lancs = dataLancs[dia] ?? const <Lancamento>[];
+
+    if (lancs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há lançamentos nesse dia para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    _mostrarDetalheLancamentos(
+      titulo: 'Detalhe do dia',
+      subtitulo: _dateDiaFormat.format(dia),
+      lancamentos: lancs,
+    );
   }
 
   // ======= GRÁFICO =======
@@ -633,6 +732,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   Widget build(BuildContext context) {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
+    final mediaDiariaFormatada = _currency.format(_mediaDiariaMes);
+
+    final diaMaior = _diaMaiorGasto;
+    final diaMenor = _diaMenorGasto;
+    final valorMaior = _valorDiaMaiorGasto;
+    final valorMenor = _valorDiaMenorGasto;
 
     // título da lista de detalhe, de acordo com o agrupamento
     String _tituloDetalhe() {
@@ -798,7 +903,85 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+
+                // ====== MÉDIA DIÁRIA (CLICÁVEL) ======
+                InkWell(
+                  onTap: _mostrarDiaMaiorGasto,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.secondary.withOpacity(0.06),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.timeline,
+                          color: Theme.of(context).colorScheme.secondary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Média diária (dias com gasto):',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          mediaDiariaFormatada,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ====== DIA QUE GASTEI MAIS / MENOS (MESMA LINHA) ======
+                if (diaMaior != null || diaMenor != null) ...[
+                  Row(
+                    children: [
+                      if (diaMaior != null)
+                        Expanded(
+                          child: _buildCardDiaExtremo(
+                            titulo: 'Maior Gasto',
+                            dia: diaMaior,
+                            valor: valorMaior,
+                            cor: Colors.redAccent,
+                            icon: Icons.trending_up,
+                            onTap: () => _mostrarDetalheDoDia(diaMaior),
+                          ),
+                        ),
+                      if (diaMaior != null && diaMenor != null)
+                        const SizedBox(width: 8),
+                      if (diaMenor != null)
+                        Expanded(
+                          child: _buildCardDiaExtremo(
+                            titulo: 'Menor Gasto',
+                            dia: diaMenor,
+                            valor: valorMenor,
+                            cor: Colors.blueAccent,
+                            icon: Icons.trending_down,
+                            onTap: () => _mostrarDetalheDoDia(diaMenor),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 if (_carregando)
                   const SizedBox(
@@ -1103,6 +1286,59 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCardDiaExtremo({
+    required String titulo,
+    required DateTime dia,
+    required double valor,
+    required Color cor,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: cor.withOpacity(0.06),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: cor, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                titulo,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _currency.format(valor),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  _dateDiaFormat.format(dia),
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
