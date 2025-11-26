@@ -299,49 +299,6 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return _totaisPorDia()[dia] ?? 0;
   }
 
-  // ======= MÉDIA DIÁRIA + DIA DE MAIOR GASTO (BOTTOM SHEET) =======
-
-  // ======= MÉDIA DIÁRIA → DETALHE IGUAL AO "DETALHE DO DIA" =======
-
-  void _mostrarDiaMaiorGasto() {
-    final totaisDia = _totaisPorDia();
-
-    if (totaisDia.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não há lançamentos neste mês para detalhar.'),
-        ),
-      );
-      return;
-    }
-
-    // pega o dia com maior gasto
-    final entryMaior = totaisDia.entries.reduce(
-      (a, b) => a.value >= b.value ? a : b,
-    );
-    final melhorDia = entryMaior.key;
-
-    // lançamentos desse dia
-    final lancsPorDia = _lancamentosPorDia();
-    final lancsDoMelhorDia = lancsPorDia[melhorDia] ?? const <Lancamento>[];
-
-    if (lancsDoMelhorDia.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não há lançamentos nesse dia para detalhar.'),
-        ),
-      );
-      return;
-    }
-
-    // reaproveita o MESMO layout do "Detalhe do dia" (igual da imagem)
-    _mostrarDetalheLancamentos(
-      titulo: 'Detalhe do dia',
-      subtitulo: _dateDiaFormat.format(melhorDia),
-      lancamentos: lancsDoMelhorDia,
-    );
-  }
-
   /// 🔹 Bottom sheet genérico para um dia (usado pelos cards maior/menor gasto)
   void _mostrarDetalheDoDia(DateTime dia) {
     final dataLancs = _lancamentosPorDia();
@@ -384,7 +341,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 80,
+          radius: 110,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 12,
@@ -726,6 +683,117 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     );
   }
 
+  // ======= DETALHE DO GRÁFICO (BOTTOM SHEET COM LEGENDA) =======
+
+  String _tituloDetalhe() {
+    switch (_tipo) {
+      case TipoAgrupamentoPizza.categoria:
+        return 'Detalhado por categoria';
+      case TipoAgrupamentoPizza.formaPagamento:
+        return 'Detalhado por forma / cartão';
+      case TipoAgrupamentoPizza.dia:
+      default:
+        return 'Detalhado por dia';
+    }
+  }
+
+  void _mostrarDetalhamentoGrafico() {
+    if (_lancamentos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sem lançamentos neste período para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    final tema = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        Widget detalheWidget;
+
+        switch (_tipo) {
+          case TipoAgrupamentoPizza.categoria:
+            detalheWidget = _buildLegendaCategoria();
+            break;
+          case TipoAgrupamentoPizza.formaPagamento:
+            detalheWidget = _buildLegendaFormaPagamento();
+            break;
+          case TipoAgrupamentoPizza.dia:
+          default:
+            detalheWidget = _buildLegendaDia();
+            break;
+        }
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Text(
+                          _tituloDetalhe(),
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: detalheWidget,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ======= BUILD =======
 
   @override
@@ -738,19 +806,6 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final diaMenor = _diaMenorGasto;
     final valorMaior = _valorDiaMaiorGasto;
     final valorMenor = _valorDiaMenorGasto;
-
-    // título da lista de detalhe, de acordo com o agrupamento
-    String _tituloDetalhe() {
-      switch (_tipo) {
-        case TipoAgrupamentoPizza.categoria:
-          return 'Detalhado por categoria';
-        case TipoAgrupamentoPizza.formaPagamento:
-          return 'Detalhado por forma / cartão';
-        case TipoAgrupamentoPizza.dia:
-        default:
-          return 'Detalhado por dia';
-      }
-    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -907,7 +962,6 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
                 // ====== MÉDIA DIÁRIA (CLICÁVEL) ======
                 InkWell(
-                  onTap: _mostrarDiaMaiorGasto,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -996,47 +1050,40 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   )
                 else ...[
-                  // Card com o gráfico
-                  Card(
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: SizedBox(
-                        height: 210,
-                        child: PieChart(
-                          PieChartData(
-                            sections: _buildSections(),
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 0,
+                  // Card com o gráfico – maior e clicável
+                  InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _mostrarDetalhamentoGrafico,
+                    child: Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: SizedBox(
+                          height: 260, // gráfico maior
+                          child: PieChart(
+                            PieChartData(
+                              sections: _buildSections(),
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 0,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Título da listagem detalhada
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                  const SizedBox(height: 8),
+                  Center(
                     child: Text(
-                      _tituloDetalhe(),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                      'Toque no gráfico para ver o detalhamento',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  if (_tipo == TipoAgrupamentoPizza.categoria)
-                    _buildLegendaCategoria()
-                  else if (_tipo == TipoAgrupamentoPizza.formaPagamento)
-                    _buildLegendaFormaPagamento()
-                  else
-                    _buildLegendaDia(),
                 ],
               ],
             ),
@@ -1299,42 +1346,76 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: cor.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          color: cor.withOpacity(0.08),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: cor, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                titulo,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
+            // ÍCONE
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: cor.withOpacity(0.15),
+                shape: BoxShape.circle,
               ),
+              child: Icon(icon, color: cor, size: 18),
             ),
-            const SizedBox(width: 4),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _currency.format(valor),
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+
+            const SizedBox(width: 8),
+
+            // TEXTO (2 LINHAS)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // TÍTULO
+                  Text(
+                    titulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                Text(
-                  _dateDiaFormat.format(dia),
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
+                  const SizedBox(height: 2),
+
+                  // VALOR + DATA
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // VALOR
+                      Expanded(
+                        child: Text(
+                          _currency.format(valor),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 6),
+
+                      // DATA
+                      Text(
+                        _dateDiaFormat.format(dia),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
