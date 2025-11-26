@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, unreachable_switch_default, no_leading_underscores_for_local_identifiers
+// ignore_for_file: deprecated_member_use, unreachable_switch_default, no_leading_underscores_for_local_identifiers, unused_local_variable
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -139,6 +139,17 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   }
 
   // ======= TOTAIS =======
+
+  // 🔹 Média diária considerando TODOS os dias do mês (inclusive sem gasto)
+  double get _mediaDiariaMesCalendario {
+    final diasNoMes =
+        DateTime(_anoSelecionado, _mesSelecionado + 1, 0).day; // último dia
+
+    if (diasNoMes == 0) return 0;
+
+    final totalMes = _totalMes;
+    return totalMes / diasNoMes;
+  }
 
   // 🔹 Média de gasto diário considerando apenas os dias que tiveram gasto
   double get _mediaDiariaMes {
@@ -341,7 +352,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 110,
+          radius: 130,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 12,
@@ -367,7 +378,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 80,
+          radius: 130,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 12,
@@ -394,7 +405,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 80,
+          radius: 130,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 11,
@@ -801,6 +812,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
     final mediaDiariaFormatada = _currency.format(_mediaDiariaMes);
+    final mediaDiariaMesCalendarioFormatada = _currency.format(
+      _mediaDiariaMesCalendario,
+    );
 
     final diaMaior = _diaMaiorGasto;
     final diaMenor = _diaMenorGasto;
@@ -960,7 +974,55 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                 ),
                 const SizedBox(height: 8),
 
-                // ====== MÉDIA DIÁRIA (CLICÁVEL) ======
+                // 🔹 MÉDIA DIÁRIA (todos os dias do mês)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.secondary.withOpacity(0.06),
+                  ),
+                  child: Row(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.center, // 🔥 alinha verticalmente
+                    children: [
+                      Icon(
+                        Icons.calendar_month,
+                        color: Theme.of(context).colorScheme.secondary,
+                        size: 20,
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      const Expanded(
+                        // 🔥 evita estourar e mantém alinhamento perfeito
+                        child: Text(
+                          'Média diária:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+
+                      Text(
+                        mediaDiariaMesCalendarioFormatada,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // ====== MÉDIA DIÁRIA COM GASTOS======
                 InkWell(
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
@@ -1002,7 +1064,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(height: 10),
 
                 // ====== DIA QUE GASTEI MAIS / MENOS (MESMA LINHA) ======
                 if (diaMaior != null || diaMenor != null) ...[

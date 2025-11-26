@@ -37,9 +37,10 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
   final _db = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
-  // paleta simples para 2 linhas
+  // paleta simples para 3 linhas
   final Color _corBase = const Color(0xFF1976D2); // azul
   final Color _corComparacao = const Color(0xFFFBC02D); // amarelo
+  final Color _corComparacao2 = const Color(0xFF43A047); // verde
 
   TipoComparativoMes _tipo = TipoComparativoMes.categoria;
   Categoria? _categoriaSelecionada;
@@ -47,10 +48,12 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
 
   late DateTime _mesBase;
   DateTime? _mesComparacao;
+  DateTime? _mesComparacao2; // 🔹 novo
 
   bool _carregando = false;
   _SerieMes? _serieBase;
   _SerieMes? _serieComparacao;
+  _SerieMes? _serieComparacao2; // 🔹 novo
   int _maxDia = 31;
 
   @override
@@ -59,6 +62,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final agora = DateTime.now();
     _mesBase = DateTime(agora.year, agora.month, 1);
     _mesComparacao = null;
+    _mesComparacao2 = null;
     _recarregarDados();
   }
 
@@ -140,9 +144,21 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
       }
     }
 
+    _SerieMes? comp2;
+    if (_mesComparacao2 != null) {
+      comp2 = await _carregarSerieMes(
+        mesRef: _mesComparacao2!,
+        cor: _corComparacao2,
+      );
+      for (final d in comp2.valoresPorDia.keys) {
+        if (d > maxDia) maxDia = d;
+      }
+    }
+
     setState(() {
       _serieBase = base;
       _serieComparacao = comp;
+      _serieComparacao2 = comp2;
       _maxDia = maxDia;
       _carregando = false;
     });
@@ -182,6 +198,18 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
           spots: _spotsFromSerie(_serieComparacao!),
           isCurved: true,
           color: _serieComparacao!.cor,
+          barWidth: 3,
+          dotData: const FlDotData(show: false),
+        ),
+      );
+    }
+
+    if (_serieComparacao2 != null) {
+      lines.add(
+        LineChartBarData(
+          spots: _spotsFromSerie(_serieComparacao2!),
+          isCurved: true,
+          color: _serieComparacao2!.cor,
           barWidth: 3,
           dotData: const FlDotData(show: false),
         ),
@@ -229,7 +257,9 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
   // ============ DETALHAMENTO DIA A DIA (BOTTOM SHEET) ============
 
   void _mostrarDetalhamentoDiaADia() {
-    if (_serieBase == null && _serieComparacao == null) {
+    if (_serieBase == null &&
+        _serieComparacao == null &&
+        _serieComparacao2 == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Sem dados para detalhar com os filtros atuais.'),
@@ -240,10 +270,18 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
 
     final tema = Theme.of(context);
     final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
-    final labelComp =
+    final labelComp1 =
         _mesComparacao == null
             ? null
             : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
+    final labelComp2 =
+        _mesComparacao2 == null
+            ? null
+            : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
+
+    final titulos = <String>[labelBase];
+    if (labelComp1 != null) titulos.add(labelComp1);
+    if (labelComp2 != null) titulos.add(labelComp2);
 
     showModalBottomSheet(
       context: context,
@@ -298,9 +336,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          labelComp == null
-                              ? labelBase
-                              : '$labelBase  ×  $labelComp',
+                          titulos.join('  ×  '),
                           style: tema.textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),
@@ -317,10 +353,12 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                       itemBuilder: (context, index) {
                         final dia = index + 1;
                         final vBase = _serieBase?.valoresPorDia[dia] ?? 0.0;
-                        final vComp =
+                        final vComp1 =
                             _serieComparacao?.valoresPorDia[dia] ?? 0.0;
+                        final vComp2 =
+                            _serieComparacao2?.valoresPorDia[dia] ?? 0.0;
 
-                        if (vBase == 0 && vComp == 0) {
+                        if (vBase == 0 && vComp1 == 0 && vComp2 == 0) {
                           return const SizedBox.shrink();
                         }
 
@@ -392,7 +430,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                                       ),
                                       const SizedBox(height: 4),
                                     ],
-                                    if (vComp > 0)
+                                    if (vComp1 > 0) ...[
                                       Row(
                                         children: [
                                           Container(
@@ -408,14 +446,47 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                                           Expanded(
                                             child: Text(
                                               _serieComparacao?.label ??
-                                                  'Mês comparação',
+                                                  'Mês comparação 1',
                                               style: const TextStyle(
                                                 fontSize: 11,
                                               ),
                                             ),
                                           ),
                                           Text(
-                                            _currency.format(vComp),
+                                            _currency.format(vComp1),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                    ],
+                                    if (vComp2 > 0)
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              color: _corComparacao2,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              _serieComparacao2?.label ??
+                                                  'Mês comparação 2',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            _currency.format(vComp2),
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 12,
@@ -448,10 +519,14 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final tema = Theme.of(context);
 
     final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
-    final labelComparacao =
+    final labelComparacao1 =
         _mesComparacao == null
             ? 'Nenhum'
             : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
+    final labelComparacao2 =
+        _mesComparacao2 == null
+            ? 'Nenhum'
+            : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
 
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
@@ -515,14 +590,14 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
             ),
             const SizedBox(height: 8),
 
-            // ===== COMPARAR COM =====
+            // ===== COMPARAR COM (1) =====
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _mesComparacao?.month,
                     decoration: const InputDecoration(
-                      labelText: 'Comparar mês',
+                      labelText: 'Comparar mês 1',
                       border: OutlineInputBorder(),
                     ),
                     items: [
@@ -559,7 +634,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   child: DropdownButtonFormField<int>(
                     value: _mesComparacao?.year,
                     decoration: const InputDecoration(
-                      labelText: 'Comparar ano',
+                      labelText: 'Ano 1',
                       border: OutlineInputBorder(),
                     ),
                     items: [
@@ -583,6 +658,87 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                           _mesComparacao = DateTime(
                             novoAno,
                             _mesComparacao?.month ?? _mesBase.month,
+                            1,
+                          );
+                        }
+                      });
+                      _recarregarDados();
+                    },
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // ===== COMPARAR COM (2) =====
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _mesComparacao2?.month,
+                    decoration: const InputDecoration(
+                      labelText: 'Comparar mês 2',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Nenhum'),
+                      ),
+                      ...List.generate(
+                        12,
+                        (i) => DropdownMenuItem(
+                          value: i + 1,
+                          child: Text(_nomeMes(i + 1)),
+                        ),
+                      ),
+                    ],
+                    onChanged: (novoMes) {
+                      setState(() {
+                        if (novoMes == null) {
+                          _mesComparacao2 = null;
+                        } else {
+                          _mesComparacao2 = DateTime(
+                            _mesComparacao2?.year ?? _mesBase.year,
+                            novoMes,
+                            1,
+                          );
+                        }
+                      });
+                      _recarregarDados();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _mesComparacao2?.year,
+                    decoration: const InputDecoration(
+                      labelText: 'Ano 2',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Nenhum'),
+                      ),
+                      ...List.generate(10, (i) {
+                        final ano = DateTime.now().year - 5 + i;
+                        return DropdownMenuItem(
+                          value: ano,
+                          child: Text('$ano'),
+                        );
+                      }),
+                    ],
+                    onChanged: (novoAno) {
+                      setState(() {
+                        if (novoAno == null) {
+                          _mesComparacao2 = null;
+                        } else {
+                          _mesComparacao2 = DateTime(
+                            novoAno,
+                            _mesComparacao2?.month ?? _mesBase.month,
                             1,
                           );
                         }
@@ -681,7 +837,9 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   child: CircularProgressIndicator(),
                 ),
               )
-            else if (_serieBase == null && _serieComparacao == null)
+            else if (_serieBase == null &&
+                _serieComparacao == null &&
+                _serieComparacao2 == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: Center(
@@ -755,12 +913,28 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                       _serieComparacao!.label,
                       style: const TextStyle(fontSize: 11),
                     ),
+                    const SizedBox(width: 12),
+                  ],
+                  if (_serieComparacao2 != null) ...[
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _corComparacao2,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _serieComparacao2!.label,
+                      style: const TextStyle(fontSize: 11),
+                    ),
                   ],
                 ],
               ),
               const SizedBox(height: 4),
               Text(
-                'Base: $labelBase • Comparação: $labelComparacao',
+                'Base: $labelBase • Comp.1: $labelComparacao1 • Comp.2: $labelComparacao2',
                 style: tema.textTheme.bodySmall?.copyWith(
                   color: Colors.grey[600],
                 ),
