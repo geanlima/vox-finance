@@ -44,16 +44,10 @@ class VoxFinanceApp extends StatelessWidget {
       // ================================
       routes: {
         '/login': (_) => LoginPage(),
-
         '/': (_) => const HomePage(),
-
         '/contas-pagar': (_) => const ContasPagarPage(),
-
         '/cartoes-credito': (_) => const CartaoCreditoPage(),
-
-        // 👇 Rota correta da nova tela de contas bancárias
         '/contas-bancarias': (_) => const ContasPage(),
-
         '/graficos': (_) => const GraficosPage(),
         '/comparativo-mes': (_) => const ComparativoMesPage(),
       },

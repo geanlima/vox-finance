@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, unreachable_switch_default, no_leading_underscores_for_local_identifiers
+// ignore_for_file: deprecated_member_use, unreachable_switch_default, no_leading_underscores_for_local_identifiers, unused_local_variable
 
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -118,7 +118,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
     final lista = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
     final cards = await _db.getCartoesCredito();
-    final contas = await _db.getContasBancarias(); // 👈 NOVO
+    final contas = await _db.getContasBancarias();
 
     Iterable<Lancamento> filtrados = lista;
 
@@ -133,12 +133,35 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     setState(() {
       _lancamentos = filtrados.toList();
       _cartoes = cards;
-      _contas = contas; // 👈 NOVO
+      _contas = contas;
       _carregando = false;
     });
   }
 
   // ======= TOTAIS =======
+
+  // 🔹 Média diária considerando TODOS os dias do mês (inclusive sem gasto)
+  double get _mediaDiariaMesCalendario {
+    final diasNoMes =
+        DateTime(_anoSelecionado, _mesSelecionado + 1, 0).day; // último dia
+
+    if (diasNoMes == 0) return 0;
+
+    final totalMes = _totalMes;
+    return totalMes / diasNoMes;
+  }
+
+  // 🔹 Média de gasto diário considerando apenas os dias que tiveram gasto
+  double get _mediaDiariaMes {
+    final totaisDia = _totaisPorDia();
+
+    if (totaisDia.isEmpty) return 0;
+
+    final totalMes = totaisDia.values.fold<double>(0.0, (a, b) => a + b);
+    final qtdeDiasComGasto = totaisDia.length;
+
+    return qtdeDiasComGasto == 0 ? 0 : totalMes / qtdeDiasComGasto;
+  }
 
   double get _totalMes {
     return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
@@ -201,11 +224,9 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return '$formaLabel (conta id ${l.idConta})';
   }
 
-  /// 🔹 Forma pagamento: débito/pix/dinheiro etc. normal,
-  /// crédito agrupado por CARTÃO (descrição + bandeira + últimos 4 dígitos)
-  /// 🔹 Forma pagamento:
-  /// - Crédito agrupado por CARTÃO
-  /// - Demais formas agrupadas por CONTA + forma (quando tiver conta)
+  /// 🔹 Forma pagamento agrupada:
+  /// - Crédito por CARTÃO
+  /// - Demais por CONTA + forma (quando tiver conta)
   Map<String, _GrupoFormaPagamento> _totaisPorFormaPagamentoAgrupado() {
     final Map<String, _GrupoFormaPagamento> mapa = {};
 
@@ -228,7 +249,6 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return mapa;
   }
 
-  /// 🔹 Mapa: label (forma/cartão) → lista de lançamentos
   /// 🔹 Mapa: label (forma/cartão/conta) → lista de lançamentos
   Map<String, List<Lancamento>> _lancamentosPorGrupoFormaPagamento() {
     final Map<String, List<Lancamento>> mapa = {};
@@ -241,7 +261,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return mapa;
   }
 
-  /// 🔹 Total por dia do mês (cada dia é um "grupo")
+  // 🔹 Total por dia do mês (cada dia é um "grupo")
   Map<DateTime, double> _totaisPorDia() {
     final Map<DateTime, double> totais = {};
     for (final l in _lancamentos) {
@@ -262,6 +282,53 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       mapa.putIfAbsent(d, () => []).add(l);
     }
     return mapa;
+  }
+
+  // ======= DIA MAIOR / MENOR GASTO =======
+
+  DateTime? get _diaMaiorGasto {
+    final mapa = _totaisPorDia();
+    if (mapa.isEmpty) return null;
+    return mapa.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+  }
+
+  DateTime? get _diaMenorGasto {
+    final mapa = _totaisPorDia();
+    if (mapa.isEmpty) return null;
+    return mapa.entries.reduce((a, b) => a.value < b.value ? a : b).key;
+  }
+
+  double get _valorDiaMaiorGasto {
+    final dia = _diaMaiorGasto;
+    if (dia == null) return 0;
+    return _totaisPorDia()[dia] ?? 0;
+  }
+
+  double get _valorDiaMenorGasto {
+    final dia = _diaMenorGasto;
+    if (dia == null) return 0;
+    return _totaisPorDia()[dia] ?? 0;
+  }
+
+  /// 🔹 Bottom sheet genérico para um dia (usado pelos cards maior/menor gasto)
+  void _mostrarDetalheDoDia(DateTime dia) {
+    final dataLancs = _lancamentosPorDia();
+    final lancs = dataLancs[dia] ?? const <Lancamento>[];
+
+    if (lancs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há lançamentos nesse dia para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    _mostrarDetalheLancamentos(
+      titulo: 'Detalhe do dia',
+      subtitulo: _dateDiaFormat.format(dia),
+      lancamentos: lancs,
+    );
   }
 
   // ======= GRÁFICO =======
@@ -285,7 +352,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 80,
+          radius: 130,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 12,
@@ -311,7 +378,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 80,
+          radius: 130,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 12,
@@ -338,7 +405,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         return PieChartSectionData(
           value: valor,
           title: '${percent.toStringAsFixed(1)}%',
-          radius: 80,
+          radius: 130,
           showTitle: true,
           titleStyle: const TextStyle(
             fontSize: 11,
@@ -627,25 +694,132 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     );
   }
 
+  // ======= DETALHE DO GRÁFICO (BOTTOM SHEET COM LEGENDA) =======
+
+  String _tituloDetalhe() {
+    switch (_tipo) {
+      case TipoAgrupamentoPizza.categoria:
+        return 'Detalhado por categoria';
+      case TipoAgrupamentoPizza.formaPagamento:
+        return 'Detalhado por forma / cartão';
+      case TipoAgrupamentoPizza.dia:
+      default:
+        return 'Detalhado por dia';
+    }
+  }
+
+  void _mostrarDetalhamentoGrafico() {
+    if (_lancamentos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sem lançamentos neste período para detalhar.'),
+        ),
+      );
+      return;
+    }
+
+    final tema = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        Widget detalheWidget;
+
+        switch (_tipo) {
+          case TipoAgrupamentoPizza.categoria:
+            detalheWidget = _buildLegendaCategoria();
+            break;
+          case TipoAgrupamentoPizza.formaPagamento:
+            detalheWidget = _buildLegendaFormaPagamento();
+            break;
+          case TipoAgrupamentoPizza.dia:
+          default:
+            detalheWidget = _buildLegendaDia();
+            break;
+        }
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Text(
+                          _tituloDetalhe(),
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: detalheWidget,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ======= BUILD =======
 
   @override
   Widget build(BuildContext context) {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
+    final mediaDiariaFormatada = _currency.format(_mediaDiariaMes);
+    final mediaDiariaMesCalendarioFormatada = _currency.format(
+      _mediaDiariaMesCalendario,
+    );
 
-    // título da lista de detalhe, de acordo com o agrupamento
-    String _tituloDetalhe() {
-      switch (_tipo) {
-        case TipoAgrupamentoPizza.categoria:
-          return 'Detalhado por categoria';
-        case TipoAgrupamentoPizza.formaPagamento:
-          return 'Detalhado por forma / cartão';
-        case TipoAgrupamentoPizza.dia:
-        default:
-          return 'Detalhado por dia';
-      }
-    }
+    final diaMaior = _diaMaiorGasto;
+    final diaMenor = _diaMenorGasto;
+    final valorMaior = _valorDiaMaiorGasto;
+    final valorMenor = _valorDiaMenorGasto;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -798,7 +972,133 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+
+                // 🔹 MÉDIA DIÁRIA (todos os dias do mês)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.secondary.withOpacity(0.06),
+                  ),
+                  child: Row(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.center, // 🔥 alinha verticalmente
+                    children: [
+                      Icon(
+                        Icons.calendar_month,
+                        color: Theme.of(context).colorScheme.secondary,
+                        size: 20,
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      const Expanded(
+                        // 🔥 evita estourar e mantém alinhamento perfeito
+                        child: Text(
+                          'Média diária:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+
+                      Text(
+                        mediaDiariaMesCalendarioFormatada,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // ====== MÉDIA DIÁRIA COM GASTOS======
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.secondary.withOpacity(0.06),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.timeline,
+                          color: Theme.of(context).colorScheme.secondary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Média diária (dias com gasto):',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          mediaDiariaFormatada,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // ====== DIA QUE GASTEI MAIS / MENOS (MESMA LINHA) ======
+                if (diaMaior != null || diaMenor != null) ...[
+                  Row(
+                    children: [
+                      if (diaMaior != null)
+                        Expanded(
+                          child: _buildCardDiaExtremo(
+                            titulo: 'Maior Gasto',
+                            dia: diaMaior,
+                            valor: valorMaior,
+                            cor: Colors.redAccent,
+                            icon: Icons.trending_up,
+                            onTap: () => _mostrarDetalheDoDia(diaMaior),
+                          ),
+                        ),
+                      if (diaMaior != null && diaMenor != null)
+                        const SizedBox(width: 8),
+                      if (diaMenor != null)
+                        Expanded(
+                          child: _buildCardDiaExtremo(
+                            titulo: 'Menor Gasto',
+                            dia: diaMenor,
+                            valor: valorMenor,
+                            cor: Colors.blueAccent,
+                            icon: Icons.trending_down,
+                            onTap: () => _mostrarDetalheDoDia(diaMenor),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 if (_carregando)
                   const SizedBox(
@@ -813,47 +1113,40 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     ),
                   )
                 else ...[
-                  // Card com o gráfico
-                  Card(
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: SizedBox(
-                        height: 210,
-                        child: PieChart(
-                          PieChartData(
-                            sections: _buildSections(),
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 0,
+                  // Card com o gráfico – maior e clicável
+                  InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _mostrarDetalhamentoGrafico,
+                    child: Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: SizedBox(
+                          height: 260, // gráfico maior
+                          child: PieChart(
+                            PieChartData(
+                              sections: _buildSections(),
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 0,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Título da listagem detalhada
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                  const SizedBox(height: 8),
+                  Center(
                     child: Text(
-                      _tituloDetalhe(),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                      'Toque no gráfico para ver o detalhamento',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  if (_tipo == TipoAgrupamentoPizza.categoria)
-                    _buildLegendaCategoria()
-                  else if (_tipo == TipoAgrupamentoPizza.formaPagamento)
-                    _buildLegendaFormaPagamento()
-                  else
-                    _buildLegendaDia(),
                 ],
               ],
             ),
@@ -1103,6 +1396,93 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCardDiaExtremo({
+    required String titulo,
+    required DateTime dia,
+    required double valor,
+    required Color cor,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: cor.withOpacity(0.08),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ÍCONE
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: cor.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: cor, size: 18),
+            ),
+
+            const SizedBox(width: 8),
+
+            // TEXTO (2 LINHAS)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // TÍTULO
+                  Text(
+                    titulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+
+                  // VALOR + DATA
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // VALOR
+                      Expanded(
+                        child: Text(
+                          _currency.format(valor),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 6),
+
+                      // DATA
+                      Text(
+                        _dateDiaFormat.format(dia),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

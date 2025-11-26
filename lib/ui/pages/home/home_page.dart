@@ -1077,6 +1077,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  String _descricaoComParcela(Lancamento l) {
+    if (l.parcelaTotal != null &&
+        l.parcelaTotal! > 1 &&
+        l.parcelaNumero != null &&
+        l.parcelaNumero! > 0) {
+      // Ex.: Mercado (1/10)
+      return '${l.descricao} (${l.parcelaNumero}/${l.parcelaTotal})';
+    }
+    return l.descricao;
+  }
+
   // ===========================================
   //   NOVO "Gastos detalhados do dia"
   //   (mesmo layout da tela Gráficos)
