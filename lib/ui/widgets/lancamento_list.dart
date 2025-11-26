@@ -33,9 +33,28 @@ class LancamentoList extends StatelessWidget {
         final lanc = lancamentos[index];
         final isFatura = lanc.pagamentoFatura;
 
-        // 👇 Status baseado no campo pago
+        // status
         final statusTexto = lanc.pago ? 'Pago' : 'Pendente';
         final statusCor = lanc.pago ? Colors.green : Colors.orange;
+
+        // 👉 verifica se é parcelado
+        final bool ehParcelado =
+            lanc.parcelaTotal != null && (lanc.parcelaTotal ?? 0) > 1;
+
+        // monta o texto do subtítulo
+        final buffer =
+            StringBuffer()
+              ..write(lanc.descricao)
+              ..write(isFatura ? ' (Pagamento de fatura)' : '')
+              ..write('\nStatus: $statusTexto');
+
+        if (ehParcelado) {
+          buffer.write(
+            '\nParcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
+          ); // 👈 aqui
+        }
+
+        buffer.write('\n${dateHoraFormat.format(lanc.dataHora)}');
 
         return Card(
           shape: RoundedRectangleBorder(
@@ -51,12 +70,10 @@ class LancamentoList extends StatelessWidget {
               ),
             ),
             subtitle: Text(
-              '${lanc.descricao}'
-              '${isFatura ? ' (Pagamento de fatura)' : ''}\n'
-              'Status: $statusTexto\n'
-              '${dateHoraFormat.format(lanc.dataHora)}',
+              buffer.toString(),
               style: TextStyle(color: statusCor),
             ),
+            // se tiver parcela, vira “4 linhas”
             isThreeLine: true,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
