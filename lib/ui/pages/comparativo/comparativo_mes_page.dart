@@ -68,55 +68,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     return nome[0].toUpperCase() + nome.substring(1);
   }
 
-  Future<void> _selecionarMesBase() async {
-    final data = await showDatePicker(
-      context: context,
-      initialDate: _mesBase,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (data == null) return;
-
-    setState(() {
-      _mesBase = DateTime(data.year, data.month, 1);
-    });
-    _recarregarDados();
-  }
-
-  Future<void> _selecionarMesComparacao() async {
-    final data = await showDatePicker(
-      context: context,
-      initialDate: _mesComparacao ?? _mesBase,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (data == null) return;
-
-    final novo = DateTime(data.year, data.month, 1);
-
-    // impede comparar o mesmo mês
-    if (novo.year == _mesBase.year && novo.month == _mesBase.month) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecione um mês diferente do mês base.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _mesComparacao = novo;
-    });
-    _recarregarDados();
-  }
-
-  void _limparMesComparacao() {
-    setState(() {
-      _mesComparacao = null;
-      _serieComparacao = null;
-    });
-  }
-
   Future<_SerieMes> _carregarSerieMes({
     required DateTime mesRef,
     required Color cor,
@@ -251,7 +202,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
             showTitles: true,
             reservedSize: 40,
             getTitlesWidget: (value, meta) {
-              // mostra o valor em R$ simplificado
               return Text(
                 _currency.format(value).replaceAll('R\$', '').trim(),
                 style: const TextStyle(fontSize: 9),
@@ -263,7 +213,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 22,
-            interval: (_maxDia > 15) ? 2 : 1, // pra não poluir
+            interval: (_maxDia > 15) ? 2 : 1,
             getTitlesWidget: (value, meta) {
               return Text(
                 value.toInt().toString(),
@@ -273,6 +223,221 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
           ),
         ),
       ),
+    );
+  }
+
+  // ============ DETALHAMENTO DIA A DIA (BOTTOM SHEET) ============
+
+  void _mostrarDetalhamentoDiaADia() {
+    if (_serieBase == null && _serieComparacao == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sem dados para detalhar com os filtros atuais.'),
+        ),
+      );
+      return;
+    }
+
+    final tema = Theme.of(context);
+    final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
+    final labelComp =
+        _mesComparacao == null
+            ? null
+            : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.75,
+          minChildSize: 0.55,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Detalhamento dia a dia',
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          labelComp == null
+                              ? labelBase
+                              : '$labelBase  ×  $labelComp',
+                          style: tema.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: _maxDia,
+                      itemBuilder: (context, index) {
+                        final dia = index + 1;
+                        final vBase = _serieBase?.valoresPorDia[dia] ?? 0.0;
+                        final vComp =
+                            _serieComparacao?.valoresPorDia[dia] ?? 0.0;
+
+                        if (vBase == 0 && vComp == 0) {
+                          return const SizedBox.shrink();
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            color: tema.colorScheme.surfaceVariant.withOpacity(
+                              0.25,
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  dia.toString().padLeft(2, '0'),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (vBase > 0) ...[
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              color: _corBase,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              _serieBase?.label ?? 'Mês base',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            _currency.format(vBase),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                    ],
+                                    if (vComp > 0)
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              color: _corComparacao,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              _serieComparacao?.label ??
+                                                  'Mês comparação',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            _currency.format(vComp),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -290,7 +455,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
 
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
-    final double chartHeight = isLandscape ? 180 : 230;
+    final double chartHeight = isLandscape ? 220 : 280; // 🔺 aumentei
 
     return Scaffold(
       appBar: AppBar(title: const Text('Comparativo de meses')),
@@ -302,7 +467,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
             // ===== MÊS BASE =====
             Row(
               children: [
-                // MÊS
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _mesBase.month,
@@ -327,7 +491,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // ANO
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _mesBase.year,
@@ -355,7 +518,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
             // ===== COMPARAR COM =====
             Row(
               children: [
-                // MÊS
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _mesComparacao?.month,
@@ -393,7 +555,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // ANO
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _mesComparacao?.year,
@@ -531,7 +692,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                 ),
               )
             else ...[
-              // GRÁFICO
+              // GRÁFICO (CLICÁVEL)
               SizedBox(
                 height: chartHeight,
                 child: Card(
@@ -539,13 +700,29 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: LineChart(_buildLineChartData()),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _mostrarDetalhamentoDiaADia,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: LineChart(_buildLineChartData()),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _mostrarDetalhamentoDiaADia,
+                  icon: const Icon(Icons.list_alt_outlined, size: 18),
+                  label: const Text(
+                    'Ver dia a dia',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
 
               // LEGENDA
               Row(
@@ -560,7 +737,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _serieBase?.label ?? 'Mês base',
+                    _serieBase?.label ?? labelBase,
                     style: const TextStyle(fontSize: 11),
                   ),
                   const SizedBox(width: 12),
@@ -581,96 +758,12 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   ],
                 ],
               ),
-              const SizedBox(height: 8),
-
-              // LISTA DIA A DIA (sem Expanded, usando shrinkWrap)
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _maxDia,
-                itemBuilder: (context, index) {
-                  final dia = index + 1;
-                  final vBase = _serieBase?.valoresPorDia[dia] ?? 0.0;
-                  final vComp = _serieComparacao?.valoresPorDia[dia] ?? 0.0;
-
-                  if (vBase == 0 && vComp == 0) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 3),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Dia $dia',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          if (vBase > 0)
-                            Row(
-                              children: [
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    color: _corBase,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    _serieBase!.label,
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                ),
-                                Text(
-                                  _currency.format(vBase),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          if (vComp > 0)
-                            Row(
-                              children: [
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    color: _corComparacao,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    _serieComparacao!.label,
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                ),
-                                Text(
-                                  _currency.format(vComp),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+              const SizedBox(height: 4),
+              Text(
+                'Base: $labelBase • Comparação: $labelComparacao',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                ),
               ),
             ],
           ],
