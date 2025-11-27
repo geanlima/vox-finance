@@ -191,7 +191,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
       ),
       child: StatefulBuilder(
         builder: (context, setModalState) {
-          void _recalcularCartoes() {
+          void recalcularCartoes() {
             _cartoesFiltrados = _filtrarCartoes(
               _formaSelecionada,
               _pagamentoFatura,
@@ -204,9 +204,9 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
           }
 
           // recalcula sempre no início do build
-          _recalcularCartoes();
+          recalcularCartoes();
 
-          String _labelCartao() {
+          String labelCartao() {
             if (_pagamentoFatura) {
               return 'Cartão cuja fatura está sendo paga';
             }
@@ -316,7 +316,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                   onChanged: (novo) {
                     setModalState(() {
                       _formaSelecionada = novo;
-                      _recalcularCartoes();
+                      recalcularCartoes();
                     });
                   },
                 ),
@@ -330,7 +330,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                   onChanged: (v) {
                     setModalState(() {
                       _pagamentoFatura = v ?? false;
-                      _recalcularCartoes();
+                      recalcularCartoes();
                     });
                   },
                 ),
@@ -358,7 +358,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                     DropdownButtonFormField<CartaoCredito>(
                       value: _cartaoSelecionado,
                       decoration: InputDecoration(
-                        labelText: _labelCartao(),
+                        labelText: labelCartao(),
                         border: const OutlineInputBorder(),
                       ),
                       items:
