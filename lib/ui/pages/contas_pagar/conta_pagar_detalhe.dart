@@ -4,11 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:vox_finance/ui/core/enum/categoria.dart';
-import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
-import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class ContaPagarDetalhePage extends StatefulWidget {
@@ -47,44 +43,18 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
   }
 
   Future<void> _registrarPagamento(ContaPagar parcela) async {
-    final agora = DateTime.now();
-
-    // 1) Marca parcela como paga no SQLite
+    // Marca parcela como paga no SQLite
     if (parcela.id != null) {
       await _dbService.marcarParcelaComoPaga(parcela.id!, true);
     }
-
-    // 2) Cria lançamento financeiro correspondente
-    final lanc = Lancamento(
-      // id pode ser null que o SQLite gera
-      id: null,
-      valor: parcela.valor,
-      descricao:
-          'Parcela ${parcela.parcelaNumero}/${parcela.parcelaTotal} - ${parcela.descricao}',
-      formaPagamento: FormaPagamento.debito, // default
-      dataHora: agora,
-      pagamentoFatura: false,
-      pago: true,
-      dataPagamento: agora,
-      categoria: Categoria.impostosETaxas,
-      grupoParcelas: parcela.grupoParcelas,
-      parcelaNumero: parcela.parcelaNumero,
-      parcelaTotal: parcela.parcelaTotal,
-      // se o seu modelo tiver esse campo:
-      // ehReceita: false,
-    );
-
-    await _dbService.salvarLancamento(lanc);
 
     // Recarrega a lista a partir do banco
     await _carregar();
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pagamento registrado e lançamento criado.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Pagamento registrado.')));
     }
   }
 

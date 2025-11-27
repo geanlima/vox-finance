@@ -35,7 +35,7 @@ class DbService {
 
     _db = await openDatabase(
       path,
-      version: 15, // ⬅️ aumentei para 13 por causa do ajuste de 'ultimos4'
+      version: 16, // ⬅️ aumentei para 13 por causa do ajuste de 'ultimos4'
       onCreate: (db, version) async {
         await _criarTabelasV9(db);
       },
@@ -203,11 +203,12 @@ class DbService {
           }
         }
 
-                // ---- V14: garante que a coluna id_conta exista em lancamentos ----
+        // ---- V14: garante que a coluna id_conta exista em lancamentos ----
         if (oldVersion < 14) {
           try {
-            final infoLanc =
-                await db.rawQuery('PRAGMA table_info(lancamentos);');
+            final infoLanc = await db.rawQuery(
+              'PRAGMA table_info(lancamentos);',
+            );
 
             final temIdConta = infoLanc.any(
               (col) => (col['name'] as String).toLowerCase() == 'id_conta',
@@ -226,8 +227,9 @@ class DbService {
         // ---- V15: caso alguém já tenha ido pra 14 sem o bloco acima ----
         if (oldVersion < 15) {
           try {
-            final infoLanc =
-                await db.rawQuery('PRAGMA table_info(lancamentos);');
+            final infoLanc = await db.rawQuery(
+              'PRAGMA table_info(lancamentos);',
+            );
 
             final temIdConta = infoLanc.any(
               (col) => (col['name'] as String).toLowerCase() == 'id_conta',
@@ -241,7 +243,26 @@ class DbService {
           } catch (e) {}
         }
 
+        // ---- V16: forma_pagamento, id_cartao, id_conta em conta_pagar ----
+        if (oldVersion < 16) {
+          try {
+            await db.execute(
+              'ALTER TABLE conta_pagar ADD COLUMN forma_pagamento INTEGER;',
+            );
+          } catch (e) {}
 
+          try {
+            await db.execute(
+              'ALTER TABLE conta_pagar ADD COLUMN id_cartao INTEGER;',
+            );
+          } catch (e) {}
+
+          try {
+            await db.execute(
+              'ALTER TABLE conta_pagar ADD COLUMN id_conta INTEGER;',
+            );
+          } catch (e) {}
+        }
       },
       onOpen: (db) async {
         // Garante que a tabela USUARIOS exista
@@ -336,7 +357,10 @@ class DbService {
         data_pagamento INTEGER,
         parcela_numero INTEGER,
         parcela_total INTEGER,
-        grupo_parcelas TEXT NOT NULL
+        grupo_parcelas TEXT NOT NULL,
+        forma_pagamento INTEGER,
+        id_cartao INTEGER,
+        id_conta INTEGER
       );
     ''');
 
@@ -483,6 +507,13 @@ class DbService {
   Future<int> salvarLancamento(Lancamento lanc) async {
     final database = await db;
 
+    final bool ehFaturaPagaDeCartao =
+        lanc.pagamentoFatura && lanc.pago && lanc.idCartao != null;
+
+    final DateTime dataPagamentoEfetiva = lanc.dataPagamento ?? DateTime.now();
+
+    int idGeradoOuAtualizado;
+
     if (lanc.id == null) {
       final dados = lanc.toMap();
       dados.remove('id');
@@ -493,15 +524,28 @@ class DbService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       lanc.id = id;
-      return id;
+      idGeradoOuAtualizado = id;
     } else {
-      return await database.update(
+      await database.update(
         'lancamentos',
         lanc.toMap(),
         where: 'id = ?',
         whereArgs: [lanc.id],
       );
+      idGeradoOuAtualizado = lanc.id!;
     }
+
+    // 🔹 Regra especial: se é pagamento de fatura de cartão e já está pago,
+    // quita as contas a pagar associadas a esse cartão.
+    if (ehFaturaPagaDeCartao) {
+      await _quitarContasPagarDoCartaoAteData(
+        database: database,
+        idCartao: lanc.idCartao!,
+        dataLimite: dataPagamentoEfetiva,
+      );
+    }
+
+    return idGeradoOuAtualizado;
   }
 
   Future<void> deletarLancamento(int id) async {
@@ -620,14 +664,65 @@ class DbService {
   Future<void> marcarLancamentoComoPago(int id, bool pago) async {
     final database = await db;
 
+    // Busca o lançamento atual pra saber se é fatura de cartão
+    final result = await database.query(
+      'lancamentos',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return;
+
+    final lanc = Lancamento.fromMap(result.first);
+
+    final agora = DateTime.now();
+
     await database.update(
       'lancamentos',
       {
         'pago': pago ? 1 : 0,
-        'data_pagamento': pago ? DateTime.now().millisecondsSinceEpoch : null,
+        'data_pagamento': pago ? agora.millisecondsSinceEpoch : null,
       },
       where: 'id = ?',
       whereArgs: [id],
+    );
+
+    // Se marcou como pago e é fatura de cartão -> quita contas a pagar
+    if (pago && lanc.pagamentoFatura && lanc.idCartao != null) {
+      await _quitarContasPagarDoCartaoAteData(
+        database: database,
+        idCartao: lanc.idCartao!,
+        dataLimite: agora,
+      );
+    }
+  }
+
+  Future<void> _quitarContasPagarDoCartaoAteData({
+    required Database database,
+    required int idCartao,
+    required DateTime dataLimite,
+  }) async {
+    // Data limite até o final do dia
+    final fimDia =
+        DateTime(
+          dataLimite.year,
+          dataLimite.month,
+          dataLimite.day,
+          23,
+          59,
+          59,
+          999,
+        ).millisecondsSinceEpoch;
+
+    final agoraMs = DateTime.now().millisecondsSinceEpoch;
+
+    await database.update(
+      'conta_pagar',
+      {'pago': 1, 'data_pagamento': agoraMs},
+      where:
+          'forma_pagamento = ? AND id_cartao = ? AND pago = 0 AND data_vencimento <= ?',
+      whereArgs: [FormaPagamento.credito.index, idCartao, fimDia],
     );
   }
 
@@ -732,6 +827,7 @@ class DbService {
     for (int i = 0; i < qtdParcelas; i++) {
       final DateTime dataParcela = datasParcelas[i];
 
+      // Lançamento da parcela
       final lancParcela = base.copyWith(
         id: null,
         valor: valorParcela,
@@ -746,21 +842,24 @@ class DbService {
 
       await database.insert('lancamentos', lancParcela.toMap());
 
-      if (!pagoBase) {
-        final conta = ContaPagar(
-          id: null,
-          descricao: lancParcela.descricao,
-          valor: valorParcela,
-          dataVencimento: dataParcela,
-          pago: false,
-          dataPagamento: null,
-          parcelaNumero: i + 1,
-          parcelaTotal: qtdParcelas,
-          grupoParcelas: grupo,
-        );
+      // 👉 Conta a pagar SEMPRE nasce pendente
+      final conta = ContaPagar(
+        id: null,
+        descricao: lancParcela.descricao,
+        valor: valorParcela,
+        dataVencimento: dataParcela,
+        pago: false,
+        dataPagamento: null,
+        parcelaNumero: i + 1,
+        parcelaTotal: qtdParcelas,
+        grupoParcelas: grupo,
+        // liga com a origem
+        formaPagamento: base.formaPagamento,
+        idCartao: base.idCartao,
+        idConta: base.idConta,
+      );
 
-        await database.insert('conta_pagar', conta.toMap());
-      }
+      await database.insert('conta_pagar', conta.toMap());
     }
   }
 
@@ -841,6 +940,20 @@ class DbService {
     dados.remove('id');
 
     await database.insert('lancamentos', dados);
+  }
+
+  // ============================================================
+  //  CONTA_PAGAR - EXCLUIR POR GRUPO
+  // ============================================================
+
+  Future<void> deletarContasPagarPorGrupo(String grupoParcelas) async {
+    final database = await db;
+
+    await database.delete(
+      'conta_pagar',
+      where: 'grupo_parcelas = ?',
+      whereArgs: [grupoParcelas],
+    );
   }
 
   // ============================================================
