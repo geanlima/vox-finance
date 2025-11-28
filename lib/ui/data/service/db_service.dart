@@ -545,6 +545,13 @@ class DbService {
       );
     }
 
+    // 🔹 Se for uma parcela que tem conta a pagar associada, sincroniza lá também
+    await _sincronizarContaPagarDaParcelaComLancamento(
+      database: database,
+      lancamento: lanc,
+      dataPagamentoEfetiva: dataPagamentoEfetiva,
+    );
+
     return idGeradoOuAtualizado;
   }
 
@@ -696,6 +703,30 @@ class DbService {
         dataLimite: agora,
       );
     }
+  }
+
+  Future<void> _sincronizarContaPagarDaParcelaComLancamento({
+    required Database database,
+    required Lancamento lancamento,
+    required DateTime dataPagamentoEfetiva,
+  }) async {
+    // Só faz sentido se fizer parte de um grupo de parcelas
+    if (lancamento.grupoParcelas == null || lancamento.parcelaNumero == null) {
+      return;
+    }
+
+    await database.update(
+      'conta_pagar',
+      {
+        'pago': lancamento.pago ? 1 : 0,
+        'data_pagamento':
+            lancamento.pago
+                ? dataPagamentoEfetiva.millisecondsSinceEpoch
+                : null,
+      },
+      where: 'grupo_parcelas = ? AND parcela_numero = ?',
+      whereArgs: [lancamento.grupoParcelas, lancamento.parcelaNumero],
+    );
   }
 
   Future<void> _quitarContasPagarDoCartaoAteData({
@@ -933,6 +964,7 @@ class DbService {
       pagamentoFatura: true,
       categoria: base.categoria,
       pago: false,
+      dataPagamento: null,
       idCartao: base.idCartao,
     );
 
@@ -1027,6 +1059,7 @@ class DbService {
     final dataVencimento = DateTime(anoAtual, mesAtual, diaVencimento);
     final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
 
+    // 🔹 Se já existir fatura para esse vencimento, atualiza e garante que fique PENDENTE
     final faturaExistente = await database.query(
       'lancamentos',
       where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
@@ -1038,13 +1071,18 @@ class DbService {
       final idFatura = faturaExistente.first['id'] as int;
       await database.update(
         'lancamentos',
-        {'valor': total},
+        {
+          'valor': total,
+          'pago': 0, // ← volta a ser pendente
+          'data_pagamento': null, // ← limpa data de pagamento
+        },
         where: 'id = ?',
         whereArgs: [idFatura],
       );
       return;
     }
 
+    // 🔹 Se não existir, cria a fatura já como pendente
     final primeiraCompra = Lancamento.fromMap(compras.first);
 
     final descricaoFatura =
@@ -1062,7 +1100,12 @@ class DbService {
       idCartao: idCartao,
     );
 
-    await database.insert('lancamentos', lancFatura.toMap());
+    final dados = lancFatura.toMap();
+    // Garantindo explicitamente que nasce pendente
+    dados['pago'] = 0;
+    dados['data_pagamento'] = null;
+
+    await database.insert('lancamentos', dados);
   }
 
   // ============================================================

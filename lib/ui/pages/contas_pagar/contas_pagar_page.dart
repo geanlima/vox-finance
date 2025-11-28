@@ -81,7 +81,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
       if (cartao != null) {
         final ultimos =
-            (cartao.ultimos4Digitos?.isNotEmpty ?? false)
+            (cartao.ultimos4Digitos.isNotEmpty)
                 ? cartao.ultimos4Digitos
                 : '****';
         return 'Crédito - ${cartao.descricao} • **** $ultimos';

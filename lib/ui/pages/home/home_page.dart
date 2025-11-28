@@ -151,11 +151,7 @@ class _HomePageState extends State<HomePage> {
 
     for (final c in cartoesFechandoNoDia) {
       if (c.id != null) {
-        await _dbService.gerarFaturaDoCartao(
-          c.id!,
-          referencia:
-              diaSelecionado, // 👈 esse "diaSelecionado" é o mês da fatura
-        );
+        await _dbService.gerarFaturaDoCartao(c.id!, referencia: diaSelecionado);
       }
     }
 
@@ -163,7 +159,7 @@ class _HomePageState extends State<HomePage> {
       const SnackBar(content: Text('Fatura(s) gerada(s) com sucesso.')),
     );
 
-    await _carregarDoBanco(); // recarrega a tela (pode aparecer o lançamento da fatura)
+    await _carregarDoBanco();
   }
 
   // ============================================================

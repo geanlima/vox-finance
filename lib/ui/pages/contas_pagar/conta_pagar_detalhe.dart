@@ -1,10 +1,14 @@
 // lib/ui/pages/contas_pagar/conta_pagar_detalhe.dart
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, depend_on_referenced_packages
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/core/enum/categoria.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:collection/collection.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class ContaPagarDetalhePage extends StatefulWidget {
@@ -43,18 +47,118 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
   }
 
   Future<void> _registrarPagamento(ContaPagar parcela) async {
-    // Marca parcela como paga no SQLite
-    if (parcela.id != null) {
-      await _dbService.marcarParcelaComoPaga(parcela.id!, true);
+    final agora = DateTime.now();
+    final db = _dbService;
+
+    // ------------------------------------------------------
+    // 0) Verificar se é CARTÃO DE CRÉDITO
+    //    Se for cartão → apenas marcar contas a pagar como pago
+    //    (Quem cuida dos lançamentos é a fatura)
+    // ------------------------------------------------------
+    final bool ehCartao =
+        parcela.formaPagamento == FormaPagamento.credito &&
+        parcela.idCartao != null;
+
+    if (ehCartao) {
+      // Marca apenas o contas a pagar
+      if (parcela.id != null) {
+        await db.marcarParcelaComoPaga(parcela.id!, true);
+      }
+
+      await _carregar();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Parcela de cartão paga. Aguarde quitação na fatura.',
+            ),
+          ),
+        );
+      }
+      return; // 🔥 IMPORTANTE: cartão NÃO segue o fluxo normal!
     }
 
-    // Recarrega a lista a partir do banco
+    // ------------------------------------------------------
+    // 1) Localizar lançamento FUTURO associado
+    // ------------------------------------------------------
+    Lancamento? lancamentoOriginal;
+
+    final lancamentosDoGrupo = await db.getParcelasPorGrupoLancamento(
+      parcela.grupoParcelas,
+    );
+
+    lancamentoOriginal = lancamentosDoGrupo.firstWhereOrNull(
+      (l) => (l.parcelaNumero ?? 1) == (parcela.parcelaNumero ?? 1),
+    );
+
+    // fallback caso não ache pelo grupo
+    if (lancamentoOriginal == null) {
+      final database = await db.db;
+      final result = await database.query(
+        'lancamentos',
+        where: 'data_hora = ? AND valor = ? AND descricao = ?',
+        whereArgs: [
+          parcela.dataVencimento.millisecondsSinceEpoch,
+          parcela.valor,
+          parcela.descricao,
+        ],
+        limit: 1,
+      );
+
+      if (result.isNotEmpty) {
+        lancamentoOriginal = Lancamento.fromMap(result.first);
+      }
+    }
+
+    // ------------------------------------------------------
+    // 2) Apagar lançamento FUTURO original
+    // ------------------------------------------------------
+    if (lancamentoOriginal != null && lancamentoOriginal.id != null) {
+      await db.deletarLancamento(lancamentoOriginal.id!);
+    }
+
+    // ------------------------------------------------------
+    // 3) Criar novo lançamento PAGO NA DATA ATUAL
+    // ------------------------------------------------------
+    final novoLancamento = Lancamento(
+      id: null,
+      valor: parcela.valor,
+      descricao:
+          'Parcela ${parcela.parcelaNumero}/${parcela.parcelaTotal} - ${parcela.descricao}',
+      formaPagamento: parcela.formaPagamento ?? FormaPagamento.debito,
+      dataHora: agora,
+      pagamentoFatura: false,
+      pago: true,
+      dataPagamento: agora,
+      categoria: lancamentoOriginal?.categoria ?? Categoria.outros,
+      idCartao: parcela.idCartao,
+      idConta: parcela.idConta,
+      grupoParcelas: parcela.grupoParcelas,
+      parcelaNumero: parcela.parcelaNumero,
+      parcelaTotal: parcela.parcelaTotal,
+    );
+
+    await db.salvarLancamento(novoLancamento);
+
+    // ------------------------------------------------------
+    // 4) Marcar conta a pagar como paga
+    // ------------------------------------------------------
+    if (parcela.id != null) {
+      await db.marcarParcelaComoPaga(parcela.id!, true);
+    }
+
+    // ------------------------------------------------------
+    // 5) Atualizar tela e feedback
+    // ------------------------------------------------------
     await _carregar();
 
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Pagamento registrado.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Parcela paga com sucesso. Lançamento atualizado.'),
+        ),
+      );
     }
   }
 
