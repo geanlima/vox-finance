@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/core/service/local_auth_service.dart';
 import 'package:vox_finance/ui/pages/auth/register_page.dart';
 import 'package:vox_finance/ui/pages/home/home_page.dart';
 
@@ -88,7 +88,8 @@ class _LoginPageState extends State<LoginPage> {
       final email = _emailController.text.trim();
       final senha = _senhaController.text.trim();
 
-      final usuario = await DbService.instance.loginUsuario(email, senha);
+      // 👉 Agora usa o serviço desacoplado
+      final usuario = await LocalAuthService.instance.loginLocal(email, senha);
 
       if (usuario == null) {
         _showMessage('Usuário ou senha inválidos.');
