@@ -1,4 +1,6 @@
 // lib/ui/data/models/conta_pagar.dart
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+
 class ContaPagar {
   int? id;
   String descricao;
@@ -10,6 +12,11 @@ class ContaPagar {
   int? parcelaTotal;
   String grupoParcelas;
 
+  // 🔹 Novos campos
+  FormaPagamento? formaPagamento;
+  int? idCartao;
+  int? idConta;
+
   ContaPagar({
     this.id,
     required this.descricao,
@@ -20,6 +27,9 @@ class ContaPagar {
     this.parcelaNumero,
     this.parcelaTotal,
     required this.grupoParcelas,
+    this.formaPagamento,
+    this.idCartao,
+    this.idConta,
   });
 
   Map<String, dynamic> toMap() {
@@ -33,6 +43,11 @@ class ContaPagar {
       'parcela_numero': parcelaNumero,
       'parcela_total': parcelaTotal,
       'grupo_parcelas': grupoParcelas,
+
+      // 🔹 novos campos no banco
+      'forma_pagamento': formaPagamento?.index,
+      'id_cartao': idCartao,
+      'id_conta': idConta,
     };
   }
 
@@ -54,6 +69,14 @@ class ContaPagar {
       parcelaNumero: map['parcela_numero'] as int?,
       parcelaTotal: map['parcela_total'] as int?,
       grupoParcelas: map['grupo_parcelas'] as String,
+
+      // 🔹 leitura segura dos novos campos
+      formaPagamento:
+          map['forma_pagamento'] != null
+              ? FormaPagamento.values[map['forma_pagamento'] as int]
+              : null,
+      idCartao: map['id_cartao'] as int?,
+      idConta: map['id_conta'] as int?,
     );
   }
 }
