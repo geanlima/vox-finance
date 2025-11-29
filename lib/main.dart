@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:vox_finance/ui/pages/auth/login_unificado_page.dart';
 import 'firebase_options.dart'; // 👈 gerado pelo flutterfire
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
 // 👉 MODO FIREBASE
-import 'package:vox_finance/ui/pages/auth/login_page_firebase.dart';
 
 import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_mes_page.dart';
@@ -49,8 +49,8 @@ class VoxFinanceApp extends StatelessWidget {
         // '/login': (_) => const LoginPage(),
 
         // 👉 LOGIN FIREBASE:
-        '/login': (_) => const LoginPageFirebase(),
-
+        //'/login': (_) => const LoginPageFirebase(),
+        '/login': (_) => const LoginUnificadoPage(),
         '/': (_) => const HomePage(),
         '/contas-pagar': (_) => const ContasPagarPage(),
         '/cartoes-credito': (_) => const CartaoCreditoPage(),
