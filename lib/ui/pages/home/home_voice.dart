@@ -1,11 +1,14 @@
 // ignore_for_file: use_build_context_synchronously, duplicate_ignore
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/pages/auth/login_page_firebase.dart';
 
 /// Abre o bottom sheet de voz e retorna o texto reconhecido
 Future<String?> mostrarBottomSheetVoz({
@@ -111,6 +114,44 @@ Future<String?> mostrarBottomSheetVoz({
         },
       );
     },
+  );
+}
+
+Future<void> realizarLogout(BuildContext context) async {
+  final prefs = await SharedPreferences.getInstance();
+  final loginType = prefs.getString('loginType'); // 'firebase' ou 'local'
+
+  // 1) Se for login Firebase, desloga do Firebase também
+  if (loginType == 'firebase') {
+    await FirebaseAuthService.instance.signOut();
+  } else {
+    // se for 'local' ou null, não precisa chamar Firebase
+    // aqui você pode limpar coisas do login local, se tiver
+  }
+
+  // 2) Limpa estado de login
+  await prefs.setBool('isLoggedIn', false);
+  await prefs.remove('loginType');
+
+  // 3) Volta para a tela de login (a que você usa como entrada)
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const LoginPageFirebase()),
+    (_) => false,
+  );
+}
+
+Future<void> _logout(BuildContext context) async {
+  // 1) Firebase logout
+  await FirebaseAuthService.instance.signOut();
+
+  // 2) Remove flag de login salvo
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isLoggedIn', false);
+
+  // 3) Volta para a tela de login
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const LoginPageFirebase()),
+    (_) => false,
   );
 }
 

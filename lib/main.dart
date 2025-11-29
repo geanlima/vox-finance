@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // 👈 gerado pelo flutterfire
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
-import 'package:vox_finance/ui/pages/auth/login_page.dart';
+// 👉 MODO FIREBASE
+import 'package:vox_finance/ui/pages/auth/login_page_firebase.dart';
+
 import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_mes_page.dart';
 import 'package:vox_finance/ui/pages/contas/contas_page.dart';
@@ -12,6 +16,10 @@ import 'package:vox_finance/ui/pages/grafico/graficos_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔥 Inicializa o Firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   await initializeDateFormatting('pt_BR', null);
 
   runApp(const VoxFinanceApp());
@@ -26,24 +34,23 @@ class VoxFinanceApp extends StatelessWidget {
       title: 'VoxFinance',
       debugShowCheckedModeBanner: false,
 
-      // 🎨 Tema
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
 
-      // 🧹 Remove barra de rolagem glow
       scrollBehavior: const MaterialScrollBehavior().copyWith(
         scrollbars: false,
       ),
 
-      // Primeira tela
       initialRoute: '/login',
 
-      // ================================
-      //       🔗 R O T A S
-      // ================================
       routes: {
-        '/login': (_) => LoginPage(),
+        // 👉 LOGIN LOCAL:
+        // '/login': (_) => const LoginPage(),
+
+        // 👉 LOGIN FIREBASE:
+        '/login': (_) => const LoginPageFirebase(),
+
         '/': (_) => const HomePage(),
         '/contas-pagar': (_) => const ContasPagarPage(),
         '/cartoes-credito': (_) => const CartaoCreditoPage(),
