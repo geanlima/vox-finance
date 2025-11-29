@@ -126,6 +126,13 @@ class DbService {
   Future<int> salvarLancamento(Lancamento lanc) async {
     final database = await db;
 
+    final bool ehFaturaPagaDeCartao =
+        lanc.pagamentoFatura && lanc.pago && lanc.idCartao != null;
+
+    final DateTime dataPagamentoEfetiva = lanc.dataPagamento ?? DateTime.now();
+
+    int idGeradoOuAtualizado;
+
     if (lanc.id == null) {
       final dados = lanc.toMap();
       dados.remove('id');
@@ -136,15 +143,35 @@ class DbService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       lanc.id = id;
-      return id;
+      idGeradoOuAtualizado = id;
     } else {
-      return await database.update(
+      await database.update(
         'lancamentos',
         lanc.toMap(),
         where: 'id = ?',
         whereArgs: [lanc.id],
       );
+      idGeradoOuAtualizado = lanc.id!;
     }
+
+    // 🔹 Regra especial: se é pagamento de fatura de cartão e já está pago,
+    // quita as contas a pagar associadas a esse cartão.
+    if (ehFaturaPagaDeCartao) {
+      await _quitarContasPagarDoCartaoAteData(
+        database: database,
+        idCartao: lanc.idCartao!,
+        dataLimite: dataPagamentoEfetiva,
+      );
+    }
+
+    // 🔹 Se for uma parcela que tem conta a pagar associada, sincroniza lá também
+    await _sincronizarContaPagarDaParcelaComLancamento(
+      database: database,
+      lancamento: lanc,
+      dataPagamentoEfetiva: dataPagamentoEfetiva,
+    );
+
+    return idGeradoOuAtualizado;
   }
 
   Future<void> deletarLancamento(int id) async {
@@ -263,14 +290,89 @@ class DbService {
   Future<void> marcarLancamentoComoPago(int id, bool pago) async {
     final database = await db;
 
+    // Busca o lançamento atual pra saber se é fatura de cartão
+    final result = await database.query(
+      'lancamentos',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return;
+
+    final lanc = Lancamento.fromMap(result.first);
+
+    final agora = DateTime.now();
+
     await database.update(
       'lancamentos',
       {
         'pago': pago ? 1 : 0,
-        'data_pagamento': pago ? DateTime.now().millisecondsSinceEpoch : null,
+        'data_pagamento': pago ? agora.millisecondsSinceEpoch : null,
       },
       where: 'id = ?',
       whereArgs: [id],
+    );
+
+    // Se marcou como pago e é fatura de cartão -> quita contas a pagar
+    if (pago && lanc.pagamentoFatura && lanc.idCartao != null) {
+      await _quitarContasPagarDoCartaoAteData(
+        database: database,
+        idCartao: lanc.idCartao!,
+        dataLimite: agora,
+      );
+    }
+  }
+
+  Future<void> _sincronizarContaPagarDaParcelaComLancamento({
+    required Database database,
+    required Lancamento lancamento,
+    required DateTime dataPagamentoEfetiva,
+  }) async {
+    // Só faz sentido se fizer parte de um grupo de parcelas
+    if (lancamento.grupoParcelas == null || lancamento.parcelaNumero == null) {
+      return;
+    }
+
+    await database.update(
+      'conta_pagar',
+      {
+        'pago': lancamento.pago ? 1 : 0,
+        'data_pagamento':
+            lancamento.pago
+                ? dataPagamentoEfetiva.millisecondsSinceEpoch
+                : null,
+      },
+      where: 'grupo_parcelas = ? AND parcela_numero = ?',
+      whereArgs: [lancamento.grupoParcelas, lancamento.parcelaNumero],
+    );
+  }
+
+  Future<void> _quitarContasPagarDoCartaoAteData({
+    required Database database,
+    required int idCartao,
+    required DateTime dataLimite,
+  }) async {
+    // Data limite até o final do dia
+    final fimDia =
+        DateTime(
+          dataLimite.year,
+          dataLimite.month,
+          dataLimite.day,
+          23,
+          59,
+          59,
+          999,
+        ).millisecondsSinceEpoch;
+
+    final agoraMs = DateTime.now().millisecondsSinceEpoch;
+
+    await database.update(
+      'conta_pagar',
+      {'pago': 1, 'data_pagamento': agoraMs},
+      where:
+          'forma_pagamento = ? AND id_cartao = ? AND pago = 0 AND data_vencimento <= ?',
+      whereArgs: [FormaPagamento.credito.index, idCartao, fimDia],
     );
   }
 
@@ -375,6 +477,7 @@ class DbService {
     for (int i = 0; i < qtdParcelas; i++) {
       final DateTime dataParcela = datasParcelas[i];
 
+      // Lançamento da parcela
       final lancParcela = base.copyWith(
         id: null,
         valor: valorParcela,
@@ -389,21 +492,24 @@ class DbService {
 
       await database.insert('lancamentos', lancParcela.toMap());
 
-      if (!pagoBase) {
-        final conta = ContaPagar(
-          id: null,
-          descricao: lancParcela.descricao,
-          valor: valorParcela,
-          dataVencimento: dataParcela,
-          pago: false,
-          dataPagamento: null,
-          parcelaNumero: i + 1,
-          parcelaTotal: qtdParcelas,
-          grupoParcelas: grupo,
-        );
+      // 👉 Conta a pagar SEMPRE nasce pendente
+      final conta = ContaPagar(
+        id: null,
+        descricao: lancParcela.descricao,
+        valor: valorParcela,
+        dataVencimento: dataParcela,
+        pago: false,
+        dataPagamento: null,
+        parcelaNumero: i + 1,
+        parcelaTotal: qtdParcelas,
+        grupoParcelas: grupo,
+        // liga com a origem
+        formaPagamento: base.formaPagamento,
+        idCartao: base.idCartao,
+        idConta: base.idConta,
+      );
 
-        await database.insert('conta_pagar', conta.toMap());
-      }
+      await database.insert('conta_pagar', conta.toMap());
     }
   }
 
@@ -477,6 +583,7 @@ class DbService {
       pagamentoFatura: true,
       categoria: base.categoria,
       pago: false,
+      dataPagamento: null,
       idCartao: base.idCartao,
     );
 
@@ -484,6 +591,20 @@ class DbService {
     dados.remove('id');
 
     await database.insert('lancamentos', dados);
+  }
+
+  // ============================================================
+  //  CONTA_PAGAR - EXCLUIR POR GRUPO
+  // ============================================================
+
+  Future<void> deletarContasPagarPorGrupo(String grupoParcelas) async {
+    final database = await db;
+
+    await database.delete(
+      'conta_pagar',
+      where: 'grupo_parcelas = ?',
+      whereArgs: [grupoParcelas],
+    );
   }
 
   // ============================================================
@@ -557,6 +678,7 @@ class DbService {
     final dataVencimento = DateTime(anoAtual, mesAtual, diaVencimento);
     final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
 
+    // 🔹 Se já existir fatura para esse vencimento, atualiza e garante que fique PENDENTE
     final faturaExistente = await database.query(
       'lancamentos',
       where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
@@ -568,13 +690,18 @@ class DbService {
       final idFatura = faturaExistente.first['id'] as int;
       await database.update(
         'lancamentos',
-        {'valor': total},
+        {
+          'valor': total,
+          'pago': 0, // ← volta a ser pendente
+          'data_pagamento': null, // ← limpa data de pagamento
+        },
         where: 'id = ?',
         whereArgs: [idFatura],
       );
       return;
     }
 
+    // 🔹 Se não existir, cria a fatura já como pendente
     final primeiraCompra = Lancamento.fromMap(compras.first);
 
     final descricaoFatura =
@@ -592,7 +719,12 @@ class DbService {
       idCartao: idCartao,
     );
 
-    await database.insert('lancamentos', lancFatura.toMap());
+    final dados = lancFatura.toMap();
+    // Garantindo explicitamente que nasce pendente
+    dados['pago'] = 0;
+    dados['data_pagamento'] = null;
+
+    await database.insert('lancamentos', dados);
   }
 
   // ============================================================

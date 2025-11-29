@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum Categoria {
   alimentacao,
   educacao,
@@ -130,4 +132,73 @@ class CategoriaService {
     // Se não identificar → OUTROS
     return Categoria.outros;
   }
+
+  // Ícone por categoria
+static IconData icon(Categoria cat) {
+  switch (cat) {
+    case Categoria.alimentacao:
+      return Icons.restaurant;
+    case Categoria.educacao:
+      return Icons.school;
+    case Categoria.familia:
+      return Icons.family_restroom;
+    case Categoria.financasPessoais:
+      return Icons.account_balance_wallet;
+    case Categoria.impostosETaxas:
+      return Icons.receipt_long;
+    case Categoria.lazerEEntretenimento:
+      return Icons.movie;
+    case Categoria.moradia:
+      return Icons.home;
+    case Categoria.outros:
+      return Icons.more_horiz;
+    case Categoria.presentesEDoacoes:
+      return Icons.card_giftcard;
+    case Categoria.saude:
+      return Icons.medical_services;
+    case Categoria.seguros:
+      return Icons.verified_user;
+    case Categoria.tecnologia:
+      return Icons.devices;
+    case Categoria.transporte:
+      return Icons.directions_car;
+    case Categoria.vestuario:
+      return Icons.shopping_bag;
+  }
+}
+
+// Cor por categoria
+static Color color(Categoria cat) {
+  switch (cat) {
+    case Categoria.alimentacao:
+      return Colors.orange;
+    case Categoria.educacao:
+      return Colors.blue;
+    case Categoria.familia:
+      return Colors.purple;
+    case Categoria.financasPessoais:
+      return Colors.teal;
+    case Categoria.impostosETaxas:
+      return Colors.brown;
+    case Categoria.lazerEEntretenimento:
+      return Colors.indigo;
+    case Categoria.moradia:
+      return Colors.green;
+    case Categoria.outros:
+      return Colors.grey;
+    case Categoria.presentesEDoacoes:
+      return Colors.redAccent;
+    case Categoria.saude:
+      return Colors.red;
+    case Categoria.seguros:
+      return Colors.cyan;
+    case Categoria.tecnologia:
+      return Colors.deepPurple;
+    case Categoria.transporte:
+      return Colors.blueGrey;
+    case Categoria.vestuario:
+      return Colors.pink;
+  }
+}
+
 }

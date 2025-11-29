@@ -68,7 +68,7 @@ class Lancamento {
       parcelaNumero: parcelaNumero ?? this.parcelaNumero,
       parcelaTotal: parcelaTotal ?? this.parcelaTotal,
       idCartao: idCartao ?? this.idCartao,
-      idConta: idConta ?? this.idConta, // 👈 NOVO
+      idConta: idConta ?? this.idConta, 
     );
   }
 

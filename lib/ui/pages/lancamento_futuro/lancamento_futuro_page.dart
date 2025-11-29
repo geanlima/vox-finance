@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
+import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
@@ -17,6 +20,9 @@ class LancamentosFuturosPage extends StatefulWidget {
 
 class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   final _dbService = DbService();
+  late final RegraCartaoParceladoService _regraCartaoParcelado;
+  late final RegraOutraCompraParceladaService _regraOutraCompra;
+
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
   late Future<List<Lancamento>> _futureLancamentos;
@@ -25,6 +31,8 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   @override
   void initState() {
     super.initState();
+    _regraOutraCompra = RegraOutraCompraParceladaService(_dbService);
+    _regraCartaoParcelado = RegraCartaoParceladoService(_dbService);
     _carregarDados();
   }
 
@@ -47,7 +55,17 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   Future<void> _marcarComoPago(Lancamento lanc, bool pago) async {
     if (lanc.id == null) return;
 
-    await _dbService.marcarLancamentoComoPago(lanc.id!, pago);
+    final ehCartaoCredito =
+        lanc.formaPagamento == FormaPagamento.credito && lanc.idCartao != null;
+
+    if (ehCartaoCredito && lanc.pagamentoFatura) {
+      // 👉 Aqui continua sua lógica atual para fatura de cartão
+      await _dbService.marcarLancamentoComoPago(lanc.id!, pago);
+    } else {
+      // 👉 Outra compra parcelada (boleto / pix / débito etc.)
+      await _regraOutraCompra.marcarLancamentoComoPagoSincronizado(lanc, pago);
+    }
+
     await _carregarDados();
   }
 
@@ -65,18 +83,30 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
       ),
     );
 
-    if (result != null) {
-      if (result.qtdParcelas <= 1) {
-        await _dbService.salvarLancamento(result.lancamentoBase);
-      } else {
-        await _dbService.salvarLancamentosParceladosFuturos(
-          result.lancamentoBase,
-          result.qtdParcelas,
-        );
-      }
+    if (result == null) return;
 
-      await _carregarDados();
+    final base = result.lancamentoBase;
+    final qtd = result.qtdParcelas;
+
+    if (qtd <= 1) {
+      // 👉 Lançamento simples (à vista ou 1x)
+      await _dbService.salvarLancamento(base);
+    } else {
+      // 👉 Parcelado
+      if (base.formaPagamento == FormaPagamento.credito &&
+          base.idCartao != null) {
+        // ✅ Regra 1: Cartão de crédito parcelado
+        await _regraCartaoParcelado.processarCompraParcelada(
+          compraBase: base,
+          qtdParcelas: qtd,
+        );
+      } else {
+        // ✅ Regra 2: Outra compra parcelada (boleto, pix, débito etc.)
+        await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
+      }
     }
+
+    await _carregarDados();
   }
 
   Future<void> _editarLancamento(Lancamento lanc) async {

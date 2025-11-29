@@ -3,8 +3,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
@@ -20,6 +23,9 @@ class ContaPagarResumo {
   final DateTime? ultimoVencimento;
   final bool todasPagas;
 
+  // 👇 NOVO: descrição da forma de pagamento (ex: "Crédito - Nubank • ****1234")
+  final String? formaDescricao;
+
   ContaPagarResumo({
     required this.grupoParcelas,
     required this.descricao,
@@ -28,6 +34,7 @@ class ContaPagarResumo {
     required this.primeiroVencimento,
     required this.ultimoVencimento,
     required this.todasPagas,
+    this.formaDescricao,
   });
 }
 
@@ -56,6 +63,37 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
     _carregar();
   }
 
+  Future<String?> _obterDescricaoFormaPagamento(String grupoParcelas) async {
+    // usa os lançamentos daquele grupo de parcelas
+    final lancs = await _isarService.getParcelasPorGrupoLancamento(
+      grupoParcelas,
+    );
+
+    if (lancs.isEmpty) return null;
+
+    final Lancamento l = lancs.first;
+
+    // Se tiver cartão
+    if (l.formaPagamento == FormaPagamento.credito && l.idCartao != null) {
+      final CartaoCredito? cartao = await _isarService.getCartaoCreditoById(
+        l.idCartao!,
+      );
+
+      if (cartao != null) {
+        final ultimos =
+            (cartao.ultimos4Digitos.isNotEmpty)
+                ? cartao.ultimos4Digitos
+                : '****';
+        return 'Crédito - ${cartao.descricao} • **** $ultimos';
+      }
+
+      return 'Crédito (sem cartão cadastrado)';
+    }
+
+    // PIX / boleto / transferência / débito / dinheiro etc.
+    return l.formaPagamento.label; // se o enum tiver label
+  }
+
   Future<void> _carregar() async {
     setState(() => _carregando = true);
 
@@ -75,10 +113,12 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
     final resumos = <ContaPagarResumo>[];
 
-    mapa.forEach((grupo, parcelas) {
-      // ordena por número da parcela, tratando null
+    for (final entry in mapa.entries) {
+      final grupo = entry.key;
+      final parcelas = entry.value;
+
       parcelas.sort((a, b) {
-        final pa = a.parcelaNumero ?? 0; // ou 999999, se quiser mandar pro fim
+        final pa = a.parcelaNumero ?? 0;
         final pb = b.parcelaNumero ?? 0;
         return pa.compareTo(pb);
       });
@@ -96,6 +136,9 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
       final todasPagas = parcelas.every((c) => c.pago);
 
+      // 👇 pega a forma de pagamento através dos lançamentos (se existirem)
+      final formaDescricao = await _obterDescricaoFormaPagamento(grupo);
+
       resumos.add(
         ContaPagarResumo(
           grupoParcelas: grupo,
@@ -105,14 +148,51 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
           primeiroVencimento: primeiroVencimento,
           ultimoVencimento: qtd > 1 ? ultimoVencimento : null,
           todasPagas: todasPagas,
+          formaDescricao: formaDescricao, // 👈 novo
         ),
       );
-    });
+    }
 
     setState(() {
       _resumos = resumos;
       _carregando = false;
     });
+  }
+
+  Future<void> _excluirGrupo(ContaPagarResumo resumo) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Excluir contas a pagar'),
+          content: Text(
+            'Deseja excluir todas as parcelas de "${resumo.descricao}" '
+            '(${resumo.quantidadeParcelas} parcela(s))?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar == true) {
+      await _isarService.deletarContasPagarPorGrupo(resumo.grupoParcelas);
+      await _carregar();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contas a pagar excluídas.')),
+        );
+      }
+    }
   }
 
   Future<void> _abrirForm({ContaPagarResumo? existente}) async {
@@ -382,13 +462,27 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                 : (vencida ? colors.error : colors.primary),
                       ),
                       title: Text(resumo.descricao),
-                      subtitle: Text(
-                        resumo.quantidadeParcelas > 1
-                            ? '${resumo.quantidadeParcelas} parcelas · '
-                                '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
-                                '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}'
-                            : 'Vencimento: '
-                                '${_dateFormat.format(resumo.primeiroVencimento)}',
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            resumo.quantidadeParcelas > 1
+                                ? '${resumo.quantidadeParcelas} parcelas · '
+                                    '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
+                                    '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}'
+                                : 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}',
+                          ),
+                          if (resumo.formaDescricao != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              resumo.formaDescricao!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -417,7 +511,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                           ),
                         ).then((_) => _carregar());
                       },
-                      onLongPress: () => _abrirForm(existente: resumo),
+                      onLongPress: () => _excluirGrupo(resumo), // 👈 aqui
                     ),
                   );
                 },
