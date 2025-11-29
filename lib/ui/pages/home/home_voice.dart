@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, duplicate_ignore
+// ignore_for_file: use_build_context_synchronously, duplicate_ignore, unused_element
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
