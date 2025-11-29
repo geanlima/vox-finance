@@ -16,7 +16,6 @@ class BackupService {
   /// (Por enquanto só um esqueleto para não quebrar o app)
   Future<void> salvarTudo(String userId) async {
     debugPrint('[BackupService] salvarTudo($userId) ainda não implementado.');
-    // TODO: ler dados do SQLite (DbService) e gravar no Firestore
     // Exemplo de estrutura planejada:
     // users/{userId}/lancamentos
     // users/{userId}/contas
@@ -29,6 +28,5 @@ class BackupService {
     debugPrint(
       '[BackupService] restaurarTudo($userId) ainda não implementado.',
     );
-    // TODO: ler dados do Firestore e recriar no SQLite (DbService)
   }
 }

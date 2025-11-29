@@ -6,7 +6,6 @@ import 'firebase_options.dart'; // 👈 gerado pelo flutterfire
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
 // 👉 MODO FIREBASE
-import 'package:vox_finance/ui/pages/auth/login_page_firebase.dart';
 
 import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_mes_page.dart';
