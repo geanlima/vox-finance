@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "80736264506",
+    "project_id": "vox-finance",
+    "storage_bucket": "vox-finance.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:80736264506:android:ba5deccbf182dbe0943003",
+        "android_client_info": {
+          "package_name": "com.example.vox_finance"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "80736264506-1gqca5sr09r6j43eppv7r5i3geahte69.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.vox_finance",
+            "certificate_hash": "139a2015988066b2182c5ad4d4274e93fcf700fe"
+          }
+        },
+        {
+          "client_id": "80736264506-d1lak9td0f97c9vejs3jipq84j5e2ih5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDZZNnxxwb3ltHVItlVqBOp4vUA3yU9RQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "80736264506-d1lak9td0f97c9vejs3jipq84j5e2ih5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "80736264506-vka5ibrk4tp20erpspb2kms0sugs2d3e.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.voxFinance"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
