@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/usuario.dart';
+import 'package:vox_finance/ui/core/service/firebase_auth_service.dart'; // 👈 IMPORTANTE
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -42,11 +43,27 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Future<void> _logout() async {
+    // Fecha o Drawer
     Navigator.pop(context);
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', false);
 
+    // Lê o tipo de login salvo: 'firebase' ou 'local'
+    final loginType = prefs.getString('loginType');
+
+    // Se login foi via Firebase, faz signOut no Firebase
+    if (loginType == 'firebase') {
+      await FirebaseAuthService.instance.signOut();
+    } else {
+      // Se for login local, aqui você pode limpar coisas específicas do local se quiser
+      // ex: await DbService.instance.limparUsuarioLocal();
+    }
+
+    // Limpa flags de login
+    await prefs.setBool('isLoggedIn', false);
+    await prefs.remove('loginType');
+
+    // Volta para a tela de login, limpando a navegação
     Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
   }
 
@@ -185,7 +202,6 @@ class _AppDrawerState extends State<AppDrawer> {
               route: '/contas-pagar',
             ),
 
-            // ➕ NOVO MENU AQUI
             _menuItem(
               context,
               icon: Icons.account_balance,
