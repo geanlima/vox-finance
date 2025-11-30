@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 
 class CartaoCreditoPage extends StatefulWidget {
   const CartaoCreditoPage({super.key});
@@ -15,7 +15,9 @@ class CartaoCreditoPage extends StatefulWidget {
 }
 
 class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
-  final _db = DbService();
+  final CartaoCreditoRepository _repository = CartaoCreditoRepository();
+  
+
   List<CartaoCredito> _cartoes = [];
   bool _carregando = false;
 
@@ -29,7 +31,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
     setState(() => _carregando = true);
 
     try {
-      final lista = await _db.getCartoesCredito();
+      final lista = await _repository.getCartoesCredito();
 
       // se a tela já foi fechada, não tenta mais dar setState
       if (!mounted) return;
@@ -581,7 +583,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                   limite: limiteValor,
                                 );
 
-                                await _db.salvarCartaoCredito(cartao);
+                                await _repository.salvarCartaoCredito(cartao);
                                 await _carregar();
                                 if (mounted) Navigator.pop(context);
                               },
@@ -626,7 +628,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
     );
 
     if (confirmar == true && cartao.id != null) {
-      await _db.deletarCartaoCredito(cartao.id!);
+      await _repository.deletarCartaoCredito(cartao.id!);
       await _carregar();
     }
   }

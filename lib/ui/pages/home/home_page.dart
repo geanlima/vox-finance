@@ -6,6 +6,9 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
@@ -30,10 +33,15 @@ class _HomePageState extends State<HomePage> {
   final List<Lancamento> _lancamentos = [];
 
   final _dbService = DbService();
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+  final CartaoCreditoRepository _repositoryCartaoCredito =
+      CartaoCreditoRepository();
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateHoraFormat = DateFormat('dd/MM/yyyy HH:mm');
   final _dateDiaFormat = DateFormat('dd/MM/yyyy');
+  final ContaBancariaRepository _repositoryContaBancaria =
+      ContaBancariaRepository();
 
   late stt.SpeechToText _speech;
   bool _speechDisponivel = false;
@@ -55,7 +63,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarContas() async {
-    final lista = await _dbService.getContasBancarias(apenasAtivas: true);
+    final lista = await _repositoryContaBancaria.getContasBancarias(
+      apenasAtivas: true,
+    );
     setState(() {
       _contas = lista;
     });
@@ -67,7 +77,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarDoBanco() async {
-    final lista = await _dbService.getLancamentosByDay(_dataSelecionada);
+    final lista = await _repositoryLancamento.getByDay(_dataSelecionada);
     setState(() {
       _lancamentos
         ..clear()
@@ -76,7 +86,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarCartoes() async {
-    final lista = await _dbService.getCartoesCredito();
+    final lista = await _repositoryCartaoCredito.getCartoesCredito();
     setState(() {
       _cartoes = lista;
     });
@@ -151,7 +161,10 @@ class _HomePageState extends State<HomePage> {
 
     for (final c in cartoesFechandoNoDia) {
       if (c.id != null) {
-        await _dbService.gerarFaturaDoCartao(c.id!, referencia: diaSelecionado);
+        await _repositoryCartaoCredito.gerarFaturaDoCartao(
+          c.id!,
+          referencia: diaSelecionado,
+        );
       }
     }
 
@@ -338,9 +351,8 @@ class _HomePageState extends State<HomePage> {
     await _carregarCartoes();
 
     // carrega contas bancárias ativas
-    final List<ContaBancaria> contas = await _dbService.getContasBancarias(
-      apenasAtivas: true,
-    );
+    final List<ContaBancaria> contas = await _repositoryContaBancaria
+        .getContasBancarias(apenasAtivas: true);
 
     await showModalBottomSheet(
       context: context,
@@ -392,7 +404,7 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (confirmar == true && lanc.id != null) {
-      await _dbService.deletarLancamento(lanc.id!);
+      await _repositoryLancamento.deletar(lanc.id!);
       await _carregarDoBanco();
     }
   }

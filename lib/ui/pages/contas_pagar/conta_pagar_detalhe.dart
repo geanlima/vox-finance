@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-import 'package:collection/collection.dart';
+import 'package:vox_finance/ui/core/extensions/list_extensions.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class ContaPagarDetalhePage extends StatefulWidget {
@@ -25,6 +27,9 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateFormat = DateFormat('dd/MM/yyyy');
 
+  final ContaPagarRepository _repository = ContaPagarRepository();
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+
   List<ContaPagar> _parcelas = [];
   bool _carregando = false;
 
@@ -38,7 +43,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     setState(() => _carregando = true);
 
     // usa o DbService, que já filtra e ordena por grupo
-    final lista = await _dbService.getParcelasPorGrupo(widget.grupoParcelas);
+    final lista = await _repository.getParcelasPorGrupo(widget.grupoParcelas);
 
     setState(() {
       _parcelas = lista;
@@ -62,7 +67,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     if (ehCartao) {
       // Marca apenas o contas a pagar
       if (parcela.id != null) {
-        await db.marcarParcelaComoPaga(parcela.id!, true);
+        await _repository.marcarParcelaComoPaga(parcela.id!, true);
       }
 
       await _carregar();
@@ -84,9 +89,8 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     // ------------------------------------------------------
     Lancamento? lancamentoOriginal;
 
-    final lancamentosDoGrupo = await db.getParcelasPorGrupoLancamento(
-      parcela.grupoParcelas,
-    );
+    final lancamentosDoGrupo = await _repositoryLancamento.getParcelasPorGrupo(parcela.grupoParcelas);
+        
 
     lancamentoOriginal = lancamentosDoGrupo.firstWhereOrNull(
       (l) => (l.parcelaNumero ?? 1) == (parcela.parcelaNumero ?? 1),
@@ -115,7 +119,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     // 2) Apagar lançamento FUTURO original
     // ------------------------------------------------------
     if (lancamentoOriginal != null && lancamentoOriginal.id != null) {
-      await db.deletarLancamento(lancamentoOriginal.id!);
+      await _repositoryLancamento.deletar(lancamentoOriginal.id!);
     }
 
     // ------------------------------------------------------
@@ -139,13 +143,13 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       parcelaTotal: parcela.parcelaTotal,
     );
 
-    await db.salvarLancamento(novoLancamento);
+    await _repositoryLancamento.salvar(novoLancamento);
 
     // ------------------------------------------------------
     // 4) Marcar conta a pagar como paga
     // ------------------------------------------------------
     if (parcela.id != null) {
-      await db.marcarParcelaComoPaga(parcela.id!, true);
+      await _repository.marcarParcelaComoPaga(parcela.id!, true);
     }
 
     // ------------------------------------------------------

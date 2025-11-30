@@ -5,7 +5,8 @@ import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart'
 import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/lancamento_futuro_form.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/widgets/lancamento_futuro_tile.dart';
@@ -19,7 +20,9 @@ class LancamentosFuturosPage extends StatefulWidget {
 }
 
 class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
-  final _dbService = DbService();
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+  final ContaPagarRepository _contapagarLancamento = ContaPagarRepository();
+
   late final RegraCartaoParceladoService _regraCartaoParcelado;
   late final RegraOutraCompraParceladaService _regraOutraCompra;
 
@@ -31,8 +34,14 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   @override
   void initState() {
     super.initState();
-    _regraOutraCompra = RegraOutraCompraParceladaService(_dbService);
-    _regraCartaoParcelado = RegraCartaoParceladoService(_dbService);
+
+    _regraOutraCompra = RegraOutraCompraParceladaService(
+      lancRepo: _repositoryLancamento,
+      contaPagarRepo: _contapagarLancamento,
+    );
+
+    _regraCartaoParcelado = RegraCartaoParceladoService(_repositoryLancamento);
+
     _carregarDados();
   }
 
@@ -47,8 +56,8 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
     ).subtract(const Duration(days: 1));
 
     setState(() {
-      _futureLancamentos = _dbService.getLancamentosFuturosAte(fimDoMes);
-      _futureTotal = _dbService.getTotalLancamentosFuturosAte(fimDoMes);
+      _futureLancamentos = _repositoryLancamento.getFuturosAte(fimDoMes);
+      _futureTotal = _repositoryLancamento.getTotalFuturosAte(fimDoMes);
     });
   }
 
@@ -60,7 +69,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
 
     if (ehCartaoCredito && lanc.pagamentoFatura) {
       // 👉 Aqui continua sua lógica atual para fatura de cartão
-      await _dbService.marcarLancamentoComoPago(lanc.id!, pago);
+      await _repositoryLancamento.marcarComoPago(lanc.id!, pago);
     } else {
       // 👉 Outra compra parcelada (boleto / pix / débito etc.)
       await _regraOutraCompra.marcarLancamentoComoPagoSincronizado(lanc, pago);
@@ -90,7 +99,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
 
     if (qtd <= 1) {
       // 👉 Lançamento simples (à vista ou 1x)
-      await _dbService.salvarLancamento(base);
+      await _repositoryLancamento.salvar(base);
     } else {
       // 👉 Parcelado
       if (base.formaPagamento == FormaPagamento.credito &&
@@ -123,7 +132,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
 
     if (resultado != null) {
       // para edição de um só, vamos manter simples: salva só esse
-      await _dbService.salvarLancamento(resultado.lancamentoBase);
+      await _repositoryLancamento.salvar(resultado.lancamentoBase);
       await _carregarDados();
     }
   }

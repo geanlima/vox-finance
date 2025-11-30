@@ -1,9 +1,9 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 
 class ContasPage extends StatefulWidget {
@@ -14,8 +14,9 @@ class ContasPage extends StatefulWidget {
 }
 
 class _ContasPageState extends State<ContasPage> {
-  final _db = DbService();
   List<ContaBancaria> _contas = [];
+
+  final ContaBancariaRepository _repository = ContaBancariaRepository();
 
   @override
   void initState() {
@@ -24,7 +25,7 @@ class _ContasPageState extends State<ContasPage> {
   }
 
   Future<void> _carregarContas() async {
-    final lista = await _db.getContasBancarias();
+    final lista = await _repository.getContasBancarias();
     setState(() {
       _contas = lista;
     });
@@ -205,7 +206,7 @@ class _ContasPageState extends State<ContasPage> {
                                       : tipoController.text.trim()
                               ..ativa = ativa;
 
-                            await _db.salvarContaBancaria(conta);
+                            await _repository.salvarContaBancaria(conta);
                             await _carregarContas();
                             Navigator.pop(context);
                           },
@@ -250,7 +251,7 @@ class _ContasPageState extends State<ContasPage> {
     );
 
     if (confirmar == true && conta.id != null) {
-      await _db.deletarContaBancaria(conta.id!);
+      await _repository.deletarContaBancaria(conta.id!);
       await _carregarContas();
     }
   }

@@ -9,7 +9,11 @@ import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
+
+// 👇 NOVO: service de regra de compra parcelada
+import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 
 class LancamentoFormBottomSheet extends StatefulWidget {
   final Lancamento? existente;
@@ -55,6 +59,12 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
   late TextEditingController _descricaoController;
   late TextEditingController _qtdParcelasController;
 
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+
+  // 👇 NOVO: usa o service para criar parcelas + contas a pagar
+  final RegraOutraCompraParceladaService _regraOutraCompra =
+      RegraOutraCompraParceladaService();
+
   FormaPagamento? _formaSelecionada;
   bool _pagamentoFatura = false;
   bool _pago = true;
@@ -78,12 +88,11 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
     // Valor inicial
     _valorController = TextEditingController(
-      text:
-          _existente != null
-              ? widget.currency.format(_existente!.valor)
-              : (widget.valorInicial != null
-                  ? widget.currency.format(widget.valorInicial)
-                  : ''),
+      text: _existente != null
+          ? widget.currency.format(_existente!.valor)
+          : (widget.valorInicial != null
+              ? widget.currency.format(widget.valorInicial)
+              : ''),
     );
 
     // Descrição inicial
@@ -91,8 +100,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
       text: _existente?.descricao ?? (widget.descricaoInicial ?? ''),
     );
 
-    _formaSelecionada =
-        _existente?.formaPagamento ??
+    _formaSelecionada = _existente?.formaPagamento ??
         (widget.formaInicial ?? FormaPagamento.credito);
 
     _pagamentoFatura =
@@ -221,13 +229,13 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
           final bool deveMostrarSecaoCartao =
               _pagamentoFatura ||
-              _formaSelecionada == FormaPagamento.debito ||
-              _formaSelecionada == FormaPagamento.credito;
+                  _formaSelecionada == FormaPagamento.debito ||
+                  _formaSelecionada == FormaPagamento.credito;
 
           final bool deveMostrarSecaoConta =
               _formaSelecionada == FormaPagamento.pix ||
-              _formaSelecionada == FormaPagamento.boleto ||
-              _formaSelecionada == FormaPagamento.transferencia;
+                  _formaSelecionada == FormaPagamento.boleto ||
+                  _formaSelecionada == FormaPagamento.transferencia;
 
           return SingleChildScrollView(
             child: Column(
@@ -278,13 +286,12 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                     labelText: 'Categoria',
                     border: OutlineInputBorder(),
                   ),
-                  items:
-                      Categoria.values.map((c) {
-                        return DropdownMenuItem(
-                          value: c,
-                          child: Text(CategoriaService.toName(c)),
-                        );
-                      }).toList(),
+                  items: Categoria.values.map((c) {
+                    return DropdownMenuItem(
+                      value: c,
+                      child: Text(CategoriaService.toName(c)),
+                    );
+                  }).toList(),
                   onChanged: (nova) {
                     setModalState(() {
                       _categoriaSelecionada = nova;
@@ -300,19 +307,18 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                     labelText: 'Forma de pagamento',
                     border: OutlineInputBorder(),
                   ),
-                  items:
-                      FormaPagamento.values.map((f) {
-                        return DropdownMenuItem(
-                          value: f,
-                          child: Row(
-                            children: [
-                              Icon(f.icon, size: 18),
-                              const SizedBox(width: 8),
-                              Text(f.label),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                  items: FormaPagamento.values.map((f) {
+                    return DropdownMenuItem(
+                      value: f,
+                      child: Row(
+                        children: [
+                          Icon(f.icon, size: 18),
+                          const SizedBox(width: 8),
+                          Text(f.label),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                   onChanged: (novo) {
                     setModalState(() {
                       _formaSelecionada = novo;
@@ -342,7 +348,8 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                     const Text(
                       'Nenhum cartão cadastrado.\n'
                       'Cadastre em: Menu → Cartões.',
-                      style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.redAccent),
                     ),
                   ] else if (_cartoesFiltrados.isEmpty) ...[
                     Text(
@@ -361,13 +368,12 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                         labelText: labelCartao(),
                         border: const OutlineInputBorder(),
                       ),
-                      items:
-                          _cartoesFiltrados.map((c) {
-                            return DropdownMenuItem(
-                              value: c,
-                              child: Text(c.label),
-                            );
-                          }).toList(),
+                      items: _cartoesFiltrados.map((c) {
+                        return DropdownMenuItem(
+                          value: c,
+                          child: Text(c.label),
+                        );
+                      }).toList(),
                       onChanged: (novoCartao) {
                         setModalState(() {
                           _cartaoSelecionado = novoCartao;
@@ -385,7 +391,8 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                     const Text(
                       'Nenhuma conta bancária ativa.\n'
                       'Cadastre em: Menu → Contas bancárias.',
-                      style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.redAccent),
                     ),
                   ] else ...[
                     DropdownButtonFormField<ContaBancaria>(
@@ -394,15 +401,14 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                         labelText: 'Conta bancária',
                         border: OutlineInputBorder(),
                       ),
-                      items:
-                          _contas.map((c) {
-                            final texto =
-                                '${c.descricao} ${c.banco != null && c.banco!.isNotEmpty ? "(${c.banco})" : ""}';
-                            return DropdownMenuItem(
-                              value: c,
-                              child: Text(texto),
-                            );
-                          }).toList(),
+                      items: _contas.map((c) {
+                        final texto =
+                            '${c.descricao} ${c.banco != null && c.banco!.isNotEmpty ? "(${c.banco})" : ""}';
+                        return DropdownMenuItem(
+                          value: c,
+                          child: Text(texto),
+                        );
+                      }).toList(),
                       onChanged: (novaConta) {
                         setModalState(() {
                           _contaSelecionada = novaConta;
@@ -539,9 +545,9 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
     }
 
     if (valor == null || valor <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Informe um valor válido.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe um valor válido.')),
+      );
       return;
     }
 
@@ -553,9 +559,9 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
     }
 
     if (_categoriaSelecionada == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Selecione a categoria.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione a categoria.')),
+      );
       return;
     }
 
@@ -565,9 +571,9 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
     final bool precisaCartao =
         (_formaSelecionada == FormaPagamento.credito &&
-            temCartaoCompativel &&
-            !_pagamentoFatura) ||
-        (_pagamentoFatura && temCartaoCompativel);
+                temCartaoCompativel &&
+                !_pagamentoFatura) ||
+            (_pagamentoFatura && temCartaoCompativel);
 
     if (precisaCartao && _cartaoSelecionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -584,9 +590,9 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
     final bool precisaContaBancaria =
         (_formaSelecionada == FormaPagamento.pix ||
-            _formaSelecionada == FormaPagamento.boleto ||
-            _formaSelecionada == FormaPagamento.transferencia) &&
-        _contas.isNotEmpty;
+                _formaSelecionada == FormaPagamento.boleto ||
+                _formaSelecionada == FormaPagamento.transferencia) &&
+            _contas.isNotEmpty;
 
     if (precisaContaBancaria && _contaSelecionada == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -595,40 +601,38 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
       return;
     }
 
-    final descricao =
-        _descricaoController.text.trim().isNotEmpty
-            ? _descricaoController.text.trim()
-            : 'Sem descrição';
+    final descricao = _descricaoController.text.trim().isNotEmpty
+        ? _descricaoController.text.trim()
+        : 'Sem descrição';
 
     final categoria = _categoriaSelecionada!;
 
-    final Lancamento lanc =
-        _existente != null
-            ? _existente!.copyWith(
-              valor: valor,
-              descricao: descricao,
-              formaPagamento: _formaSelecionada!,
-              dataHora: _dataLancamento,
-              pagamentoFatura: _pagamentoFatura,
-              categoria: categoria,
-              pago: _pago,
-              dataPagamento:
-                  _pago ? (_existente!.dataPagamento ?? DateTime.now()) : null,
-              idCartao: _cartaoSelecionado?.id,
-              idConta: _contaSelecionada?.id,
-            )
-            : Lancamento(
-              valor: valor,
-              descricao: descricao,
-              formaPagamento: _formaSelecionada!,
-              dataHora: _dataLancamento,
-              pagamentoFatura: _pagamentoFatura,
-              categoria: categoria,
-              pago: _pago,
-              dataPagamento: _pago ? DateTime.now() : null,
-              idCartao: _cartaoSelecionado?.id,
-              idConta: _contaSelecionada?.id,
-            );
+    final Lancamento lanc = _existente != null
+        ? _existente!.copyWith(
+            valor: valor,
+            descricao: descricao,
+            formaPagamento: _formaSelecionada!,
+            dataHora: _dataLancamento,
+            pagamentoFatura: _pagamentoFatura,
+            categoria: categoria,
+            pago: _pago,
+            dataPagamento:
+                _pago ? (_existente!.dataPagamento ?? DateTime.now()) : null,
+            idCartao: _cartaoSelecionado?.id,
+            idConta: _contaSelecionada?.id,
+          )
+        : Lancamento(
+            valor: valor,
+            descricao: descricao,
+            formaPagamento: _formaSelecionada!,
+            dataHora: _dataLancamento,
+            pagamentoFatura: _pagamentoFatura,
+            categoria: categoria,
+            pago: _pago,
+            dataPagamento: _pago ? DateTime.now() : null,
+            idCartao: _cartaoSelecionado?.id,
+            idConta: _contaSelecionada?.id,
+          );
 
     // Parcelado x simples
     if (_existente == null && _parcelado) {
@@ -645,15 +649,17 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         return;
       }
 
+      // base SEM info de parcela; service completa e força NÃO pago
       final base = lanc.copyWith(
         grupoParcelas: null,
         parcelaNumero: null,
         parcelaTotal: null,
       );
 
-      await widget.dbService.salvarLancamentosParceladosFuturos(base, qtd);
+      // 👇 AGORA usa o service (cria parcelas + contas a pagar)
+      await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
     } else {
-      await widget.dbService.salvarLancamento(lanc);
+      await _repositoryLancamento.salvar(lanc);
     }
 
     await widget.onSaved();

@@ -1,52 +1,48 @@
 // lib/ui/core/service/regra_outra_compra_parcelada_service.dart
+
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 
 class RegraOutraCompraParceladaService {
-  final DbService _db;
+  final LancamentoRepository _lancRepo;
+  final ContaPagarRepository _contaPagarRepo;
 
-  RegraOutraCompraParceladaService(this._db);
+  /// Construtor simples:
+  /// - Se não passar nada, ele cria os repositórios padrão
+  /// - Se quiser, pode injetar mocks ou repositórios customizados
+  RegraOutraCompraParceladaService({
+    LancamentoRepository? lancRepo,
+    ContaPagarRepository? contaPagarRepo,
+  }) : _lancRepo = lancRepo ?? LancamentoRepository(),
+       _contaPagarRepo = contaPagarRepo ?? ContaPagarRepository();
 
   /// Cria as parcelas FUTURAS + contas a pagar,
-  /// sempre como NÃO PAGAS (fluxo: boleto, pix, débito, etc.)
+  /// sempre como NÃO PAGAS
   Future<void> criarParcelasNaoPagas(Lancamento base, int qtdParcelas) async {
-    // Garante que NÃO é fatura de cartão
     final lancBase = base.copyWith(
       pagamentoFatura: false,
-      // para "outra compra parcelada", normalmente começa não pago
       pago: false,
       dataPagamento: null,
-      // se não for cartão, em geral idCartao é null
-      // mas mesmo que venha preenchido, essa regra é pensada
-      // para os casos "fora do cartão"
     );
 
-    await _db.salvarLancamentosParceladosFuturos(lancBase, qtdParcelas);
+    await _lancRepo.salvarParceladosFuturos(lancBase, qtdParcelas);
   }
 
-  /// Quando o usuário marcar um lançamento como pago na tela de lançamentos,
-  /// sincroniza também a CONTA A PAGAR vinculada (se houver).
+  /// Marca lançamento pago + sincroniza conta_pagar (se existir)
   Future<void> marcarLancamentoComoPagoSincronizado(
     Lancamento lanc,
     bool pago,
   ) async {
     if (lanc.id == null) return;
 
-    // 1) Atualiza o lançamento normalmente
-    await _db.marcarLancamentoComoPago(lanc.id!, pago);
+    await _lancRepo.marcarComoPago(lanc.id!, pago);
 
-    // 2) Se tiver grupo/parcela, atualiza a conta_pagar correspondente
     if (lanc.grupoParcelas != null && lanc.parcelaNumero != null) {
-      final database = await _db.db;
-
-      final agora = DateTime.now();
-      final agoraMs = agora.millisecondsSinceEpoch;
-
-      await database.update(
-        'conta_pagar',
-        {'pago': pago ? 1 : 0, 'data_pagamento': pago ? agoraMs : null},
-        where: 'grupo_parcelas = ? AND parcela_numero = ?',
-        whereArgs: [lanc.grupoParcelas, lanc.parcelaNumero],
+      await _contaPagarRepo.marcarPorGrupoEParcela(
+        grupo: lanc.grupoParcelas!,
+        parcelaNumero: lanc.parcelaNumero!,
+        pago: pago,
       );
     }
   }

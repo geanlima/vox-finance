@@ -1,12 +1,16 @@
 // lib/ui/core/regras/regra_cartao_parcelado.dart
+
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
 class RegraCartaoParceladoService {
-  final DbService _db;
+  final LancamentoRepository _lancRepo;
 
-  RegraCartaoParceladoService(this._db);
+  RegraCartaoParceladoService(
+    LancamentoRepository repositoryLancamento, {
+    LancamentoRepository? lancRepo,
+  }) : _lancRepo = lancRepo ?? LancamentoRepository();
 
   /// Regra 1 - Cartão de crédito parcelado
   ///
@@ -23,7 +27,7 @@ class RegraCartaoParceladoService {
     // Segurança: essa regra só faz sentido para cartão de crédito
     if (compraBase.formaPagamento != FormaPagamento.credito) {
       // se quiser, pode apenas salvar normal aqui
-      await _db.salvarLancamento(compraBase);
+      await _lancRepo.salvar(compraBase);
       return;
     }
 
@@ -31,14 +35,14 @@ class RegraCartaoParceladoService {
 
     // 1) A compra no cartão é considerada "paga" no dia da compra
     final Lancamento compraAjustada = compraBase.copyWith(
-      pagamentoFatura: false,              // não é fatura ainda
-      pago: true,                          // compra já "paga" (usou o cartão)
+      pagamentoFatura: false, // não é fatura ainda
+      pago: true, // compra já "paga" (usou o cartão)
       dataPagamento: compraBase.dataPagamento ?? agora,
       // grupoParcelas ainda pode ser nulo aqui; será definido ao gerar as parcelas
     );
 
     // Salva OU atualiza esse lançamento principal (o da compra)
-    final idCompra = await _db.salvarLancamento(compraAjustada);
+    final idCompra = await _lancRepo.salvar(compraAjustada);
 
     // Garante que o objeto tenha o id preenchido
     final compraComId = compraAjustada.copyWith(id: idCompra);
@@ -49,9 +53,6 @@ class RegraCartaoParceladoService {
     //  - criar N lançamentos futuros (parcelas)
     //  - criar N registros em conta_pagar
     //  - amarrar tudo via grupo_parcelas + id_cartao/id_conta/forma_pagamento
-    await _db.salvarLancamentosParceladosFuturos(
-      compraComId,
-      qtdParcelas,
-    );
+    await _lancRepo.salvarParceladosFuturos(compraComId, qtdParcelas);
   }
 }

@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:vox_finance/ui/data/models/usuario.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -23,6 +23,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final _senhaController = TextEditingController();
   final _confirmarSenhaController = TextEditingController();
 
+  final UsuarioRepository _usuarioRepository = UsuarioRepository();
+
   final _imagePicker = ImagePicker();
   String? _fotoSelecionadaPath;
 
@@ -36,10 +38,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -76,7 +75,7 @@ class _RegisterPageState extends State<RegisterPage> {
         criadoEm: DateTime.now(),
       );
 
-      await DbService.instance.salvarUsuario(usuario);
+      await _usuarioRepository.salvar(usuario);
 
       _showMessage('Usuário criado com sucesso!');
 
@@ -106,9 +105,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Criar conta'),
-      ),
+      appBar: AppBar(title: const Text('Criar conta')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Center(
@@ -120,8 +117,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 28,
+                ),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -132,15 +131,14 @@ class _RegisterPageState extends State<RegisterPage> {
                         onTap: _isLoading ? null : _selecionarFoto,
                         child: CircleAvatar(
                           radius: 40,
-                          backgroundImage: _fotoSelecionadaPath != null
-                              ? FileImage(File(_fotoSelecionadaPath!))
-                              : null,
-                          child: _fotoSelecionadaPath == null
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 40,
-                                )
-                              : null,
+                          backgroundImage:
+                              _fotoSelecionadaPath != null
+                                  ? FileImage(File(_fotoSelecionadaPath!))
+                                  : null,
+                          child:
+                              _fotoSelecionadaPath == null
+                                  ? const Icon(Icons.person, size: 40)
+                                  : null,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -201,9 +199,11 @@ class _RegisterPageState extends State<RegisterPage> {
                           labelText: 'Senha',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
-                            icon: Icon(_obscureSenha
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded),
+                            icon: Icon(
+                              _obscureSenha
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                            ),
                             onPressed: () {
                               setState(() {
                                 _obscureSenha = !_obscureSenha;
@@ -234,9 +234,11 @@ class _RegisterPageState extends State<RegisterPage> {
                           labelText: 'Confirmar senha',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
-                            icon: Icon(_obscureConfirmarSenha
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded),
+                            icon: Icon(
+                              _obscureConfirmarSenha
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                            ),
                             onPressed: () {
                               setState(() {
                                 _obscureConfirmarSenha =
@@ -266,16 +268,17 @@ class _RegisterPageState extends State<RegisterPage> {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _salvarUsuario,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text('Criar conta'),
+                          child:
+                              _isLoading
+                                  ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                  : const Text('Criar conta'),
                         ),
                       ),
                     ],
