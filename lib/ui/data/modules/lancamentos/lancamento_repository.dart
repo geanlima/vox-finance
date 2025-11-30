@@ -179,6 +179,7 @@ class LancamentoRepository {
       }
 
       final lancParcela = base.copyWith(
+        // mesmo que base tenha id, vamos ignorar no insert
         id: null,
         valor: valorParcela,
         dataHora: dataParcela,
@@ -189,23 +190,28 @@ class LancamentoRepository {
         dataPagamento: dataPagamentoBase,
       );
 
-      await db.insert('lancamentos', lancParcela.toMap());
+      // 🔴 IMPORTANTE: remover o id do map antes de inserir
+      final dadosLanc = lancParcela.toMap()..remove('id');
 
-      if (!pagoBase) {
-        final conta = ContaPagar(
-          id: null,
-          descricao: lancParcela.descricao,
-          valor: valorParcela,
-          dataVencimento: dataParcela,
-          pago: false,
-          dataPagamento: null,
-          parcelaNumero: i + 1,
-          parcelaTotal: qtdParcelas,
-          grupoParcelas: grupo,
-        );
+      final int idLancamento = await db.insert('lancamentos', dadosLanc);
 
-        await db.insert('conta_pagar', conta.toMap());
-      }
+      final conta = ContaPagar(
+        id: null,
+        descricao: lancParcela.descricao,
+        valor: valorParcela,
+        dataVencimento: dataParcela,
+        pago: false,
+        dataPagamento: null,
+        parcelaNumero: i + 1,
+        parcelaTotal: qtdParcelas,
+        grupoParcelas: grupo,
+        idLancamento: idLancamento,
+      );
+
+      // garante que nunca vai tentar inserir id manual
+      final dadosConta = conta.toMap()..remove('id');
+
+      await db.insert('conta_pagar', dadosConta);
     }
   }
 }

@@ -180,6 +180,15 @@ class MigrationV2toV15 {
         }
       } catch (_) {}
     }
+
+    // ---- V16: adiciona id_lancamento em conta_pagar ----
+    if (oldVersion < 16) {
+      try {
+        await db.execute(
+          'ALTER TABLE conta_pagar ADD COLUMN id_lancamento INTEGER;',
+        );
+      } catch (_) {}
+    }
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).

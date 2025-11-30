@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
 import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
@@ -10,7 +11,6 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/lancamento_futuro_form.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/widgets/lancamento_futuro_tile.dart';
-// ajuste o caminho se for diferente:
 
 class LancamentosFuturosPage extends StatefulWidget {
   const LancamentosFuturosPage({super.key});
@@ -21,10 +21,15 @@ class LancamentosFuturosPage extends StatefulWidget {
 
 class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
   final LancamentoRepository _repositoryLancamento = LancamentoRepository();
-  final ContaPagarRepository _contapagarLancamento = ContaPagarRepository();
 
-  late final RegraCartaoParceladoService _regraCartaoParcelado;
+  // ✅ nome mais claro
+  final ContaPagarRepository _contaPagarRepository = ContaPagarRepository();
+
+  // 🔹 Aqui só vamos usar a regra "outra compra" (que também sincroniza conta_pagar)
   late final RegraOutraCompraParceladaService _regraOutraCompra;
+
+  // (essa regra é usada só para GERAR parcelas na inclusão)
+  late final RegraCartaoParceladoService _regraCartaoParcelado;
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
@@ -37,10 +42,12 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
 
     _regraOutraCompra = RegraOutraCompraParceladaService(
       lancRepo: _repositoryLancamento,
-      contaPagarRepo: _contapagarLancamento,
+      contaPagarRepo: _contaPagarRepository,
     );
 
-    _regraCartaoParcelado = RegraCartaoParceladoService(_repositoryLancamento);
+    _regraCartaoParcelado = RegraCartaoParceladoService(
+      lancRepo: _repositoryLancamento,
+    );
 
     _carregarDados();
   }
@@ -61,27 +68,40 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
     });
   }
 
+  // ============================================================
+  //  MARCAR LANÇAMENTO FUTURO COMO PAGO  (e sincronizar conta_pagar)
+  // ============================================================
   Future<void> _marcarComoPago(Lancamento lanc, bool pago) async {
     if (lanc.id == null) return;
 
-    final ehCartaoCredito =
+    final bool ehCartaoCredito =
         lanc.formaPagamento == FormaPagamento.credito && lanc.idCartao != null;
 
+    // 1) PAGAMENTO DE FATURA DO CARTÃO
     if (ehCartaoCredito && lanc.pagamentoFatura) {
-      // 👉 Aqui continua sua lógica atual para fatura de cartão
+      // 1.1 Marca o lançamento da fatura como pago
       await _repositoryLancamento.marcarComoPago(lanc.id!, pago);
-    } else {
-      // 👉 Outra compra parcelada (boleto / pix / débito etc.)
+
+      // 1.2 Marca todas as contas a pagar que pertencem à fatura
+      if (lanc.idCartao != null && lanc.dataHora != null) {
+        await _contaPagarRepository.marcarComoPagoPorCartaoEVencimento(
+          idCartao: lanc.idCartao!,
+          dataVencimento: lanc.dataHora,
+          pago: pago,
+        );
+      }
+    }
+    // 2) OUTRA COMPRA / PARCELA NORMAL (boleto, PIX, débito etc.)
+    else {
       await _regraOutraCompra.marcarLancamentoComoPagoSincronizado(lanc, pago);
     }
 
+    // 3) RECARREGA LISTA
     await _carregarDados();
   }
 
   Future<void> _novoLancamentoFuturo() async {
     final hoje = DateTime.now();
-
-    // você pode usar hoje ou amanhã como data inicial, como preferir
     final dataInicial = DateTime(hoje.year, hoje.month, hoje.day);
 
     final result = await Navigator.push<LancamentoFormResult>(
@@ -98,19 +118,17 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
     final qtd = result.qtdParcelas;
 
     if (qtd <= 1) {
-      // 👉 Lançamento simples (à vista ou 1x)
+      // Lançamento simples
       await _repositoryLancamento.salvar(base);
     } else {
-      // 👉 Parcelado
+      // Parcelado
       if (base.formaPagamento == FormaPagamento.credito &&
           base.idCartao != null) {
-        // ✅ Regra 1: Cartão de crédito parcelado
         await _regraCartaoParcelado.processarCompraParcelada(
           compraBase: base,
           qtdParcelas: qtd,
         );
       } else {
-        // ✅ Regra 2: Outra compra parcelada (boleto, pix, débito etc.)
         await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
       }
     }
@@ -131,7 +149,6 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
     );
 
     if (resultado != null) {
-      // para edição de um só, vamos manter simples: salva só esse
       await _repositoryLancamento.salvar(resultado.lancamentoBase);
       await _carregarDados();
     }
@@ -144,11 +161,11 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
         title: const Text('Lançamentos Futuros'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context), // 👈 voltar
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _novoLancamentoFuturo, // 👈 incluir
+        onPressed: _novoLancamentoFuturo,
         child: const Icon(Icons.add),
       ),
       body: Column(
@@ -218,7 +235,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
                       return LancamentoFuturoTile(
                         lancamento: lanc,
                         onAlterarPago: (pago) => _marcarComoPago(lanc, pago),
-                        onTap: () => _editarLancamento(lanc), // 👈 editar
+                        onTap: () => _editarLancamento(lanc),
                       );
                     },
                   ),

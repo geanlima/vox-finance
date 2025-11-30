@@ -31,6 +31,41 @@ class ContaPagarRepository {
     }
   }
 
+  Future<void> marcarComoPagoPorCartaoEVencimento({
+    required int idCartao,
+    required DateTime dataVencimento,
+    required bool pago,
+  }) async {
+    final db = await _db;
+
+    await db.update(
+      'conta_pagar',
+      {
+        'pago': pago ? 1 : 0,
+        'data_pagamento': pago ? DateTime.now().millisecondsSinceEpoch : null,
+      },
+      where: 'id_cartao = ? AND data_vencimento = ?',
+      whereArgs: [idCartao, dataVencimento.millisecondsSinceEpoch],
+    );
+  }
+
+  Future<void> marcarComoPagoPorLancamentoId(
+    int idLancamento,
+    bool pago,
+  ) async {
+    final db = await _db;
+
+    await db.update(
+      'conta_pagar',
+      {
+        'pago': pago ? 1 : 0,
+        'data_pagamento': pago ? DateTime.now().millisecondsSinceEpoch : null,
+      },
+      where: 'id_lancamento = ?',
+      whereArgs: [idLancamento],
+    );
+  }
+
   Future<List<ContaPagar>> getTodas() async {
     final db = await _db;
     final result = await db.query(

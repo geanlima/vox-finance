@@ -27,7 +27,7 @@ dependencies:
   firebase_core: ^3.8.0
   firebase_auth: ^5.3.3
   cloud_firestore: ^5.6.12
-  google_sign_in: ^6.2.1   # 👈 NOVO
+  google_sign_in: ^6.2.1
 
   # ================================
   # OUTRAS DEPENDÊNCIAS
@@ -39,6 +39,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.15.0
   shared_preferences: ^2.2.2
   flutter_local_notifications: ^17.2.2
+  flutter_native_splash: ^2.4.7
 
 dev_dependencies:
   flutter_test:
@@ -52,7 +53,23 @@ flutter:
 
   assets:
     - assets/icon/
+    - assets/google_signin.png
+    - assets/splash_vox.png
+
 flutter_icons:
   android: true
   ios: true
   image_path: "assets/icon/vox_icon.png"
+
+# ===========================================
+#   CONFIGURAÇÃO DO SPLASH — AJUSTADO
+# ===========================================
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: assets/splash_vox.png
+  android: true
+  ios: true
+
+  android_12:
+    color: "#FFFFFF"
+    image: assets/splash_vox.png

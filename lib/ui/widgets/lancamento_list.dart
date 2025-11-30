@@ -10,6 +10,7 @@ class LancamentoList extends StatelessWidget {
   final DateFormat dateHoraFormat;
   final void Function(Lancamento) onEditar;
   final void Function(Lancamento) onExcluir;
+  final void Function(Lancamento)? onPagar;
 
   const LancamentoList({
     super.key,
@@ -18,6 +19,7 @@ class LancamentoList extends StatelessWidget {
     required this.dateHoraFormat,
     required this.onEditar,
     required this.onExcluir,
+    this.onPagar,
   });
 
   @override
@@ -37,7 +39,7 @@ class LancamentoList extends StatelessWidget {
         final statusTexto = lanc.pago ? 'Pago' : 'Pendente';
         final statusCor = lanc.pago ? Colors.green : Colors.orange;
 
-        // 👉 verifica se é parcelado
+        // verifica se é parcelado
         final bool ehParcelado =
             lanc.parcelaTotal != null && (lanc.parcelaTotal ?? 0) > 1;
 
@@ -49,9 +51,7 @@ class LancamentoList extends StatelessWidget {
               ..write('\nStatus: $statusTexto');
 
         if (ehParcelado) {
-          buffer.write(
-            '\nParcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
-          ); // 👈 aqui
+          buffer.write('\nParcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}');
         }
 
         buffer.write('\n${dateHoraFormat.format(lanc.dataHora)}');
@@ -73,7 +73,6 @@ class LancamentoList extends StatelessWidget {
               buffer.toString(),
               style: TextStyle(color: statusCor),
             ),
-            // se tiver parcela, vira “4 linhas”
             isThreeLine: true,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -86,6 +85,16 @@ class LancamentoList extends StatelessWidget {
                   icon: const Icon(Icons.delete, size: 20),
                   onPressed: () => onExcluir(lanc),
                 ),
+                if (!lanc.pago && onPagar != null)
+                  IconButton(
+                    icon: const Icon(Icons.check_circle_outline),
+                    color: Colors.green,
+                    tooltip:
+                        lanc.pagamentoFatura
+                            ? 'Registrar pagamento da fatura'
+                            : 'Marcar como pago',
+                    onPressed: () => onPagar!(lanc),
+                  ),
               ],
             ),
           ),

@@ -1,13 +1,16 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers, unused_local_variable, unused_element
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers, unused_local_variable, unused_element, unused_field
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
+import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
@@ -43,6 +46,11 @@ class _HomePageState extends State<HomePage> {
   final ContaBancariaRepository _repositoryContaBancaria =
       ContaBancariaRepository();
 
+  final ContaPagarRepository _repositoryContaPagar = ContaPagarRepository();
+
+  late final RegraOutraCompraParceladaService _regraOutraCompra;
+  late final RegraCartaoParceladoService _regraCartaoParcelado;
+
   late stt.SpeechToText _speech;
   bool _speechDisponivel = false;
 
@@ -60,6 +68,16 @@ class _HomePageState extends State<HomePage> {
     _carregarDoBanco();
     _carregarCartoes();
     _carregarContas();
+
+    // ⬇️ inicializa as regras de pagamento/sincronização
+    _regraOutraCompra = RegraOutraCompraParceladaService(
+      lancRepo: _repositoryLancamento,
+      contaPagarRepo: _repositoryContaPagar,
+    );
+
+    _regraCartaoParcelado = RegraCartaoParceladoService(
+      lancRepo: _repositoryLancamento,
+    );
   }
 
   Future<void> _carregarContas() async {
@@ -409,6 +427,52 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _pagarLancamento(Lancamento lanc) async {
+    if (lanc.id == null) return;
+
+    final bool ehCartaoCredito =
+        lanc.formaPagamento == FormaPagamento.credito && lanc.idCartao != null;
+
+    // 1) Pergunta antes de pagar
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            ehCartaoCredito && lanc.pagamentoFatura
+                ? 'Pagamento de fatura'
+                : 'Marcar lançamento como pago',
+          ),
+          content: Text(
+            ehCartaoCredito && lanc.pagamentoFatura
+                ? 'Deseja registrar o pagamento desta fatura de '
+                    '${_currency.format(lanc.valor)}?'
+                : 'Deseja marcar como pago o lançamento de '
+                    '${_currency.format(lanc.valor)} (${lanc.descricao})?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) return;
+
+    // 2) Regras de pagamento – lança em lancamentos + conta_pagar
+    await _regraOutraCompra.marcarLancamentoComoPagoSincronizado(lanc, true);
+
+    // 3) Recarrega os lançamentos do dia
+    await _carregarDoBanco();
+  }
+
   // ============ BUILD ============
 
   @override
@@ -484,6 +548,7 @@ class _HomePageState extends State<HomePage> {
                 dateHoraFormat: _dateHoraFormat,
                 onEditar: (l) => _abrirFormLancamento(existente: l),
                 onExcluir: _excluirLancamento,
+                onPagar: _pagarLancamento,
               ),
             ),
           ],

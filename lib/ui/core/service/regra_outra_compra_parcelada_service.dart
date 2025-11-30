@@ -29,19 +29,20 @@ class RegraOutraCompraParceladaService {
     await _lancRepo.salvarParceladosFuturos(lancBase, qtdParcelas);
   }
 
-  /// Marca lançamento pago + sincroniza conta_pagar (se existir)
   Future<void> marcarLancamentoComoPagoSincronizado(
     Lancamento lanc,
     bool pago,
   ) async {
     if (lanc.id == null) return;
 
+    // Marca o lançamento em si
     await _lancRepo.marcarComoPago(lanc.id!, pago);
 
+    // Se tiver ligação com contas a pagar, sincroniza:
     if (lanc.grupoParcelas != null && lanc.parcelaNumero != null) {
       await _contaPagarRepo.marcarPorGrupoEParcela(
-        grupo: lanc.grupoParcelas!,
-        parcelaNumero: lanc.parcelaNumero!,
+        grupo: lanc.grupoParcelas!, // 👈 AQUI PEGA O GRUPO
+        parcelaNumero: lanc.parcelaNumero!, // 👈 AQUI PEGA A PARCELA
         pago: pago,
       );
     }
