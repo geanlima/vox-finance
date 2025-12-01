@@ -2,7 +2,7 @@
 import 'package:sqflite/sqflite.dart';
 
 class MigrationV2toV15 {
-  /// Executa todas as migrações da 2 até a 15,
+  /// Executa todas as migrações da 2 em diante,
   /// dependendo do [oldVersion].
   static Future<void> upgrade(
     Database db,
@@ -78,7 +78,9 @@ class MigrationV2toV15 {
       } catch (_) {}
 
       try {
-        await db.execute('ALTER TABLE cartao_credito ADD COLUMN limite REAL;');
+        await db.execute(
+          'ALTER TABLE cartao_credito ADD COLUMN limite REAL;',
+        );
       } catch (_) {}
 
       try {
@@ -188,6 +190,31 @@ class MigrationV2toV15 {
           'ALTER TABLE conta_pagar ADD COLUMN id_lancamento INTEGER;',
         );
       } catch (_) {}
+    }
+
+    // ---- V17: cria tabelas de fatura de cartão ----
+    if (oldVersion < 17) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fatura_cartao (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_cartao INTEGER NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          data_fechamento INTEGER NOT NULL,
+          data_vencimento INTEGER NOT NULL,
+          valor_total REAL NOT NULL,
+          pago INTEGER NOT NULL DEFAULT 0,
+          data_pagamento INTEGER
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fatura_cartao_lancamento (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_fatura INTEGER NOT NULL,
+          id_lancamento INTEGER NOT NULL
+        );
+      ''');
     }
   }
 

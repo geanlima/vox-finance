@@ -9,8 +9,8 @@ class DatabaseConfig {
   /// Nome do arquivo do banco
   static const String dbName = 'vox_finance.db';
 
-  /// Versão atual do schema (a mesma 15 que você já usa)
-  static const int dbVersion = 16;
+  /// Versão atual do schema
+  static const int dbVersion = 17; // 🔼 era 16
 
   /// Retorna o caminho completo do arquivo do banco
   static Future<String> getDatabasePath() async {

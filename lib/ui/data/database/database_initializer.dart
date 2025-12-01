@@ -9,9 +9,10 @@ class DatabaseInitializer {
 
     return await openDatabase(
       path,
-      version: DatabaseConfig.dbVersion, // 15
+      version: DatabaseConfig.dbVersion,
       onCreate: (db, version) async {
-        await MigrationFactory.create(db); // 👈 só db
+        // agora o create sabe qual é a versão alvo (17)
+        await MigrationFactory.create(db, version);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await MigrationFactory.upgrade(db, oldVersion, newVersion);
