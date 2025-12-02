@@ -11,11 +11,10 @@ class ContaPagar {
   int? parcelaNumero;
   int? parcelaTotal;
   String grupoParcelas;
-
-  // 🔹 Novos campos
   FormaPagamento? formaPagamento;
   int? idCartao;
   int? idConta;
+  int? idLancamento;
 
   ContaPagar({
     this.id,
@@ -30,6 +29,7 @@ class ContaPagar {
     this.formaPagamento,
     this.idCartao,
     this.idConta,
+    this.idLancamento,
   });
 
   Map<String, dynamic> toMap() {
@@ -43,11 +43,10 @@ class ContaPagar {
       'parcela_numero': parcelaNumero,
       'parcela_total': parcelaTotal,
       'grupo_parcelas': grupoParcelas,
-
-      // 🔹 novos campos no banco
       'forma_pagamento': formaPagamento?.index,
       'id_cartao': idCartao,
       'id_conta': idConta,
+      'id_Lancamento': idLancamento,
     };
   }
 
@@ -77,6 +76,7 @@ class ContaPagar {
               : null,
       idCartao: map['id_cartao'] as int?,
       idConta: map['id_conta'] as int?,
+      idLancamento: map['id_Lancamento'] as int?,
     );
   }
 }

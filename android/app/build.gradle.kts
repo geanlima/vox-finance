@@ -3,7 +3,7 @@ plugins {
     // START: FlutterFire Configuration
     id("com.google.gms.google-services")
     // END: FlutterFire Configuration
-    id("kotlin-android")
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -11,7 +11,8 @@ android {
     namespace = "com.example.vox_finance"
     compileSdk = flutter.compileSdkVersion
 
-    ndkVersion = "27.0.12077973"
+    // 👇 ALTERE AQUI
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -25,7 +26,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.vox_finance"
-        minSdk = flutter.minSdkVersion                       // ✅ aqui
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

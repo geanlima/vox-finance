@@ -8,6 +8,9 @@ import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
@@ -52,6 +55,10 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateFormat = DateFormat('dd/MM/yyyy');
 
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+  final CartaoCreditoRepository _cartaoLancamento = CartaoCreditoRepository();
+  final ContaPagarRepository _contaPagarLancamento = ContaPagarRepository();
+
   List<ContaPagarResumo> _resumos = [];
   bool _mostrarSomentePendentes = true;
   bool _carregando = false;
@@ -65,7 +72,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
   Future<String?> _obterDescricaoFormaPagamento(String grupoParcelas) async {
     // usa os lançamentos daquele grupo de parcelas
-    final lancs = await _isarService.getParcelasPorGrupoLancamento(
+    final lancs = await _repositoryLancamento.getParcelasPorGrupo(
       grupoParcelas,
     );
 
@@ -75,9 +82,8 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
     // Se tiver cartão
     if (l.formaPagamento == FormaPagamento.credito && l.idCartao != null) {
-      final CartaoCredito? cartao = await _isarService.getCartaoCreditoById(
-        l.idCartao!,
-      );
+      final CartaoCredito? cartao = await _cartaoLancamento
+          .getCartaoCreditoById(l.idCartao!);
 
       if (cartao != null) {
         final ultimos =
@@ -99,8 +105,8 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
     final todasParcelas =
         _mostrarSomentePendentes
-            ? await _isarService.getContasPagarPendentes()
-            : await _isarService.getContasPagar();
+            ? await _contaPagarLancamento.getPendentes()
+            : await _contaPagarLancamento.getTodas();
 
     // Agrupa por grupoParcelas
     final mapa = <String, List<ContaPagar>>{};
@@ -184,7 +190,9 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
     );
 
     if (confirmar == true) {
-      await _isarService.deletarContasPagarPorGrupo(resumo.grupoParcelas);
+      await _contaPagarLancamento.deletarPorGrupo(
+        resumo.grupoParcelas,
+      );
       await _carregar();
 
       if (mounted) {

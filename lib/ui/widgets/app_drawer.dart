@@ -2,8 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
-import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/usuario.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart'; // 👈 IMPORTANTE
 
@@ -19,7 +19,7 @@ class AppDrawer extends StatefulWidget {
 class _AppDrawerState extends State<AppDrawer> {
   Usuario? _usuario;
   bool _carregandoUsuario = true;
-
+  final UsuarioRepository _repositoryUsuario = UsuarioRepository();
   @override
   void initState() {
     super.initState();
@@ -28,7 +28,7 @@ class _AppDrawerState extends State<AppDrawer> {
 
   Future<void> _carregarUsuario() async {
     try {
-      final usuario = await DbService.instance.obterUsuario();
+      final usuario = await _repositoryUsuario.obterPrimeiro();
       if (!mounted) return;
       setState(() {
         _usuario = usuario;

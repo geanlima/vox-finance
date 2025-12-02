@@ -1,5 +1,8 @@
+// ignore_for_file: unused_field
+
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class IAInterpretacao {
@@ -18,6 +21,7 @@ class IAInterpretacao {
 
 class IAService {
   final DbService _dbService;
+  final ContaPagarRepository _repository = ContaPagarRepository();
 
   IAService([DbService? dbService]) : _dbService = dbService ?? DbService();
 
@@ -86,7 +90,7 @@ class IAService {
       grupoParcelas: 'SIMP_${DateTime.now().microsecondsSinceEpoch}',
     );
 
-    await _dbService.salvarContaPagar(conta);
+    await _repository.salvar(conta);
   }
 
   Future<void> salvarContasParceladas({
@@ -116,7 +120,7 @@ class IAService {
         grupoParcelas: grupo,
       );
 
-      await _dbService.salvarContaPagar(conta);
+      await _repository.salvar(conta);
     }
   }
 }

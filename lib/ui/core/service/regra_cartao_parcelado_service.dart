@@ -1,12 +1,17 @@
 // lib/ui/core/regras/regra_cartao_parcelado.dart
+
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
 class RegraCartaoParceladoService {
-  final DbService _db;
+  final LancamentoRepository _lancRepo;
 
-  RegraCartaoParceladoService(this._db);
+  /// Mesmo padrão da RegraOutraCompraParceladaService:
+  /// - se não passar nada, cria o repo padrão
+  /// - se quiser, pode injetar um mock / customizado
+  RegraCartaoParceladoService({LancamentoRepository? lancRepo})
+    : _lancRepo = lancRepo ?? LancamentoRepository();
 
   /// Regra 1 - Cartão de crédito parcelado
   ///
@@ -15,43 +20,39 @@ class RegraCartaoParceladoService {
   ///
   /// Comportamento:
   /// 1) Se for cartão, marca a compra como PAGA no dia da compra
-  /// 2) Gera as parcelas futuras (lancamentos + contas a pagar)
+  /// 2) Gera as parcelas futuras (lancamentos + contas a pagar) como NÃO PAGAS
   Future<void> processarCompraParcelada({
     required Lancamento compraBase,
     required int qtdParcelas,
   }) async {
     // Segurança: essa regra só faz sentido para cartão de crédito
     if (compraBase.formaPagamento != FormaPagamento.credito) {
-      // se quiser, pode apenas salvar normal aqui
-      await _db.salvarLancamento(compraBase);
+      // fallback: salva normal se não for crédito
+      await _lancRepo.salvar(compraBase);
       return;
     }
 
-    final agora = DateTime.now();
+    // Um grupo único para todas as parcelas
+    final String grupo =
+        compraBase.grupoParcelas ??
+        DateTime.now().millisecondsSinceEpoch.toString();
 
-    // 1) A compra no cartão é considerada "paga" no dia da compra
-    final Lancamento compraAjustada = compraBase.copyWith(
-      pagamentoFatura: false,              // não é fatura ainda
-      pago: true,                          // compra já "paga" (usou o cartão)
-      dataPagamento: compraBase.dataPagamento ?? agora,
-      // grupoParcelas ainda pode ser nulo aqui; será definido ao gerar as parcelas
+    // Base para as parcelas:
+    //  - NÃO vamos salvar um lançamento "total"
+    //  - só criaremos as parcelas (cada uma com valor dividido)
+    final Lancamento baseParcelas = compraBase.copyWith(
+      id: null, // garante insert novo
+      grupoParcelas: grupo, // mesmo grupo em todas as parcelas
+      parcelaNumero: null, // a função salvarParceladosFuturos preenche
+      parcelaTotal: null, // idem
+      pagamentoFatura: false, // ainda não é pagamento de fatura
+      pago: true, // parcelas começam em aberto
+      dataPagamento: null,
     );
 
-    // Salva OU atualiza esse lançamento principal (o da compra)
-    final idCompra = await _db.salvarLancamento(compraAjustada);
-
-    // Garante que o objeto tenha o id preenchido
-    final compraComId = compraAjustada.copyWith(id: idCompra);
-
-    // 2) Gera as parcelas futuras + contas a pagar amarradas
-    //
-    // Essa função do DbService já está preparada para:
-    //  - criar N lançamentos futuros (parcelas)
-    //  - criar N registros em conta_pagar
-    //  - amarrar tudo via grupo_parcelas + id_cartao/id_conta/forma_pagamento
-    await _db.salvarLancamentosParceladosFuturos(
-      compraComId,
-      qtdParcelas,
-    );
+    // Vai criar:
+    //  - N lançamentos futuros com valor da parcela
+    //  - N contas a pagar ligadas ao mesmo grupo
+    await _lancRepo.salvarParceladosFuturos(baseParcelas, qtdParcelas);
   }
 }

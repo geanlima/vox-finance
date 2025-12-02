@@ -3,8 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
-import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
@@ -34,7 +34,6 @@ class ComparativoMesPage extends StatefulWidget {
 }
 
 class _ComparativoMesPageState extends State<ComparativoMesPage> {
-  final _db = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
   // paleta simples para 3 linhas
@@ -42,6 +41,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
   final Color _corComparacao = const Color(0xFFFBC02D); // amarelo
   final Color _corComparacao2 = const Color(0xFF43A047); // verde
 
+  final LancamentoRepository _repository = LancamentoRepository();
   TipoComparativoMes _tipo = TipoComparativoMes.categoria;
   Categoria? _categoriaSelecionada;
   FormaPagamento? _formaPagamentoSelecionada;
@@ -82,7 +82,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final inicioMes = DateTime(ano, mes, 1);
     final fimMes = DateTime(ano, mes + 1, 0, 23, 59, 59);
 
-    final lancs = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
+    final lancs = await _repository.getByPeriodo(inicioMes, fimMes);
 
     final filtrados =
         lancs.where((l) {

@@ -5,11 +5,13 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 
-import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
@@ -41,7 +43,6 @@ class GraficoPizzaComponent extends StatefulWidget {
 }
 
 class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
-  final _db = DbService();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateHoraFormat = DateFormat('dd/MM HH:mm');
   final _dateDiaFormat = DateFormat('dd/MM');
@@ -116,9 +117,16 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       59,
     );
 
-    final lista = await _db.getLancamentosByPeriodo(inicioMes, fimMes);
-    final cards = await _db.getCartoesCredito();
-    final contas = await _db.getContasBancarias();
+    final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+    final CartaoCreditoRepository _repositoryCartao = CartaoCreditoRepository();
+    final ContaBancariaRepository _repositoryConta = ContaBancariaRepository();
+
+    final lista = await _repositoryLancamento.getByPeriodo(
+      inicioMes,
+      fimMes,
+    );
+    final cards = await _repositoryCartao.getCartoesCredito();
+    final contas = await _repositoryConta.getContasBancarias();
 
     Iterable<Lancamento> filtrados = lista;
 

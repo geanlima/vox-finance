@@ -1,15 +1,20 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_field, no_leading_underscores_for_local_identifiers
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
+
+// 👇 NOVO: service de regra de compra parcelada
+import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 
 class LancamentoFormBottomSheet extends StatefulWidget {
   final Lancamento? existente;
@@ -54,6 +59,12 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
   late TextEditingController _valorController;
   late TextEditingController _descricaoController;
   late TextEditingController _qtdParcelasController;
+
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+
+  // 👇 NOVO: usa o service para criar parcelas + contas a pagar
+  final RegraOutraCompraParceladaService _regraOutraCompra =
+      RegraOutraCompraParceladaService();
 
   FormaPagamento? _formaSelecionada;
   bool _pagamentoFatura = false;
@@ -645,15 +656,28 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         return;
       }
 
+      // base SEM info de parcela; service completa e força NÃO pago
       final base = lanc.copyWith(
         grupoParcelas: null,
         parcelaNumero: null,
         parcelaTotal: null,
       );
+      // 👇 AGORA usa o service (cria parcelas + contas a pagar)
+      //await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
 
-      await widget.dbService.salvarLancamentosParceladosFuturos(base, qtd);
+      if (_formaSelecionada == FormaPagamento.credito) {
+        final RegraCartaoParceladoService _regraCartaoParceladoService =
+            RegraCartaoParceladoService();
+
+        _regraCartaoParceladoService.processarCompraParcelada(
+          compraBase: base,
+          qtdParcelas: qtd,
+        );
+      } else {
+        await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
+      }
     } else {
-      await widget.dbService.salvarLancamento(lanc);
+      await _repositoryLancamento.salvar(lanc);
     }
 
     await widget.onSaved();
