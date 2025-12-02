@@ -63,7 +63,7 @@ class RegraOutraCompraParceladaService {
       // 2.2) Atualiza também a tabela FATURA_CARTAO
       final cartaoRepo = CartaoCreditoRepository();
 
-      final data = lanc.dataHora!;
+      final data = lanc.dataHora;
       final ano = data.year;
       final mes = data.month;
 

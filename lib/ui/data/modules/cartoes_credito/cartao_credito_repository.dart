@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_null_comparison
+// ignore_for_file: unnecessary_null_comparison, unused_field
 
 import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';

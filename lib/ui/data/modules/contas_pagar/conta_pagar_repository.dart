@@ -3,7 +3,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
-import 'package:vox_finance/ui/data/models/lancamento.dart';
 
 class ContaPagarRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();

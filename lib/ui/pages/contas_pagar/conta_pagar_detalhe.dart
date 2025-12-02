@@ -1,5 +1,5 @@
 // lib/ui/pages/contas_pagar/conta_pagar_detalhe.dart
-// ignore_for_file: deprecated_member_use, depend_on_referenced_packages
+// ignore_for_file: deprecated_member_use, depend_on_referenced_packages, unused_field, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -112,8 +112,8 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       ),
       isScrollControlled: true,
       builder: (ctx) {
-        final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
-        final _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
+        final currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
+        final dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -144,9 +144,9 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                       : Icons.receipt_long,
                 ),
                 title: Text(lanc.descricao),
-                subtitle: Text(_dateTimeFormat.format(lanc.dataHora)),
+                subtitle: Text(dateTimeFormat.format(lanc.dataHora)),
                 trailing: Text(
-                  _currency.format(lanc.valor),
+                  currency.format(lanc.valor),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
