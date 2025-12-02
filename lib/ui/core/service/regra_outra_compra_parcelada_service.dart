@@ -43,7 +43,7 @@ class RegraOutraCompraParceladaService {
     await _lancRepo.marcarComoPago(lanc.id!, pago);
 
     // =====================================================
-    // 2) CASO ESPECIAL: FATURA DE CARTÃO
+    // 2) CASO ESPECIAL: PAGAMENTO DE FATURA DE CARTÃO
     //    - pagamento_fatura == true
     //    - formaPagamento == crédito
     //    - idCartao preenchido
@@ -57,9 +57,10 @@ class RegraOutraCompraParceladaService {
 
     if (ehFaturaCartao) {
       // 2.1) Atualiza a conta_pagar vinculada à fatura
+      //      (coluna id_lancamento em conta_pagar)
       await _contaPagarRepo.marcarComoPagoPorLancamentoId(lanc.id!, pago);
 
-      // 2.2) Atualiza também a tabela FATURA_CARTAO (opcional mas ideal)
+      // 2.2) Atualiza também a tabela FATURA_CARTAO
       final cartaoRepo = CartaoCreditoRepository();
 
       final data = lanc.dataHora!;
@@ -70,28 +71,48 @@ class RegraOutraCompraParceladaService {
         idCartao: lanc.idCartao!, // mesmo cartão do lançamento
         anoReferencia: ano,
         mesReferencia: mes,
-        dataFechamento: data, // não é perfeito, mas mantém coerente
+        dataFechamento: data, // aqui usamos a própria data da fatura
         dataVencimento: data,
-        valorTotal: lanc.valor, // valor da fatura (já está no lançamento)
+        valorTotal: lanc.valor, // valor da fatura (está no lançamento)
         pago: pago,
         dataPagamento: pago ? DateTime.now() : null,
       );
 
-      // Importantíssimo: não cair no fluxo normal de grupo/parcela
+      // 2.3) PEGAR TODOS OS LANÇAMENTOS QUE COMPÕEM A FATURA
+      //      E MARCAR COMO PAGA A CONTA_A_PAGAR DE CADA UM
+      final itensFatura = await cartaoRepo.getLancamentosDaFatura(lanc);
+
+      for (final item in itensFatura) {
+        // Somente se tiver grupo + parcela (vínculo com conta_pagar)
+        if (item.grupoParcelas != null &&
+            item.grupoParcelas!.isNotEmpty &&
+            item.parcelaNumero != null) {
+          await _contaPagarRepo.marcarPorGrupoEParcela(
+            grupo: item.grupoParcelas!,
+            parcelaNumero: item.parcelaNumero!,
+            pago: pago,
+          );
+        }
+      }
+
+      // Importantíssimo: NÃO cair no fluxo normal de grupo/parcela,
+      // pois já tratamos tudo aqui (fatura + itens da fatura).
       return;
     }
 
     // =====================================================
-    // 3) CASO NORMAL (parcelas, boletos etc.)
+    // 3) CASO NORMAL (compras parceladas, boletos etc.)
     //    Usa grupoParcelas + parcelaNumero para sincronizar
     //    com a tabela conta_pagar
     // =====================================================
-    //if (lanc.grupoParcelas != null && lanc.parcelaNumero != null) {
+    if (lanc.grupoParcelas != null &&
+        lanc.grupoParcelas!.isNotEmpty &&
+        lanc.parcelaNumero != null) {
       await _contaPagarRepo.marcarPorGrupoEParcela(
         grupo: lanc.grupoParcelas!,
         parcelaNumero: lanc.parcelaNumero!,
         pago: pago,
       );
-    //}
+    }
   }
 }
