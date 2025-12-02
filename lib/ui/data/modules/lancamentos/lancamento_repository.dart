@@ -9,6 +9,20 @@ import 'package:vox_finance/ui/data/models/lancamento.dart';
 class LancamentoRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();
 
+  Future<Lancamento?> getById(int id) async {
+    final db = await _db;
+
+    final result = await db.query(
+      'lancamentos',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return null;
+
+    return Lancamento.fromMap(result.first);
+  }
   // ----------------- CRUD básico -----------------
 
   Future<int> salvar(Lancamento lanc) async {

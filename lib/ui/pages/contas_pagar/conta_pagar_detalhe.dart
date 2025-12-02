@@ -26,6 +26,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
   final _dbService = DbService(); // antes era _isarService
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateFormat = DateFormat('dd/MM/yyyy');
+  final _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
 
   final ContaPagarRepository _repository = ContaPagarRepository();
   final LancamentoRepository _repositoryLancamento = LancamentoRepository();
@@ -42,7 +43,6 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
   Future<void> _carregar() async {
     setState(() => _carregando = true);
 
-    // usa o DbService, que já filtra e ordena por grupo
     final lista = await _repository.getParcelasPorGrupo(widget.grupoParcelas);
 
     setState(() {
@@ -51,21 +51,147 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // MOSTRAR LANÇAMENTO VINCULADO A UMA PARCELA (id_lancamento)
+  // ---------------------------------------------------------------------------
+  Future<void> _mostrarLancamentoVinculado(ContaPagar parcela) async {
+    Lancamento? lanc;
+
+    // 1) Tenta pelo id_lancamento (caso fatura de cartão)
+    if (parcela.idLancamento != null) {
+      lanc = await _repositoryLancamento.getById(parcela.idLancamento!);
+    }
+
+    // 2) Se não encontrou, tenta pelo grupo + nº parcela
+    if (lanc == null) {
+      final lancamentosDoGrupo = await _repositoryLancamento
+          .getParcelasPorGrupo(parcela.grupoParcelas);
+
+      lanc = lancamentosDoGrupo.firstWhereOrNull(
+        (l) => (l.parcelaNumero ?? 1) == (parcela.parcelaNumero ?? 1),
+      );
+    }
+
+    // 3) Fallback final: tenta bater por data + valor + descrição
+    if (lanc == null) {
+      final db = await _dbService.db;
+
+      final result = await db.query(
+        'lancamentos',
+        where: 'data_hora = ? AND valor = ? AND descricao = ?',
+        whereArgs: [
+          parcela.dataVencimento.millisecondsSinceEpoch,
+          parcela.valor,
+          parcela.descricao,
+        ],
+        limit: 1,
+      );
+
+      if (result.isNotEmpty) {
+        lanc = Lancamento.fromMap(result.first);
+      }
+    }
+
+    // 4) Se ainda assim não achou, mostra aviso
+    if (lanc == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Esta parcela não possui lançamento vinculado.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 5) Achou → exibe o bottom sheet com o lançamento
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      isScrollControlled: true,
+      builder: (ctx) {
+        final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
+        final _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text(
+                'Lançamento vinculado',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Icon(
+                  lanc!.pagamentoFatura == true
+                      ? Icons.credit_card
+                      : Icons.receipt_long,
+                ),
+                title: Text(lanc.descricao),
+                subtitle: Text(_dateTimeFormat.format(lanc.dataHora)),
+                trailing: Text(
+                  _currency.format(lanc.valor),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Forma de pagamento: '
+                      '${lanc.formaPagamento.name.toUpperCase()}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    if (lanc.grupoParcelas != null &&
+                        lanc.parcelaNumero != null &&
+                        lanc.parcelaTotal != null)
+                      Text(
+                        'Grupo: ${lanc.grupoParcelas} · '
+                        'Parcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // REGISTRAR PAGAMENTO
+  // ---------------------------------------------------------------------------
   Future<void> _registrarPagamento(ContaPagar parcela) async {
     final agora = DateTime.now();
     final db = _dbService;
 
-    // ------------------------------------------------------
-    // 0) Verificar se é CARTÃO DE CRÉDITO
-    //    Se for cartão → apenas marcar contas a pagar como pago
-    //    (Quem cuida dos lançamentos é a fatura)
-    // ------------------------------------------------------
+    // 0) Cartão de crédito → só marca conta a pagar como paga
     final bool ehCartao =
         parcela.formaPagamento == FormaPagamento.credito &&
         parcela.idCartao != null;
 
     if (ehCartao) {
-      // Marca apenas o contas a pagar
       if (parcela.id != null) {
         await _repository.marcarParcelaComoPaga(parcela.id!, true);
       }
@@ -81,16 +207,15 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
           ),
         );
       }
-      return; // 🔥 IMPORTANTE: cartão NÃO segue o fluxo normal!
+      return;
     }
 
-    // ------------------------------------------------------
     // 1) Localizar lançamento FUTURO associado
-    // ------------------------------------------------------
     Lancamento? lancamentoOriginal;
 
-    final lancamentosDoGrupo = await _repositoryLancamento.getParcelasPorGrupo(parcela.grupoParcelas);
-        
+    final lancamentosDoGrupo = await _repositoryLancamento.getParcelasPorGrupo(
+      parcela.grupoParcelas,
+    );
 
     lancamentoOriginal = lancamentosDoGrupo.firstWhereOrNull(
       (l) => (l.parcelaNumero ?? 1) == (parcela.parcelaNumero ?? 1),
@@ -115,16 +240,12 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       }
     }
 
-    // ------------------------------------------------------
     // 2) Apagar lançamento FUTURO original
-    // ------------------------------------------------------
     if (lancamentoOriginal != null && lancamentoOriginal.id != null) {
       await _repositoryLancamento.deletar(lancamentoOriginal.id!);
     }
 
-    // ------------------------------------------------------
     // 3) Criar novo lançamento PAGO NA DATA ATUAL
-    // ------------------------------------------------------
     final novoLancamento = Lancamento(
       id: null,
       valor: parcela.valor,
@@ -145,16 +266,12 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
 
     await _repositoryLancamento.salvar(novoLancamento);
 
-    // ------------------------------------------------------
     // 4) Marcar conta a pagar como paga
-    // ------------------------------------------------------
     if (parcela.id != null) {
       await _repository.marcarParcelaComoPaga(parcela.id!, true);
     }
 
-    // ------------------------------------------------------
     // 5) Atualizar tela e feedback
-    // ------------------------------------------------------
     await _carregar();
 
     if (mounted) {
@@ -206,7 +323,9 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                       ),
                       subtitle: Text(
                         'Vencimento: ${_dateFormat.format(p.dataVencimento)}'
-                        '${p.pago && p.dataPagamento != null ? ' · paga em ${_dateFormat.format(p.dataPagamento!)}' : ''}',
+                        '${p.pago && p.dataPagamento != null ? ' · paga em ${_dateFormat.format(p.dataPagamento!)}' : ''}\n'
+                        'Toque longo para ver o lançamento vinculado',
+                        maxLines: 2,
                       ),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -226,6 +345,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                             ),
                         ],
                       ),
+                      // Toque normal → pagar
                       onTap:
                           p.pago
                               ? null
@@ -261,6 +381,8 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                                   await _registrarPagamento(p);
                                 }
                               },
+                      // Toque longo → ver lançamento vinculado
+                      onLongPress: () => _mostrarLancamentoVinculado(p),
                     ),
                   );
                 },

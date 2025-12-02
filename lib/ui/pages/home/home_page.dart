@@ -603,7 +603,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _verItensFatura(Lancamento fatura) async {
-    // Busca os itens da fatura já existentes no seu repositório
+    // Busca os itens da fatura no repositório
     final itens = await _cartaoRepo.getLancamentosDaFatura(fatura);
 
     if (itens.isEmpty) {
@@ -618,100 +618,149 @@ class _HomePageState extends State<HomePage> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Cabeçalho
-              const SizedBox(height: 8),
-              const Text(
-                'Lançamentos da fatura',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              const Divider(),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
 
-              const SizedBox(height: 8),
-
-              // Lista em cards
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: itens.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final lanc = itens[index];
-
-                    return Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 1.5,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Ícone
-                            CircleAvatar(
-                              radius: 20,
-                              child: Icon(lanc.formaPagamento.icon, size: 22),
-                            ),
-                            const SizedBox(width: 12),
-
-                            // Texto (descrição + data)
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    lanc.descricao,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _dateHoraFormat.format(lanc.dataHora),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black54,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            // Valor alinhado à direita
-                            Text(
-                              _currency.format(lanc.valor),
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+        return DraggableScrollableSheet(
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
                 ),
               ),
-            ],
-          ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  // “pegador” em cima
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    itens.length == 1
+                        ? 'Lançamento vinculado'
+                        : 'Lançamentos da fatura',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      itemCount: itens.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (ctx, index) {
+                        final lanc = itens[index];
+                        final grupo = lanc.grupoParcelas;
+                        final temGrupo = grupo != null && grupo.isNotEmpty;
+
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 1.5,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Ícone da forma de pagamento
+                                CircleAvatar(
+                                  radius: 18,
+                                  child: Icon(
+                                    lanc.formaPagamento.icon,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+
+                                // Descrição + data + forma + grupo/parcela
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        lanc.descricao,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _dateHoraFormat.format(lanc.dataHora),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Forma de pagamento: '
+                                        '${lanc.formaPagamento.label.toUpperCase()}',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+
+                                      if (temGrupo) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Grupo: $grupo · '
+                                          'Parcela ${lanc.parcelaNumero ?? 1}/${lanc.parcelaTotal ?? 1}',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // Valor à direita
+                                Text(
+                                  _currency.format(lanc.valor),
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );

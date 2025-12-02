@@ -27,15 +27,21 @@ class LancamentoList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     if (lancamentos.isEmpty) {
       return const Center(child: Text('Nenhum lançamento nesse dia.'));
     }
 
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final secondary = theme.colorScheme.secondary;
+    final primary = colors.primary;
+    final secondary = colors.secondary;
     final success = Colors.green.shade600;
     final danger = Colors.red.shade400;
+
+    // cor de texto “secundário” (datas, labels etc.)
+    final Color textSecondary =
+        theme.textTheme.bodySmall?.color ?? colors.onSurface.withOpacity(0.6);
 
     return ListView.separated(
       itemCount: lancamentos.length,
@@ -90,7 +96,7 @@ class LancamentoList extends StatelessWidget {
             children: [
               CustomSlidableAction(
                 onPressed: (_) => onEditar(lanc),
-                backgroundColor: theme.colorScheme.surface, // quase branco
+                backgroundColor: colors.surface,
                 borderRadius: BorderRadius.circular(12),
                 child: Icon(Icons.edit, size: 28, color: primary),
               ),
@@ -160,9 +166,9 @@ class LancamentoList extends StatelessWidget {
                                 // data
                                 Text(
                                   dateHoraFormat.format(lanc.dataHora),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.black45,
+                                    color: textSecondary,
                                   ),
                                 ),
                               ],
@@ -209,21 +215,20 @@ class LancamentoList extends StatelessWidget {
                                 ),
                                 if (ehParcelado) ...[
                                   const SizedBox(height: 2),
-                                  const SizedBox(height: 2),
                                   Text(
                                     'Parcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 13,
-                                      color: Colors.black54,
+                                      color: textSecondary,
                                     ),
                                   ),
                                 ],
                                 const SizedBox(height: 2),
                                 Text(
                                   dateHoraFormat.format(lanc.dataHora),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.black45,
+                                    color: textSecondary,
                                   ),
                                 ),
                               ],
@@ -236,10 +241,11 @@ class LancamentoList extends StatelessWidget {
                           Text(
                             currency.format(lanc.valor),
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+                              color:
+                                  colors.onSurface, // ✅ agora respeita o tema
                             ),
                           ),
                         ],

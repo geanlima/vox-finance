@@ -4,13 +4,18 @@ import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class CartaoCreditoRepository {
   final DbService _dbService;
+  final ContaPagarRepository _contaPagarRepo;
 
-  CartaoCreditoRepository({DbService? dbService})
-    : _dbService = dbService ?? DbService();
+  CartaoCreditoRepository({
+    DbService? dbService,
+    ContaPagarRepository? contaPagarRepo,
+  }) : _dbService = dbService ?? DbService(),
+       _contaPagarRepo = contaPagarRepo ?? ContaPagarRepository();
 
   // ============================================================
   //  G E R A R   F A T U R A   D O   C A R T Ã O   (FECHAMENTO)
@@ -85,19 +90,18 @@ class CartaoCreditoRepository {
     if (total <= 0) return;
 
     final dataVencimento = DateTime(anoAtual, mesAtual, diaVencimento);
-    final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
 
     // Lista com os IDs dos lançamentos que compõem a fatura (lado N)
     final idsLancamentos = compras.map<int>((row) => row['id'] as int).toList();
 
     // 5) Gera/atualiza o LANCAMENTO da fatura (o que aparece na grid)
-
     final descricaoFatura =
         'Fatura ${cartao.descricao} ${mesAtual.toString().padLeft(2, '0')}/$anoAtual';
 
     int idLancamentoFatura;
 
     // Verifica se já existe lançamento de fatura para esse vencimento
+    final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
     final faturaExistente = await database.query(
       'lancamentos',
       where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
@@ -157,14 +161,13 @@ class CartaoCreditoRepository {
       valorTotal: total,
       pago: false,
       dataPagamento: null,
-      // idLancamentoFatura removido do método
     );
 
     // 7) Gera os vínculos 1:N na FATURA_CARTAO_LANCAMENTO (lado N)
     await salvarFaturaCartaoLancamentos(
       idFatura: idFatura,
       idsLancamentos: idsLancamentos,
-      substituirVinculos: true, // recalcula os vínculos da fatura
+      substituirVinculos: true,
     );
   }
 
