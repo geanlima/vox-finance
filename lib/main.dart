@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:vox_finance/ui/pages/auth/login_unificado_page.dart';
+import 'package:vox_finance/ui/pages/renda/minha_renda_page.dart';
 import 'firebase_options.dart';
 
 import 'package:vox_finance/ui/core/theme/app_theme.dart';
@@ -43,6 +44,7 @@ class VoxFinanceApp extends StatelessWidget {
         '/contas-bancarias': (_) => const ContasPage(),
         '/graficos': (_) => const GraficosPage(),
         '/comparativo-mes': (_) => const ComparativoMesPage(),
+        '/minha-renda': (ctx) => const MinhaRendaPage(),
       },
     );
   }

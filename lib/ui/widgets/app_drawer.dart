@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/data/models/usuario.dart';
-import 'package:vox_finance/ui/core/service/firebase_auth_service.dart'; // 👈 IMPORTANTE
+import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -207,6 +207,12 @@ class _AppDrawerState extends State<AppDrawer> {
               icon: Icons.account_balance,
               label: 'Contas bancárias',
               route: '/contas-bancarias',
+            ),
+            _menuItem(
+              context,
+              icon: Icons.savings,
+              label: 'Minha renda',
+              route: '/minha-renda',
             ),
 
             const Spacer(),

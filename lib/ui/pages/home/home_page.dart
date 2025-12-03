@@ -70,6 +70,7 @@ class _HomePageState extends State<HomePage> {
     _carregarDoBanco();
     _carregarCartoes();
     _carregarContas();
+    
 
     // ⬇️ inicializa as regras de pagamento/sincronização
     _regraOutraCompra = RegraOutraCompraParceladaService(
@@ -115,11 +116,22 @@ class _HomePageState extends State<HomePage> {
   bool _mesmoDia(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
+  double get _totalReceitaDia {
+    return _lancamentos
+        .where((l) => l.pago && l.tipoMovimento == TipoMovimento.receita)
+        .fold(0.0, (total, l) => total + l.valor);
+  }
+
   // --------- totais / filtros ---------
 
   double get _totalGastoDia {
     return _lancamentos
-        .where((l) => l.pago && !l.pagamentoFatura)
+        .where(
+          (l) =>
+              l.pago &&
+              !l.pagamentoFatura &&
+              l.tipoMovimento == TipoMovimento.despesa,
+        )
         .fold(0.0, (total, l) => total + l.valor);
   }
 

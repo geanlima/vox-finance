@@ -31,6 +31,8 @@ class LancamentoFormBottomSheet extends StatefulWidget {
   final List<CartaoCredito> cartoes;
   final List<ContaBancaria> contas;
 
+  final TipoMovimento? tipoInicial;
+
   /// Chamado depois de salvar (para a Home recarregar a tela)
   final Future<void> Function() onSaved;
 
@@ -48,6 +50,7 @@ class LancamentoFormBottomSheet extends StatefulWidget {
     required this.cartoes,
     required this.contas,
     required this.onSaved,
+    this.tipoInicial,
   });
 
   @override
@@ -62,7 +65,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
   final LancamentoRepository _repositoryLancamento = LancamentoRepository();
 
-  // 👇 NOVO: usa o service para criar parcelas + contas a pagar
+  // 👇 service para criar parcelas + contas a pagar
   final RegraOutraCompraParceladaService _regraOutraCompra =
       RegraOutraCompraParceladaService();
 
@@ -83,9 +86,17 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
   List<CartaoCredito> get _cartoes => widget.cartoes;
   List<ContaBancaria> get _contas => widget.contas;
 
+  // ⭐ estado do tipo de movimento (Receita / Despesa)
+  late TipoMovimento _tipoMovimento;
+
   @override
   void initState() {
     super.initState();
+
+    _tipoMovimento =
+        widget.existente?.tipoMovimento ??
+        widget.tipoInicial ??
+        TipoMovimento.despesa; // padrão
 
     // Valor inicial
     _valorController = TextEditingController(
@@ -158,7 +169,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
   }
 
   // ============================================================
-  //  REGRAS DE CARTÃO (extraídas da Home)
+  //  REGRAS DE CARTÃO
   // ============================================================
 
   List<CartaoCredito> _filtrarCartoes(
@@ -187,333 +198,406 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
     return const [];
   }
 
+  void _recalcularCartoes() {
+    _cartoesFiltrados = _filtrarCartoes(_formaSelecionada, _pagamentoFatura);
+
+    if (_cartaoSelecionado != null &&
+        !_cartoesFiltrados.any((c) => c.id == _cartaoSelecionado!.id)) {
+      _cartaoSelecionado = null;
+    }
+  }
+
+  String _labelCartao() {
+    if (_pagamentoFatura) {
+      return 'Cartão cuja fatura está sendo paga';
+    }
+    if (_formaSelecionada == FormaPagamento.debito) {
+      return 'Cartão de débito';
+    }
+    if (_formaSelecionada == FormaPagamento.credito) {
+      return 'Cartão de crédito';
+    }
+    return 'Cartão';
+  }
+
   // ============================================================
-  //  BUILD
+  //  BUILD – com conteúdo rolando e rodapé fixo
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: StatefulBuilder(
-        builder: (context, setModalState) {
-          void recalcularCartoes() {
-            _cartoesFiltrados = _filtrarCartoes(
-              _formaSelecionada,
-              _pagamentoFatura,
-            );
+    final mq = MediaQuery.of(context);
+    final viewInsets = mq.viewInsets;
+    final sysPadding = mq.padding;
 
-            if (_cartaoSelecionado != null &&
-                !_cartoesFiltrados.any((c) => c.id == _cartaoSelecionado!.id)) {
-              _cartaoSelecionado = null;
-            }
-          }
+    // recalcula sempre que builda
+    _recalcularCartoes();
 
-          // recalcula sempre no início do build
-          recalcularCartoes();
+    final bool deveMostrarSecaoCartao =
+        _pagamentoFatura ||
+        _formaSelecionada == FormaPagamento.debito ||
+        _formaSelecionada == FormaPagamento.credito;
 
-          String labelCartao() {
-            if (_pagamentoFatura) {
-              return 'Cartão cuja fatura está sendo paga';
-            }
-            if (_formaSelecionada == FormaPagamento.debito) {
-              return 'Cartão de débito';
-            }
-            if (_formaSelecionada == FormaPagamento.credito) {
-              return 'Cartão de crédito';
-            }
-            return 'Cartão';
-          }
+    final bool deveMostrarSecaoConta =
+        _formaSelecionada == FormaPagamento.pix ||
+        _formaSelecionada == FormaPagamento.boleto ||
+        _formaSelecionada == FormaPagamento.transferencia;
 
-          final bool deveMostrarSecaoCartao =
-              _pagamentoFatura ||
-              _formaSelecionada == FormaPagamento.debito ||
-              _formaSelecionada == FormaPagamento.credito;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        // faz o sheet subir junto com o teclado
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            children: [
+              // =================== CONTEÚDO ROLÁVEL ===================
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // "pegador"
+                      Center(
+                        child: Container(
+                          width: 50,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
 
-          final bool deveMostrarSecaoConta =
-              _formaSelecionada == FormaPagamento.pix ||
-              _formaSelecionada == FormaPagamento.boleto ||
-              _formaSelecionada == FormaPagamento.transferencia;
+                      Row(
+                        children: [
+                          Icon(_existente != null ? Icons.edit : Icons.add),
+                          const SizedBox(width: 8),
+                          Text(
+                            _existente != null
+                                ? 'Editar lançamento'
+                                : 'Novo lançamento',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
 
-          return SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(_existente != null ? Icons.edit : Icons.add),
-                    const SizedBox(width: 8),
-                    Text(
-                      _existente != null
-                          ? 'Editar lançamento'
-                          : 'Novo lançamento',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                      // Valor
+                      TextField(
+                        controller: _valorController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [CurrencyInputFormatter()],
+                        decoration: const InputDecoration(
+                          labelText: 'Valor',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
 
-                // Valor
-                TextField(
-                  controller: _valorController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [CurrencyInputFormatter()],
-                  decoration: const InputDecoration(
-                    labelText: 'Valor',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                      // Descrição
+                      TextField(
+                        controller: _descricaoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Descrição',
+                          hintText: 'Ex: Mercado, Uber, Almoço...',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
 
-                // Descrição
-                TextField(
-                  controller: _descricaoController,
-                  decoration: const InputDecoration(
-                    labelText: 'Descrição',
-                    hintText: 'Ex: Mercado, Uber, Almoço...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                      // Tipo de movimento (Receita / Despesa)
+                      Text(
+                        'Tipo de movimento',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Despesa'),
+                            selected: _tipoMovimento == TipoMovimento.despesa,
+                            onSelected: (sel) {
+                              if (!sel) return;
+                              setState(() {
+                                _tipoMovimento = TipoMovimento.despesa;
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          ChoiceChip(
+                            label: const Text('Receita'),
+                            selected: _tipoMovimento == TipoMovimento.receita,
+                            onSelected: (sel) {
+                              if (!sel) return;
+                              setState(() {
+                                _tipoMovimento = TipoMovimento.receita;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
 
-                // Categoria
-                DropdownButtonFormField<Categoria>(
-                  value: _categoriaSelecionada,
-                  decoration: const InputDecoration(
-                    labelText: 'Categoria',
-                    border: OutlineInputBorder(),
-                  ),
-                  items:
-                      Categoria.values.map((c) {
-                        return DropdownMenuItem(
-                          value: c,
-                          child: Text(CategoriaService.toName(c)),
-                        );
-                      }).toList(),
-                  onChanged: (nova) {
-                    setModalState(() {
-                      _categoriaSelecionada = nova;
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
+                      // Categoria
+                      DropdownButtonFormField<Categoria>(
+                        value: _categoriaSelecionada,
+                        decoration: const InputDecoration(
+                          labelText: 'Categoria',
+                          border: OutlineInputBorder(),
+                        ),
+                        items:
+                            Categoria.values.map((c) {
+                              return DropdownMenuItem(
+                                value: c,
+                                child: Text(CategoriaService.toName(c)),
+                              );
+                            }).toList(),
+                        onChanged: (nova) {
+                          setState(() {
+                            _categoriaSelecionada = nova;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
 
-                // Forma de pagamento
-                DropdownButtonFormField<FormaPagamento>(
-                  value: _formaSelecionada,
-                  decoration: const InputDecoration(
-                    labelText: 'Forma de pagamento',
-                    border: OutlineInputBorder(),
-                  ),
-                  items:
-                      FormaPagamento.values.map((f) {
-                        return DropdownMenuItem(
-                          value: f,
+                      // Forma de pagamento
+                      DropdownButtonFormField<FormaPagamento>(
+                        value: _formaSelecionada,
+                        decoration: const InputDecoration(
+                          labelText: 'Forma de pagamento',
+                          border: OutlineInputBorder(),
+                        ),
+                        items:
+                            FormaPagamento.values.map((f) {
+                              return DropdownMenuItem(
+                                value: f,
+                                child: Row(
+                                  children: [
+                                    Icon(f.icon, size: 18),
+                                    const SizedBox(width: 8),
+                                    Text(f.label),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                        onChanged: (novo) {
+                          setState(() {
+                            _formaSelecionada = novo;
+                            _recalcularCartoes();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Pagamento de fatura
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Pagamento de fatura de cartão'),
+                        value: _pagamentoFatura,
+                        onChanged: (v) {
+                          setState(() {
+                            _pagamentoFatura = v ?? false;
+                            _recalcularCartoes();
+                          });
+                        },
+                      ),
+
+                      // Seção cartão
+                      if (deveMostrarSecaoCartao) ...[
+                        const SizedBox(height: 8),
+                        if (_cartoes.isEmpty) ...[
+                          const Text(
+                            'Nenhum cartão cadastrado.\n'
+                            'Cadastre em: Menu → Cartões.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ] else if (_cartoesFiltrados.isEmpty) ...[
+                          Text(
+                            _pagamentoFatura
+                                ? 'Nenhum cartão de crédito (ou ambos) cadastrado para vincular a fatura.'
+                                : 'Nenhum cartão compatível com essa forma de pagamento.',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.deepOrange,
+                            ),
+                          ),
+                        ] else ...[
+                          DropdownButtonFormField<CartaoCredito>(
+                            value: _cartaoSelecionado,
+                            decoration: InputDecoration(
+                              labelText: _labelCartao(),
+                              border: const OutlineInputBorder(),
+                            ),
+                            items:
+                                _cartoesFiltrados.map((c) {
+                                  return DropdownMenuItem(
+                                    value: c,
+                                    child: Text(c.label),
+                                  );
+                                }).toList(),
+                            onChanged: (novoCartao) {
+                              setState(() {
+                                _cartaoSelecionado = novoCartao;
+                              });
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Seção conta bancária
+                      if (deveMostrarSecaoConta) ...[
+                        const SizedBox(height: 8),
+                        if (_contas.isEmpty) ...[
+                          const Text(
+                            'Nenhuma conta bancária ativa.\n'
+                            'Cadastre em: Menu → Contas bancárias.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ] else ...[
+                          DropdownButtonFormField<ContaBancaria>(
+                            value: _contaSelecionada,
+                            decoration: const InputDecoration(
+                              labelText: 'Conta bancária',
+                              border: OutlineInputBorder(),
+                            ),
+                            items:
+                                _contas.map((c) {
+                                  final texto =
+                                      '${c.descricao} ${c.banco != null && c.banco!.isNotEmpty ? "(${c.banco})" : ""}';
+                                  return DropdownMenuItem(
+                                    value: c,
+                                    child: Text(texto),
+                                  );
+                                }).toList(),
+                            onChanged: (novaConta) {
+                              setState(() {
+                                _contaSelecionada = novaConta;
+                              });
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Já está pago
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Já está pago'),
+                        subtitle: const Text(
+                          'Desmarque para deixar como lançamento futuro/pendente.',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                        value: _pago,
+                        onChanged: (v) {
+                          setState(() {
+                            _pago = v ?? false;
+                          });
+                        },
+                      ),
+
+                      // Parcelamento (somente novo)
+                      if (_existente == null) ...[
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Lançamento parcelado?'),
+                          value: _parcelado,
+                          onChanged: (v) {
+                            setState(() {
+                              _parcelado = v;
+                            });
+                          },
+                        ),
+                        if (_parcelado) ...[
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _qtdParcelasController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Quantidade de parcelas',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                      ],
+
+                      const SizedBox(height: 12),
+
+                      // Data
+                      InkWell(
+                        onTap: () async {
+                          final novaData = await showDatePicker(
+                            context: context,
+                            initialDate: _dataLancamento,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (novaData != null) {
+                            setState(() {
+                              _dataLancamento = DateTime(
+                                novaData.year,
+                                novaData.month,
+                                novaData.day,
+                                _dataLancamento.hour,
+                                _dataLancamento.minute,
+                              );
+                            });
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade400),
+                          ),
                           child: Row(
                             children: [
-                              Icon(f.icon, size: 18),
+                              const Icon(Icons.calendar_today, size: 18),
                               const SizedBox(width: 8),
-                              Text(f.label),
+                              Text(
+                                'Data: ${widget.dateDiaFormat.format(_dataLancamento)}',
+                              ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                  onChanged: (novo) {
-                    setModalState(() {
-                      _formaSelecionada = novo;
-                      recalcularCartoes();
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
-
-                // Pagamento de fatura
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Pagamento de fatura de cartão'),
-                  value: _pagamentoFatura,
-                  onChanged: (v) {
-                    setModalState(() {
-                      _pagamentoFatura = v ?? false;
-                      recalcularCartoes();
-                    });
-                  },
-                ),
-
-                // Seção cartão
-                if (deveMostrarSecaoCartao) ...[
-                  const SizedBox(height: 8),
-                  if (_cartoes.isEmpty) ...[
-                    const Text(
-                      'Nenhum cartão cadastrado.\n'
-                      'Cadastre em: Menu → Cartões.',
-                      style: TextStyle(fontSize: 12, color: Colors.redAccent),
-                    ),
-                  ] else if (_cartoesFiltrados.isEmpty) ...[
-                    Text(
-                      _pagamentoFatura
-                          ? 'Nenhum cartão de crédito (ou ambos) cadastrado para vincular a fatura.'
-                          : 'Nenhum cartão compatível com essa forma de pagamento.',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.deepOrange,
-                      ),
-                    ),
-                  ] else ...[
-                    DropdownButtonFormField<CartaoCredito>(
-                      value: _cartaoSelecionado,
-                      decoration: InputDecoration(
-                        labelText: labelCartao(),
-                        border: const OutlineInputBorder(),
-                      ),
-                      items:
-                          _cartoesFiltrados.map((c) {
-                            return DropdownMenuItem(
-                              value: c,
-                              child: Text(c.label),
-                            );
-                          }).toList(),
-                      onChanged: (novoCartao) {
-                        setModalState(() {
-                          _cartaoSelecionado = novoCartao;
-                        });
-                      },
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                ],
-
-                // Seção conta
-                if (deveMostrarSecaoConta) ...[
-                  const SizedBox(height: 8),
-                  if (_contas.isEmpty) ...[
-                    const Text(
-                      'Nenhuma conta bancária ativa.\n'
-                      'Cadastre em: Menu → Contas bancárias.',
-                      style: TextStyle(fontSize: 12, color: Colors.redAccent),
-                    ),
-                  ] else ...[
-                    DropdownButtonFormField<ContaBancaria>(
-                      value: _contaSelecionada,
-                      decoration: const InputDecoration(
-                        labelText: 'Conta bancária',
-                        border: OutlineInputBorder(),
-                      ),
-                      items:
-                          _contas.map((c) {
-                            final texto =
-                                '${c.descricao} ${c.banco != null && c.banco!.isNotEmpty ? "(${c.banco})" : ""}';
-                            return DropdownMenuItem(
-                              value: c,
-                              child: Text(texto),
-                            );
-                          }).toList(),
-                      onChanged: (novaConta) {
-                        setModalState(() {
-                          _contaSelecionada = novaConta;
-                        });
-                      },
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                ],
-
-                // Já está pago
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Já está pago'),
-                  subtitle: const Text(
-                    'Desmarque para deixar como lançamento futuro/pendente.',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                  value: _pago,
-                  onChanged: (v) {
-                    setModalState(() {
-                      _pago = v ?? false;
-                    });
-                  },
-                ),
-
-                // Parcelamento (somente novo)
-                if (_existente == null) ...[
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Lançamento parcelado?'),
-                    value: _parcelado,
-                    onChanged: (v) {
-                      setModalState(() {
-                        _parcelado = v;
-                      });
-                    },
-                  ),
-                  if (_parcelado) ...[
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _qtdParcelasController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Quantidade de parcelas',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
-                ],
-
-                const SizedBox(height: 12),
-
-                // Data
-                InkWell(
-                  onTap: () async {
-                    final novaData = await showDatePicker(
-                      context: context,
-                      initialDate: _dataLancamento,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (novaData != null) {
-                      setModalState(() {
-                        _dataLancamento = DateTime(
-                          novaData.year,
-                          novaData.month,
-                          novaData.day,
-                          _dataLancamento.hour,
-                          _dataLancamento.minute,
-                        );
-                      });
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade400),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Data: ${widget.dateDiaFormat.format(_dataLancamento)}',
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
+              ),
 
-                // Botões
-                Row(
+              // =================== RODAPÉ FIXO COM BOTÕES ===================
+              const Divider(height: 1),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  8 + sysPadding.bottom, // fica acima da barra do sistema
+                ),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
@@ -529,16 +613,16 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                     ),
                   ],
                 ),
-              ],
-            ),
-          );
-        },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   // ============================================================
-  //  SALVAR
+  //  SALVAR (igual você já tinha)
   // ============================================================
 
   Future<void> _salvar() async {
@@ -627,6 +711,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                   _pago ? (_existente!.dataPagamento ?? DateTime.now()) : null,
               idCartao: _cartaoSelecionado?.id,
               idConta: _contaSelecionada?.id,
+              tipoMovimento: _tipoMovimento,
             )
             : Lancamento(
               valor: valor,
@@ -639,6 +724,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
               dataPagamento: _pago ? DateTime.now() : null,
               idCartao: _cartaoSelecionado?.id,
               idConta: _contaSelecionada?.id,
+              tipoMovimento: _tipoMovimento,
             );
 
     // Parcelado x simples
@@ -662,8 +748,6 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         parcelaNumero: null,
         parcelaTotal: null,
       );
-      // 👇 AGORA usa o service (cria parcelas + contas a pagar)
-      //await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
 
       if (_formaSelecionada == FormaPagamento.credito) {
         final RegraCartaoParceladoService _regraCartaoParceladoService =
