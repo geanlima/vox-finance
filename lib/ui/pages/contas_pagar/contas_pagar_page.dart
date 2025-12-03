@@ -190,9 +190,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
     );
 
     if (confirmar == true) {
-      await _contaPagarLancamento.deletarPorGrupo(
-        resumo.grupoParcelas,
-      );
+      await _contaPagarLancamento.deletarPorGrupo(resumo.grupoParcelas);
       await _carregar();
 
       if (mounted) {
@@ -219,184 +217,236 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: StatefulBuilder(
-            builder: (context, setModalState) {
-              return SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(existente == null ? Icons.add : Icons.edit),
-                        const SizedBox(width: 8),
-                        Text(
-                          existente == null
-                              ? 'Nova conta / compra parcelada'
-                              : 'Editar (não altera parcelas antigas)',
-                          style: Theme.of(context).textTheme.titleMedium,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final mq = MediaQuery.of(context);
+            final viewInsets = mq.viewInsets;
+            final sysPadding = mq.padding;
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // ============ CONTEÚDO ROLÁVEL ============
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // "pegador"
+                              Center(
+                                child: Container(
+                                  width: 50,
+                                  height: 4,
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade400,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+
+                              Row(
+                                children: [
+                                  Icon(
+                                    existente == null ? Icons.add : Icons.edit,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    existente == null
+                                        ? 'Nova conta / compra parcelada'
+                                        : 'Editar (não altera parcelas antigas)',
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              TextField(
+                                controller: descricaoController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Descrição',
+                                  hintText: 'Ex: Notebook, TV, Cartão, etc.',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              TextField(
+                                controller: valorController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Valor total',
+                                  hintText: 'Ex: 1200,00',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              TextField(
+                                controller: parcelasController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Quantidade de parcelas',
+                                  hintText: 'Ex: 1, 6, 12...',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              InkWell(
+                                onTap: () async {
+                                  final novaData = await showDatePicker(
+                                    context: context,
+                                    initialDate: dataVencimento,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (novaData != null) {
+                                    setModalState(() {
+                                      dataVencimento = DateTime(
+                                        novaData.year,
+                                        novaData.month,
+                                        novaData.day,
+                                      );
+                                    });
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Colors.grey.shade400,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.event, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Primeiro vencimento: '
+                                        '${_dateFormat.format(dataVencimento)}',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextField(
-                      controller: descricaoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Descrição',
-                        hintText: 'Ex: Notebook, TV, Cartão, etc.',
-                        border: OutlineInputBorder(),
                       ),
-                    ),
-                    const SizedBox(height: 12),
 
-                    TextField(
-                      controller: valorController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Valor total',
-                        hintText: 'Ex: 1200,00',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: parcelasController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Quantidade de parcelas',
-                        hintText: 'Ex: 1, 6, 12...',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    InkWell(
-                      onTap: () async {
-                        final novaData = await showDatePicker(
-                          context: context,
-                          initialDate: dataVencimento,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (novaData != null) {
-                          setModalState(() {
-                            dataVencimento = DateTime(
-                              novaData.year,
-                              novaData.month,
-                              novaData.day,
-                            );
-                          });
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade400),
+                      // ============ RODAPÉ FIXO COM BOTÕES ============
+                      const Divider(height: 1),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          8,
+                          16,
+                          8 + sysPadding.bottom,
                         ),
                         child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            const Icon(Icons.event, size: 18),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancelar'),
+                            ),
                             const SizedBox(width: 8),
-                            Text(
-                              'Primeiro vencimento: '
-                              '${_dateFormat.format(dataVencimento)}',
+                            ElevatedButton(
+                              onPressed: () async {
+                                final desc = descricaoController.text.trim();
+                                final valorTotal =
+                                    double.tryParse(
+                                      valorController.text
+                                          .replaceAll('.', '')
+                                          .replaceAll(',', '.'),
+                                    ) ??
+                                    0;
+                                final qtdParcelas =
+                                    int.tryParse(
+                                      parcelasController.text.trim(),
+                                    ) ??
+                                    1;
+
+                                if (desc.isEmpty ||
+                                    valorTotal <= 0 ||
+                                    qtdParcelas <= 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Informe descrição, valor total e '
+                                        'quantidade de parcelas válidos.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                if (qtdParcelas == 1) {
+                                  // conta simples
+                                  await _iaService.salvarContaSimples(
+                                    descricao: desc,
+                                    valor: valorTotal,
+                                    dataVencimento: dataVencimento,
+                                  );
+                                } else {
+                                  // compra parcelada -> cria contas + lançamentos
+                                  await _iaService.salvarContasParceladas(
+                                    descricao: desc,
+                                    valorTotal: valorTotal,
+                                    quantidadeParcelas: qtdParcelas,
+                                    primeiraDataVencimento: dataVencimento,
+                                  );
+                                }
+
+                                await _carregar();
+
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                }
+                              },
+                              child: Text(
+                                existente == null ? 'Salvar' : 'Gerar novas',
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancelar'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            final desc = descricaoController.text.trim();
-                            final valorTotal =
-                                double.tryParse(
-                                  valorController.text
-                                      .replaceAll('.', '')
-                                      .replaceAll(',', '.'),
-                                ) ??
-                                0;
-                            final qtdParcelas =
-                                int.tryParse(parcelasController.text.trim()) ??
-                                1;
-
-                            if (desc.isEmpty ||
-                                valorTotal <= 0 ||
-                                qtdParcelas <= 0) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Informe descrição, valor total e '
-                                    'quantidade de parcelas válidos.',
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
-
-                            if (qtdParcelas == 1) {
-                              // conta simples
-                              await _iaService.salvarContaSimples(
-                                descricao: desc,
-                                valor: valorTotal,
-                                dataVencimento: dataVencimento,
-                              );
-                            } else {
-                              // compra parcelada -> cria contas + lançamentos
-                              await _iaService.salvarContasParceladas(
-                                descricao: desc,
-                                valorTotal: valorTotal,
-                                quantidadeParcelas: qtdParcelas,
-                                primeiraDataVencimento: dataVencimento,
-                              );
-                            }
-
-                            await _carregar();
-
-                            if (context.mounted) {
-                              Navigator.pop(context);
-                            }
-                          },
-                          child: Text(
-                            existente == null ? 'Salvar' : 'Gerar novas',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         );
       },
     );

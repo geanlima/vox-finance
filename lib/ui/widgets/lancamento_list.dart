@@ -29,21 +29,17 @@ class LancamentoList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final colors = Theme.of(context).colorScheme;
 
     if (lancamentos.isEmpty) {
       return const Center(child: Text('Nenhum lançamento nesse dia.'));
     }
 
-    final primary = colors.primary;
-    final secondary = colors.secondary;
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final secondary = theme.colorScheme.secondary;
     final success = Colors.green.shade600;
     final danger = Colors.red.shade400;
-
-    // cor de texto “secundário” (datas, labels etc.)
-    final Color textSecondary =
-        theme.textTheme.bodySmall?.color ?? colors.onSurface.withOpacity(0.6);
 
     return ListView.separated(
       itemCount: lancamentos.length,
@@ -58,10 +54,19 @@ class LancamentoList extends StatelessWidget {
         final bool ehParcelado =
             lanc.parcelaTotal != null && (lanc.parcelaTotal ?? 0) > 1;
 
+        // 🔹 tipo (entrada x saída)
+        final bool ehReceita = lanc.tipoMovimento == TipoMovimento.receita;
+
+        // 🔹 cor do valor (apenas receita x despesa; fatura continua vermelha)
+        final Color valorColor =
+            isFatura
+                ? Colors.red.shade700
+                : (ehReceita ? Colors.green.shade600 : colors.onSurface);
+
         return Slidable(
           key: ValueKey(lanc.id ?? '${lanc.descricao}-$index'),
 
-          // 👉 arrastar da esquerda para a direita (pagar / ver itens da fatura)
+          // 👉 esquerda: pagar / ver itens fatura
           startActionPane: ActionPane(
             motion: const DrawerMotion(),
             extentRatio: isFatura ? 0.35 : 0.20,
@@ -91,14 +96,14 @@ class LancamentoList extends StatelessWidget {
             ],
           ),
 
-          // 👉 arrastar da direita para a esquerda (editar / excluir)
+          // 👉 direita: editar / excluir
           endActionPane: ActionPane(
             motion: const DrawerMotion(),
             extentRatio: 0.35,
             children: [
               CustomSlidableAction(
                 onPressed: (_) => onEditar(lanc),
-                backgroundColor: colors.surface,
+                backgroundColor: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 child: Icon(Icons.edit, size: 28, color: primary),
               ),
@@ -112,6 +117,7 @@ class LancamentoList extends StatelessWidget {
           ),
 
           child: Card(
+            // 👉 agora SEM fundo colorido, igual os outros cards
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -135,17 +141,15 @@ class LancamentoList extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // valor em vermelho
                                 Text(
                                   currency.format(lanc.valor),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 18,
-                                    color: Colors.red.shade700,
+                                    color: valorColor,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                // descrição + (Pagamento de fatura)
                                 Text(
                                   '${lanc.descricao} (Pagamento de fatura)',
                                   style: TextStyle(
@@ -155,7 +159,6 @@ class LancamentoList extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                // status
                                 Text(
                                   'Status: $statusTexto',
                                   style: TextStyle(
@@ -165,12 +168,11 @@ class LancamentoList extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                // data
                                 Text(
                                   dateHoraFormat.format(lanc.dataHora),
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 12,
-                                    color: textSecondary,
+                                    color: Colors.black45,
                                   ),
                                 ),
                               ],
@@ -184,14 +186,12 @@ class LancamentoList extends StatelessWidget {
                       : Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ícone
                           CircleAvatar(
                             radius: 22,
                             child: Icon(lanc.formaPagamento.icon, size: 24),
                           ),
                           const SizedBox(width: 12),
 
-                          // coluna central com texto
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,6 +207,34 @@ class LancamentoList extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                 ],
+
+                                // 🔹 badge "Receita" / "Despesa"
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        ehReceita
+                                            ? Colors.green.withOpacity(0.12)
+                                            : Colors.red.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    ehReceita ? 'Receita' : 'Despesa',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          ehReceita
+                                              ? Colors.green.shade700
+                                              : Colors.red.shade700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+
                                 Text(
                                   'Status: $statusTexto',
                                   style: TextStyle(
@@ -219,18 +247,18 @@ class LancamentoList extends StatelessWidget {
                                   const SizedBox(height: 2),
                                   Text(
                                     'Parcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 13,
-                                      color: textSecondary,
+                                      color: Colors.black54,
                                     ),
                                   ),
                                 ],
                                 const SizedBox(height: 2),
                                 Text(
                                   dateHoraFormat.format(lanc.dataHora),
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 12,
-                                    color: textSecondary,
+                                    color: Colors.black45,
                                   ),
                                 ),
                               ],
@@ -239,15 +267,14 @@ class LancamentoList extends StatelessWidget {
 
                           const SizedBox(width: 8),
 
-                          // valor alinhado à direita
+                          // 🔹 valor (verde se receita, normal se despesa)
                           Text(
                             currency.format(lanc.valor),
                             textAlign: TextAlign.right,
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color:
-                                  colors.onSurface, // ✅ agora respeita o tema
+                              color: valorColor,
                             ),
                           ),
                         ],

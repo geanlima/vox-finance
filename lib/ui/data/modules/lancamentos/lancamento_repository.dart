@@ -5,6 +5,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+// 👇 NOVO: resumo mensal
+import 'package:vox_finance/ui/data/models/renda_mensal_resumo.dart';
 
 class LancamentoRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();
@@ -23,6 +25,7 @@ class LancamentoRepository {
 
     return Lancamento.fromMap(result.first);
   }
+
   // ----------------- CRUD básico -----------------
 
   Future<int> salvar(Lancamento lanc) async {
@@ -193,7 +196,6 @@ class LancamentoRepository {
       }
 
       final lancParcela = base.copyWith(
-        // mesmo que base tenha id, vamos ignorar no insert
         id: null,
         valor: valorParcela,
         dataHora: dataParcela,
@@ -204,7 +206,6 @@ class LancamentoRepository {
         dataPagamento: dataPagamentoBase,
       );
 
-      // 🔴 IMPORTANTE: remover o id do map antes de inserir
       final dadosLanc = lancParcela.toMap()..remove('id');
 
       final int idLancamento = await db.insert('lancamentos', dadosLanc);
@@ -222,10 +223,67 @@ class LancamentoRepository {
         idLancamento: idLancamento,
       );
 
-      // garante que nunca vai tentar inserir id manual
       final dadosConta = conta.toMap()..remove('id');
 
       await db.insert('conta_pagar', dadosConta);
     }
+  }
+
+  // -------------------------------------------------
+  // NOVO: Resumo mensal de RECEITAS (Minha Renda)
+  // -------------------------------------------------
+
+  /// Retorna, para cada mês/ano, o total de RECEITAS.
+  ///
+  /// Aqui estou considerando receita = valor > 0.
+  /// Se no seu app for por categoria/flag, ajuste o WHERE.
+  Future<List<RendaMensalResumo>> getResumoRendaMensal() async {
+    final db = await _db;
+
+    // valor inteiro correspondente a Receita no seu enum
+    const int tipoReceitaDb = 2; // ajuste se o enum for diferente
+
+    final result = await db.rawQuery(
+      '''
+    SELECT
+      CAST(strftime('%Y', datetime(data_hora/1000, 'unixepoch')) AS INTEGER) AS ano,
+      CAST(strftime('%m', datetime(data_hora/1000, 'unixepoch')) AS INTEGER) AS mes,
+      SUM(valor) AS total
+    FROM lancamentos
+    WHERE tipo_movimento = ?
+    GROUP BY ano, mes
+    ORDER BY ano DESC, mes DESC;
+  ''',
+      [tipoReceitaDb],
+    );
+
+    return result.map((row) {
+      return RendaMensalResumo(
+        ano: (row['ano'] as num).toInt(),
+        mes: (row['mes'] as num).toInt(),
+        total: (row['total'] as num).toDouble(),
+      );
+    }).toList();
+  }
+
+  /// Lista TODAS as receitas de um mês específico (para o detalhe ao clicar).
+  Future<List<Lancamento>> getReceitasDoMes(int ano, int mes) async {
+    final db = await _db;
+
+    final inicio = DateTime(ano, mes, 1);
+    final fim = DateTime(ano, mes + 1, 1);
+
+    final result = await db.query(
+      'lancamentos',
+      where: '''
+      data_hora >= ? 
+      AND data_hora < ?
+      AND tipo_Movimento = 'receita'
+    ''',
+      whereArgs: [inicio.millisecondsSinceEpoch, fim.millisecondsSinceEpoch],
+      orderBy: 'data_hora ASC',
+    );
+
+    return result.map((e) => Lancamento.fromMap(e)).toList();
   }
 }
