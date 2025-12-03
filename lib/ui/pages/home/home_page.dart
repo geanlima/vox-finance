@@ -70,7 +70,6 @@ class _HomePageState extends State<HomePage> {
     _carregarDoBanco();
     _carregarCartoes();
     _carregarContas();
-    
 
     // ⬇️ inicializa as regras de pagamento/sincronização
     _regraOutraCompra = RegraOutraCompraParceladaService(
@@ -497,6 +496,12 @@ class _HomePageState extends State<HomePage> {
     final fechamentoNoDiaSelecionado = _diaSelecionadoEhFechamentoDeAlgumCartao;
 
     final totalGastoFormatado = _currency.format(_totalGastoDia);
+    // 👇 despesas (somente despesa paga, sem pagamento de fatura)
+    final totalDespesasFormatado = _currency.format(_totalGastoDia);
+
+    // 👇 receitas (somente receita paga)
+    final totalReceitasFormatado = _currency.format(_totalReceitaDia);
+
     final String totalPagamentoFaturaFormatado =
         _totalPagamentoFaturaDia > 0
             ? _currency.format(_totalPagamentoFaturaDia)
@@ -547,7 +552,8 @@ class _HomePageState extends State<HomePage> {
             ResumoDiaCard(
               ehHoje: ehHoje,
               dataFormatada: dataFormatada,
-              totalGastoFormatado: totalGastoFormatado,
+              totalDespesasFormatado: totalDespesasFormatado,
+              totalReceitasFormatado: totalReceitasFormatado,
               totalPagamentoFaturaFormatado: totalPagamentoFaturaFormatado,
               onDiaAnterior: _diaAnterior,
               onProximoDia: _proximoDia,

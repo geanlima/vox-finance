@@ -8,6 +8,13 @@ import 'package:vox_finance/ui/data/models/lancamento.dart';
 // 👇 NOVO: resumo mensal
 import 'package:vox_finance/ui/data/models/renda_mensal_resumo.dart';
 
+class TotaisDia {
+  final double totalDespesas;
+  final double totalReceitas;
+
+  TotaisDia({required this.totalDespesas, required this.totalReceitas});
+}
+
 class LancamentoRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();
 
@@ -24,6 +31,42 @@ class LancamentoRepository {
     if (result.isEmpty) return null;
 
     return Lancamento.fromMap(result.first);
+  }
+
+  Future<TotaisDia> getTotaisPorDia(DateTime dia) async {
+    final db = await _db;
+
+    // normaliza para início/fim do dia
+    final inicio = DateTime(dia.year, dia.month, dia.day);
+    final fim = inicio.add(const Duration(days: 1));
+
+    // ⚠️ Ajuste os valores de 'despesa' / 'receita' conforme
+    // você grava o campo tipo_movimento na tabela (texto, int, etc).
+    final result = await db.rawQuery(
+      '''
+    SELECT
+      SUM(CASE WHEN tipo_movimento = 'despesa' THEN valor ELSE 0 END) AS total_despesas,
+      SUM(CASE WHEN tipo_movimento = 'receita' THEN valor ELSE 0 END) AS total_receitas
+    FROM lancamentos
+    WHERE data_hora >= ? AND data_hora < ?
+    ''',
+      [inicio.toIso8601String(), fim.toIso8601String()],
+    );
+
+    final row = result.isNotEmpty ? result.first : <String, Object?>{};
+
+    double ler(String coluna) {
+      final v = row[coluna];
+      if (v == null) return 0.0;
+      if (v is int) return v.toDouble();
+      if (v is double) return v;
+      return double.tryParse(v.toString()) ?? 0.0;
+    }
+
+    return TotaisDia(
+      totalDespesas: ler('total_despesas'),
+      totalReceitas: ler('total_receitas'),
+    );
   }
 
   // ----------------- CRUD básico -----------------
