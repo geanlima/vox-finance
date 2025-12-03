@@ -214,7 +214,8 @@ class MigrationV2toV15 {
           valor_base REAL NOT NULL DEFAULT 0,
           fixa INTEGER NOT NULL DEFAULT 1,
           dia_previsto INTEGER,
-          ativa INTEGER NOT NULL DEFAULT 1
+          ativa INTEGER NOT NULL DEFAULT 1,
+          incluir_na_renda_diaria INTEGER NOT NULL DEFAULT 0
         );
       ''');
 
@@ -274,6 +275,18 @@ class MigrationV2toV15 {
         'destinos_renda',
         'ativo',
         'INTEGER NOT NULL DEFAULT 1',
+      );
+    }
+
+    // =========================
+    // V22: flag incluir_na_renda_diaria em fontes_renda
+    // =========================
+    if (oldVersion < 22) {
+      await _addColumnSafe(
+        db,
+        'fontes_renda',
+        'incluir_na_renda_diaria',
+        'INTEGER NOT NULL DEFAULT 0',
       );
     }
 

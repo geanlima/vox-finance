@@ -7,8 +7,12 @@ class ResumoDiaCard extends StatelessWidget {
   /// Total apenas de DESPESAS no dia
   final String totalDespesasFormatado;
 
-  /// Total apenas de RECEITAS no dia
+  /// Total de RECEITAS no dia (você pode passar já SOMANDO lançamentos + renda diária)
   final String totalReceitasFormatado;
+
+  /// (Opcional) Renda diária calculada a partir das fontes de renda
+  /// Se null ou vazia, não mostra a linha explicativa.
+  final String? rendaDiariaFormatada;
 
   /// Se for string vazia, não mostra a linha de fatura
   final String totalPagamentoFaturaFormatado;
@@ -31,6 +35,7 @@ class ResumoDiaCard extends StatelessWidget {
     required this.onProximoDia,
     required this.onSelecionarData,
     required this.onTapTotal,
+    this.rendaDiariaFormatada, // 👈 novo, opcional
   });
 
   @override
@@ -135,7 +140,7 @@ class ResumoDiaCard extends StatelessWidget {
 
             const SizedBox(height: 4),
 
-            // Total RECEITAS
+            // Total RECEITAS (já pode ser: lançamentos + renda diária)
             Row(
               children: [
                 const Expanded(
@@ -177,6 +182,19 @@ class ResumoDiaCard extends StatelessWidget {
                 ),
               ],
             ),
+
+            // Linha opcional explicando a renda diária das fontes
+            if (rendaDiariaFormatada != null &&
+                rendaDiariaFormatada!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Inclui renda diária: $rendaDiariaFormatada',
+                  style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+                ),
+              ),
+            ],
 
             if (totalPagamentoFaturaFormatado.isNotEmpty) ...[
               const SizedBox(height: 8),

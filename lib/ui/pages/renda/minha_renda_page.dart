@@ -6,11 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
 import 'package:vox_finance/ui/data/models/fonte_renda.dart';
-import 'package:vox_finance/ui/data/models/renda_mensal_resumo.dart';
 import 'package:vox_finance/ui/data/modules/renda/renda_repository.dart';
-import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/pages/renda/destinos_renda_page.dart';
-import 'package:vox_finance/ui/pages/renda/minha_renda_detalhe_page.dart';
 
 class MinhaRendaPage extends StatefulWidget {
   static const routeName = '/minha-renda';
@@ -23,19 +20,15 @@ class MinhaRendaPage extends StatefulWidget {
 
 class _MinhaRendaPageState extends State<MinhaRendaPage> {
   final _rendaRepository = RendaRepository();
-  final _lancRepository = LancamentoRepository();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
   bool _carregandoFontes = false;
   List<FonteRenda> _fontes = [];
 
-  late Future<List<RendaMensalResumo>> _futureResumoMensal;
-
   @override
   void initState() {
     super.initState();
     _carregarFontes();
-    _futureResumoMensal = _lancRepository.getResumoRendaMensal();
   }
 
   // =====================================
@@ -45,8 +38,7 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
   Future<void> _carregarFontes() async {
     setState(() => _carregandoFontes = true);
 
-    final lista =
-        await _rendaRepository.listarFontes(); // ou apenasAtivas: true
+    final lista = await _rendaRepository.listarFontes();
 
     setState(() {
       _fontes = lista;
@@ -55,6 +47,11 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
   }
 
   Future<void> _abrirFormFonte({FonteRenda? existente}) async {
+    bool fixa = existente?.fixa ?? true;
+    bool ativa = existente?.ativa ?? true;
+
+    bool incluirNaRendaDiaria = existente?.incluirNaRendaDiaria ?? false;
+
     final nomeController = TextEditingController(text: existente?.nome ?? '');
     final valorController = TextEditingController(
       text: existente != null ? existente.valorBase.toStringAsFixed(2) : '',
@@ -62,10 +59,6 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
     final diaController = TextEditingController(
       text: existente?.diaPrevisto?.toString() ?? '',
     );
-
-    bool fixa = existente?.fixa ?? true;
-    bool ativa = existente?.ativa ?? true;
-
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -91,7 +84,7 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                   16,
                   16,
                   16,
-                  viewInsets.bottom + 16, // espaço extra pros botões
+                  viewInsets.bottom + 16,
                 ),
                 child: ListView(
                   controller: scrollController,
@@ -133,12 +126,23 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                         (ctx2 as Element).markNeedsBuild();
                       },
                     ),
+                    SwitchListTile(
+                      title: const Text('Incluir no cálculo de renda diária'),
+                      subtitle: const Text(
+                        'Se ligado, entra no total de receitas do dia.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      value: incluirNaRendaDiaria,
+                      onChanged: (v) {
+                        incluirNaRendaDiaria = v;
+                        (ctx2 as Element).markNeedsBuild();
+                      },
+                    ),
                     TextField(
                       controller: diaController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'Dia previsto (1 a 31) - opcional',
-                        hintText: 'Ex: 5 (quinto dia útil)',
                       ),
                     ),
                     SwitchListTile(
@@ -193,6 +197,8 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                                       fixa: fixa,
                                       diaPrevisto: diaPrevisto,
                                       ativa: ativa,
+                                      incluirNaRendaDiaria:
+                                          incluirNaRendaDiaria, // 👈 NOVO
                                     )
                                     : existente.copyWith(
                                       nome: nome,
@@ -200,6 +206,8 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                                       fixa: fixa,
                                       diaPrevisto: diaPrevisto,
                                       ativa: ativa,
+                                      incluirNaRendaDiaria:
+                                          incluirNaRendaDiaria, // 👈 NOVO
                                     );
 
                             await _rendaRepository.salvarFonte(fonte);
@@ -251,300 +259,166 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
   }
 
   // =====================================
-  // UI: Resumo mensal de receitas
+  // LISTA
   // =====================================
 
-  String _nomeMes(int mes) {
-    final date = DateTime(2025, mes, 1);
-    return DateFormat.MMMM('pt_BR').format(date);
-  }
-
-  Widget _buildTabResumoMensal() {
-    return RefreshIndicator(
-      onRefresh: () async {
-        setState(() {
-          _futureResumoMensal = _lancRepository.getResumoRendaMensal();
-        });
-      },
-      child: FutureBuilder<List<RendaMensalResumo>>(
-        future: _futureResumoMensal,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(child: Text('Erro: ${snapshot.error}'));
-          }
-
-          final dados = snapshot.data ?? [];
-
-          if (dados.isEmpty) {
-            return const Center(
-              child: Text(
-                'Nenhuma receita encontrada.\nLance entradas para ver o resumo por mês.',
-                textAlign: TextAlign.center,
-              ),
-            );
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: dados.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final item = dados[index];
-              final nomeMes = _nomeMes(item.mes);
-
-              return Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    child: Text(item.mes.toString().padLeft(2, '0')),
-                  ),
-                  title: Text(
-                    '$nomeMes / ${item.ano}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: const Text('Total de receitas no mês'),
-                  trailing: Text(
-                    _currency.format(item.total),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder:
-                            (_) => MinhaRendaMensalDetalhePage(
-                              ano: item.ano,
-                              mes: item.mes,
-                            ),
-                      ),
-                    );
-                  },
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  // =====================================
-  // UI: Fontes de renda
-  // =====================================
-
-  Widget _buildTabFontes() {
+  @override
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    if (_carregandoFontes) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Fontes de renda')),
 
-    if (_fontes.isEmpty) {
-      return const Center(
-        child: Text(
-          'Nenhuma fonte cadastrada.\nCadastre seu salário, renda extra, etc.',
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _carregarFontes,
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: _fontes.length,
-        itemBuilder: (context, index) {
-          final fonte = _fontes[index];
-
-          final valorLabel = _currency.format(fonte.valorBase);
-
-          String subtitulo = '';
-          if (fonte.fixa) {
-            subtitulo += 'Renda fixa';
-          } else {
-            subtitulo += 'Renda variável';
-          }
-          if (fonte.diaPrevisto != null) {
-            subtitulo += ' • dia ${fonte.diaPrevisto}';
-          }
-          if (!fonte.ativa) {
-            subtitulo += ' • inativa';
-          }
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Slidable(
-              key: ValueKey(fonte.id ?? fonte.nome),
-              endActionPane: ActionPane(
-                motion: const StretchMotion(),
-                extentRatio: 0.35,
-                children: [
-                  SlidableAction(
-                    onPressed: (_) async {
-                      await _abrirFormFonte(existente: fonte);
-                    },
-                    icon: Icons.edit,
-                    backgroundColor: Colors.green.shade600,
-                    foregroundColor: Colors.white,
-                  ),
-                  SlidableAction(
-                    onPressed: (_) async {
-                      await _confirmarExcluir(fonte);
-                    },
-                    icon: Icons.delete,
-                    backgroundColor: colors.error,
-                    foregroundColor: Colors.white,
-                  ),
-                ],
-              ),
-              child: Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+      body:
+          _carregandoFontes
+              ? const Center(child: CircularProgressIndicator())
+              : _fontes.isEmpty
+              ? const Center(
+                child: Text(
+                  'Nenhuma fonte cadastrada.\nCadastre seu salário, renda extra, etc.',
+                  textAlign: TextAlign.center,
                 ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DestinosRendaPage(fonte: fonte),
-                      ),
-                    );
-                    await _carregarFontes();
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: colors.primary.withOpacity(0.08),
-                          child: Icon(Icons.savings, color: colors.primary),
+              )
+              : RefreshIndicator(
+                onRefresh: _carregarFontes,
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  itemCount: _fontes.length,
+                  itemBuilder: (context, index) {
+                    final fonte = _fontes[index];
+                    final valorLabel = _currency.format(fonte.valorBase);
+
+                    String subtitulo =
+                        fonte.fixa ? 'Renda fixa' : 'Renda variável';
+
+                    if (fonte.diaPrevisto != null) {
+                      subtitulo += ' • dia ${fonte.diaPrevisto}';
+                    }
+                    if (!fonte.ativa) {
+                      subtitulo += ' • inativa';
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Slidable(
+                        key: ValueKey(fonte.id ?? fonte.nome),
+                        endActionPane: ActionPane(
+                          motion: const StretchMotion(),
+                          extentRatio: 0.35,
+                          children: [
+                            SlidableAction(
+                              onPressed:
+                                  (_) async =>
+                                      await _abrirFormFonte(existente: fonte),
+                              icon: Icons.edit,
+                              backgroundColor: Colors.green.shade600,
+                              foregroundColor: Colors.white,
+                            ),
+                            SlidableAction(
+                              onPressed:
+                                  (_) async => await _confirmarExcluir(fonte),
+                              icon: Icons.delete,
+                              backgroundColor: colors.error,
+                              foregroundColor: Colors.white,
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        child: Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) => DestinosRendaPage(fonte: fonte),
+                                ),
+                              );
+                              await _carregarFontes();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      fonte.nome,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: colors.primary.withOpacity(
+                                      0.08,
+                                    ),
+                                    child: Icon(
+                                      Icons.savings,
+                                      color: colors.primary,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    valorLabel,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                fonte.nome,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              valorLabel,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          subtitulo,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: colors.onSurface.withOpacity(
+                                              0.7,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                subtitulo,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colors.onSurface.withOpacity(0.7),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
-          );
-        },
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _abrirFormFonte(),
+        backgroundColor: colors.primary,
+        child: const Icon(Icons.add),
       ),
     );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Minha renda'),
-          bottom: TabBar(
-            labelColor: colors.surface, // aba selecionada
-            unselectedLabelColor: colors.surface.withOpacity(0.7),
-            indicatorColor: colors.surface,
-            tabs: const [
-              Tab(text: 'Fontes de renda'),
-              Tab(text: 'Resumo mensal'),
-            ],
-          ),
-        ),
-        body: const TabBarView(
-          children: [
-            // Aba 0: Fontes de renda
-            _TabFontesProxy(),
-            // Aba 1: Resumo mensal
-            _TabResumoMensalProxy(),
-          ],
-        ),
-        floatingActionButton: Builder(
-          builder: (ctx) {
-            final tabController = DefaultTabController.of(ctx);
-            final tabIndex = tabController.index;
-
-            // FAB só aparece na aba 0 (Fontes de renda)
-            if (tabIndex != 0) return const SizedBox.shrink();
-
-            return FloatingActionButton(
-              onPressed: () => _abrirFormFonte(),
-              backgroundColor: colors.primary,
-              child: const Icon(Icons.add),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-// Proxies só para conseguir usar métodos da State dentro do TabBarView
-class _TabResumoMensalProxy extends StatelessWidget {
-  const _TabResumoMensalProxy();
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.findAncestorStateOfType<_MinhaRendaPageState>()!;
-    return state._buildTabResumoMensal();
-  }
-}
-
-class _TabFontesProxy extends StatelessWidget {
-  const _TabFontesProxy();
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.findAncestorStateOfType<_MinhaRendaPageState>()!;
-    return state._buildTabFontes();
   }
 }
