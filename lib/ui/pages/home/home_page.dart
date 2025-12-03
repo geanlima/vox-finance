@@ -7,11 +7,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
 import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
+
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+import 'package:vox_finance/ui/data/modules/renda/renda_repository.dart';
+import 'package:vox_finance/ui/data/modules/renda/renda_service.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
@@ -53,14 +56,21 @@ class _HomePageState extends State<HomePage> {
 
   final _cartaoRepo = CartaoCreditoRepository();
 
+  // 👇 NOVO: serviço de renda (fontes)
+  final RendaService _rendaService = RendaService();
+
   late stt.SpeechToText _speech;
   bool _speechDisponivel = false;
 
   DateTime _dataSelecionada = DateTime.now();
 
-  // Cartões carregados do banco
+  // Cartões e contas carregados do banco
   List<CartaoCredito> _cartoes = [];
   List<ContaBancaria> _contas = [];
+
+  // 👇 NOVO: valor diário vindo das fontes de renda
+  final RendaRepository _rendaRepository = RendaRepository();
+  double _rendaDiaria = 0.0;
 
   @override
   void initState() {
@@ -70,7 +80,6 @@ class _HomePageState extends State<HomePage> {
     _carregarDoBanco();
     _carregarCartoes();
     _carregarContas();
-    
 
     // ⬇️ inicializa as regras de pagamento/sincronização
     _regraOutraCompra = RegraOutraCompraParceladaService(
@@ -98,11 +107,32 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarDoBanco() async {
+    // 1) Carrega os lançamentos do dia selecionado
     final lista = await _repositoryLancamento.getByDay(_dataSelecionada);
+
+    // 2) Carrega as fontes de renda ativas
+    final fontes = await _rendaRepository.listarFontes(apenasAtivas: true);
+
+    // 3) Filtra só as que estão marcadas para entrar no cálculo diário
+    final fontesParaDiario =
+        fontes.where((f) => f.incluirNaRendaDiaria == true).toList();
+
+    // 4) Descobre quantos dias tem no mês da data selecionada
+    final diasMes =
+        DateTime(_dataSelecionada.year, _dataSelecionada.month + 1, 0).day;
+
+    // 5) Soma a renda diária de todas as fontes marcadas
+    //    Ex: fonte 1 => 2000/30, fonte 2 => 1500/30, etc.
+    final rendaDiaria = fontesParaDiario.fold<double>(
+      0.0,
+      (soma, f) => soma + (f.valorBase / diasMes),
+    );
+
     setState(() {
       _lancamentos
         ..clear()
         ..addAll(lista);
+      _rendaDiaria = rendaDiaria;
     });
   }
 
@@ -116,14 +146,16 @@ class _HomePageState extends State<HomePage> {
   bool _mesmoDia(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
+  // --------- totais / filtros ---------
+
+  /// Total de RECEITAS (pagas) do dia vindo APENAS dos lançamentos
   double get _totalReceitaDia {
     return _lancamentos
         .where((l) => l.pago && l.tipoMovimento == TipoMovimento.receita)
         .fold(0.0, (total, l) => total + l.valor);
   }
 
-  // --------- totais / filtros ---------
-
+  /// Total de GASTOS (despesas pagas, excluindo pagamento de fatura)
   double get _totalGastoDia {
     return _lancamentos
         .where(
@@ -496,7 +528,17 @@ class _HomePageState extends State<HomePage> {
     final dataFormatada = _dateDiaFormat.format(_dataSelecionada);
     final fechamentoNoDiaSelecionado = _diaSelecionadoEhFechamentoDeAlgumCartao;
 
-    final totalGastoFormatado = _currency.format(_totalGastoDia);
+    // 👇 despesas (somente despesa paga, sem pagamento de fatura)
+    final totalDespesasFormatado = _currency.format(_totalGastoDia);
+
+    // total de receitas = lançamentos de receita pagos + renda diária das fontes marcadas
+    final double totalReceitasComRenda = _totalReceitaDia + _rendaDiaria;
+    final totalReceitasFormatado = _currency.format(totalReceitasComRenda);
+
+    // 👇 se tiver renda diária > 0, mostramos a linha extra no card
+    final String rendaDiariaFormatada =
+        _rendaDiaria > 0 ? _currency.format(_rendaDiaria) : '';
+
     final String totalPagamentoFaturaFormatado =
         _totalPagamentoFaturaDia > 0
             ? _currency.format(_totalPagamentoFaturaDia)
@@ -547,7 +589,9 @@ class _HomePageState extends State<HomePage> {
             ResumoDiaCard(
               ehHoje: ehHoje,
               dataFormatada: dataFormatada,
-              totalGastoFormatado: totalGastoFormatado,
+              totalDespesasFormatado: totalDespesasFormatado,
+              totalReceitasFormatado: totalReceitasFormatado,
+              rendaDiariaFormatada: rendaDiariaFormatada, // 👈 NOVO
               totalPagamentoFaturaFormatado: totalPagamentoFaturaFormatado,
               onDiaAnterior: _diaAnterior,
               onProximoDia: _proximoDia,
@@ -724,7 +768,6 @@ class _HomePageState extends State<HomePage> {
                                           color: Colors.black54,
                                         ),
                                       ),
-
                                       const SizedBox(height: 4),
                                       Text(
                                         'Forma de pagamento: '
@@ -734,7 +777,6 @@ class _HomePageState extends State<HomePage> {
                                           color: Colors.grey,
                                         ),
                                       ),
-
                                       if (temGrupo) ...[
                                         const SizedBox(height: 2),
                                         Text(

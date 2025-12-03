@@ -1,19 +1,22 @@
-/// Fonte de renda cadastrada (ex: PJ Clínica, Freelas, Aluguel)
 class FonteRenda {
   final int? id;
   final String nome;
-  final double valorBase; // valor "esperado" dessa fonte
-  final bool fixa; // true = valor se repete todo mês
-  final int? diaPrevisto; // dia do mês em que costuma cair (1..31)
+  final double valorBase;
+  final bool fixa;
+  final int? diaPrevisto;
   final bool ativa;
 
-  const FonteRenda({
+  // 👇 NOVO
+  final bool incluirNaRendaDiaria;
+
+  FonteRenda({
     this.id,
     required this.nome,
     required this.valorBase,
     required this.fixa,
     this.diaPrevisto,
-    this.ativa = true,
+    required this.ativa,
+    this.incluirNaRendaDiaria = false,
   });
 
   FonteRenda copyWith({
@@ -23,6 +26,7 @@ class FonteRenda {
     bool? fixa,
     int? diaPrevisto,
     bool? ativa,
+    bool? incluirNaRendaDiaria,
   }) {
     return FonteRenda(
       id: id ?? this.id,
@@ -31,20 +35,21 @@ class FonteRenda {
       fixa: fixa ?? this.fixa,
       diaPrevisto: diaPrevisto ?? this.diaPrevisto,
       ativa: ativa ?? this.ativa,
+      incluirNaRendaDiaria:
+          incluirNaRendaDiaria ?? this.incluirNaRendaDiaria,
     );
   }
-
-  // ==== SQLite helpers ====
 
   factory FonteRenda.fromMap(Map<String, dynamic> map) {
     return FonteRenda(
       id: map['id'] as int?,
       nome: map['nome'] as String,
-      valorBase: (map['valor_base'] as num).toDouble(),
-      fixa: (map['fixa'] as int) == 1,
+      valorBase: (map['valor_base'] as num?)?.toDouble() ?? 0.0,
+      fixa: (map['fixa'] as int? ?? 1) == 1,
       diaPrevisto: map['dia_previsto'] as int?,
-      // se vier null, considera ativa = true
-      ativa: (map['ativa'] as int?) != 0,
+      ativa: (map['ativa'] as int? ?? 1) == 1,
+      incluirNaRendaDiaria:
+          (map['incluir_na_renda_diaria'] as int? ?? 0) == 1, // 👈 NOVO
     );
   }
 
@@ -56,6 +61,7 @@ class FonteRenda {
       'fixa': fixa ? 1 : 0,
       'dia_previsto': diaPrevisto,
       'ativa': ativa ? 1 : 0,
+      'incluir_na_renda_diaria': incluirNaRendaDiaria ? 1 : 0, // 👈 NOVO
     };
   }
 }
