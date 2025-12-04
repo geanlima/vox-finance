@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:vox_finance/ui/core/service/theme_controller.dart';
+
 import 'package:vox_finance/ui/pages/auth/login_unificado_page.dart';
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/renda/minha_renda_page.dart';
@@ -31,23 +33,32 @@ class VoxFinanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'VoxFinance',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+    // 👇 AnimatedBuilder escuta o ThemeController (singleton)
+    return AnimatedBuilder(
+      animation: themeController,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'VoxFinance',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
 
-      routes: {
-        '/login': (_) => const LoginUnificadoPage(),
-        '/': (_) => const HomePage(),
-        '/categorias-personalizadas':
-            (_) => const CategoriasPersonalizadasPage(),
-        '/contas-pagar': (_) => const ContasPagarPage(),
-        '/cartoes-credito': (_) => const CartaoCreditoPage(),
-        '/contas-bancarias': (_) => const ContasPage(),
-        '/graficos': (_) => const GraficosPage(),
-        '/comparativo-mes': (_) => const ComparativoMesPage(),
-        '/minha-renda': (ctx) => const MinhaRendaPage(),
+          // 🌙☀️ Aqui ele aplica o tema escolhido (system/light/dark)
+          themeMode: themeController.themeMode,
+
+          routes: {
+            '/login': (_) => const LoginUnificadoPage(),
+            '/': (_) => const HomePage(),
+            '/categorias-personalizadas':
+                (_) => const CategoriasPersonalizadasPage(),
+            '/contas-pagar': (_) => const ContasPagarPage(),
+            '/cartoes-credito': (_) => const CartaoCreditoPage(),
+            '/contas-bancarias': (_) => const ContasPage(),
+            '/graficos': (_) => const GraficosPage(),
+            '/comparativo-mes': (_) => const ComparativoMesPage(),
+            '/minha-renda': (ctx) => const MinhaRendaPage(),
+          },
+        );
       },
     );
   }
