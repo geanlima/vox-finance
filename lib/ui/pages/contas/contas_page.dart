@@ -1,9 +1,9 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 
 class ContasPage extends StatefulWidget {
@@ -14,8 +14,9 @@ class ContasPage extends StatefulWidget {
 }
 
 class _ContasPageState extends State<ContasPage> {
-  final _db = DbService();
   List<ContaBancaria> _contas = [];
+
+  final ContaBancariaRepository _repository = ContaBancariaRepository();
 
   @override
   void initState() {
@@ -24,7 +25,7 @@ class _ContasPageState extends State<ContasPage> {
   }
 
   Future<void> _carregarContas() async {
-    final lista = await _db.getContasBancarias();
+    final lista = await _repository.getContasBancarias();
     setState(() {
       _contas = lista;
     });
@@ -32,6 +33,7 @@ class _ContasPageState extends State<ContasPage> {
 
   Future<void> _abrirForm({ContaBancaria? existente}) async {
     String tipoSelecionado = existente?.tipo ?? 'corrente';
+
     final descricaoController = TextEditingController(
       text: existente?.descricao ?? '',
     );
@@ -42,184 +44,239 @@ class _ContasPageState extends State<ContasPage> {
     final numeroController = TextEditingController(
       text: existente?.numero ?? '',
     );
-    final tipoController = TextEditingController(text: existente?.tipo ?? '');
+
     bool ativa = existente?.ativa ?? true;
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: StatefulBuilder(
-            builder: (context, setModalState) {
-              return SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final mq = MediaQuery.of(context);
+            final viewInsets = mq.viewInsets;
+            final sysPadding = mq.padding;
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                  child: SizedBox(
+                    height: mq.size.height * 0.7, // altura do bottom sheet
+                    child: Column(
                       children: [
-                        Icon(existente == null ? Icons.add : Icons.edit),
-                        const SizedBox(width: 8),
-                        Text(
-                          existente == null
-                              ? 'Nova conta bancária'
-                              : 'Editar conta bancária',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextField(
-                      controller: descricaoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Descrição',
-                        hintText: 'Ex.: Nubank, Itaú, Caixa...',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: bancoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Banco',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: agenciaController,
-                      decoration: const InputDecoration(
-                        labelText: 'Agência',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: numeroController,
-                      decoration: const InputDecoration(
-                        labelText: 'Número da conta',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Tipo da conta (Corrente / Poupança / Investimento)
-                    DropdownButtonFormField<String>(
-                      value: tipoSelecionado,
-                      decoration: const InputDecoration(
-                        labelText: 'Tipo da conta',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'corrente',
-                          child: Text('Conta Corrente'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'poupanca',
-                          child: Text('Conta Poupança'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'investimento',
-                          child: Text('Conta de Investimento'),
-                        ),
-                      ],
-                      onChanged: (valor) {
-                        setModalState(() {
-                          tipoSelecionado = valor!;
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Conta ativa'),
-                      value: ativa,
-                      onChanged: (v) {
-                        setModalState(() {
-                          ativa = v;
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancelar'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            final desc = descricaoController.text.trim();
-                            if (desc.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Informe uma descrição para a conta.',
+                        // =================== CONTEÚDO ROLÁVEL ===================
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // "pegador"
+                                Center(
+                                  child: Container(
+                                    width: 50,
+                                    height: 4,
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade400,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
                                   ),
                                 ),
-                              );
-                              return;
-                            }
 
-                            final conta =
-                                existente ?? ContaBancaria(descricao: desc);
+                                Row(
+                                  children: [
+                                    Icon(
+                                      existente == null
+                                          ? Icons.add
+                                          : Icons.edit,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      existente == null
+                                          ? 'Nova conta bancária'
+                                          : 'Editar conta bancária',
+                                      style:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
 
-                            conta
-                              ..descricao = desc
-                              ..banco =
-                                  bancoController.text.trim().isEmpty
-                                      ? null
-                                      : bancoController.text.trim()
-                              ..agencia =
-                                  agenciaController.text.trim().isEmpty
-                                      ? null
-                                      : agenciaController.text.trim()
-                              ..numero =
-                                  numeroController.text.trim().isEmpty
-                                      ? null
-                                      : numeroController.text.trim()
-                              ..tipo =
-                                  tipoController.text.trim().isEmpty
-                                      ? null
-                                      : tipoController.text.trim()
-                              ..ativa = ativa;
+                                TextField(
+                                  controller: descricaoController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Descrição',
+                                    hintText: 'Ex.: Nubank, Itaú, Caixa...',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
 
-                            await _db.salvarContaBancaria(conta);
-                            await _carregarContas();
-                            Navigator.pop(context);
-                          },
-                          child: Text(
-                            existente == null ? 'Salvar' : 'Salvar alterações',
+                                TextField(
+                                  controller: bancoController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Banco',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                TextField(
+                                  controller: agenciaController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Agência',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                TextField(
+                                  controller: numeroController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Número da conta',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Tipo da conta (Corrente / Poupança / Investimento)
+                                DropdownButtonFormField<String>(
+                                  value: tipoSelecionado,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Tipo da conta',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'corrente',
+                                      child: Text('Conta Corrente'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'poupanca',
+                                      child: Text('Conta Poupança'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'investimento',
+                                      child: Text('Conta de Investimento'),
+                                    ),
+                                  ],
+                                  onChanged: (valor) {
+                                    if (valor == null) return;
+                                    setModalState(() {
+                                      tipoSelecionado = valor;
+                                    });
+                                  },
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                SwitchListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: const Text('Conta ativa'),
+                                  value: ativa,
+                                  onChanged: (v) {
+                                    setModalState(() {
+                                      ativa = v;
+                                    });
+                                  },
+                                ),
+
+                                const SizedBox(height: 8),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // =================== RODAPÉ FIXO ===================
+                        const Divider(height: 1),
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            8,
+                            16,
+                            8 + sysPadding.bottom,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  final desc = descricaoController.text.trim();
+                                  if (desc.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Informe uma descrição para a conta.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  final conta =
+                                      existente ??
+                                      ContaBancaria(descricao: desc);
+
+                                  conta
+                                    ..descricao = desc
+                                    ..banco =
+                                        bancoController.text.trim().isEmpty
+                                            ? null
+                                            : bancoController.text.trim()
+                                    ..agencia =
+                                        agenciaController.text.trim().isEmpty
+                                            ? null
+                                            : agenciaController.text.trim()
+                                    ..numero =
+                                        numeroController.text.trim().isEmpty
+                                            ? null
+                                            : numeroController.text.trim()
+                                    ..tipo = tipoSelecionado
+                                    ..ativa = ativa;
+
+                                  await _repository.salvarContaBancaria(conta);
+                                  await _carregarContas();
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                  }
+                                },
+                                child: Text(
+                                  existente == null
+                                      ? 'Salvar'
+                                      : 'Salvar alterações',
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -250,7 +307,7 @@ class _ContasPageState extends State<ContasPage> {
     );
 
     if (confirmar == true && conta.id != null) {
-      await _db.deletarContaBancaria(conta.id!);
+      await _repository.deletarContaBancaria(conta.id!);
       await _carregarContas();
     }
   }

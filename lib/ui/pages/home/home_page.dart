@@ -1,11 +1,20 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers, unused_local_variable, unused_element
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, no_leading_underscores_for_local_identifiers, unused_local_variable, unused_element, unused_field
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
+import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
+
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+import 'package:vox_finance/ui/data/modules/renda/renda_repository.dart';
+import 'package:vox_finance/ui/data/modules/renda/renda_service.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
@@ -30,19 +39,38 @@ class _HomePageState extends State<HomePage> {
   final List<Lancamento> _lancamentos = [];
 
   final _dbService = DbService();
+  final LancamentoRepository _repositoryLancamento = LancamentoRepository();
+  final CartaoCreditoRepository _repositoryCartaoCredito =
+      CartaoCreditoRepository();
 
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateHoraFormat = DateFormat('dd/MM/yyyy HH:mm');
   final _dateDiaFormat = DateFormat('dd/MM/yyyy');
+  final ContaBancariaRepository _repositoryContaBancaria =
+      ContaBancariaRepository();
+
+  final ContaPagarRepository _repositoryContaPagar = ContaPagarRepository();
+
+  late final RegraOutraCompraParceladaService _regraOutraCompra;
+  late final RegraCartaoParceladoService _regraCartaoParcelado;
+
+  final _cartaoRepo = CartaoCreditoRepository();
+
+  // 👇 NOVO: serviço de renda (fontes)
+  final RendaService _rendaService = RendaService();
 
   late stt.SpeechToText _speech;
   bool _speechDisponivel = false;
 
   DateTime _dataSelecionada = DateTime.now();
 
-  // Cartões carregados do banco
+  // Cartões e contas carregados do banco
   List<CartaoCredito> _cartoes = [];
   List<ContaBancaria> _contas = [];
+
+  // 👇 NOVO: valor diário vindo das fontes de renda
+  final RendaRepository _rendaRepository = RendaRepository();
+  double _rendaDiaria = 0.0;
 
   @override
   void initState() {
@@ -52,10 +80,22 @@ class _HomePageState extends State<HomePage> {
     _carregarDoBanco();
     _carregarCartoes();
     _carregarContas();
+
+    // ⬇️ inicializa as regras de pagamento/sincronização
+    _regraOutraCompra = RegraOutraCompraParceladaService(
+      lancRepo: _repositoryLancamento,
+      contaPagarRepo: _repositoryContaPagar,
+    );
+
+    _regraCartaoParcelado = RegraCartaoParceladoService(
+      lancRepo: _repositoryLancamento,
+    );
   }
 
   Future<void> _carregarContas() async {
-    final lista = await _dbService.getContasBancarias(apenasAtivas: true);
+    final lista = await _repositoryContaBancaria.getContasBancarias(
+      apenasAtivas: true,
+    );
     setState(() {
       _contas = lista;
     });
@@ -67,16 +107,37 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarDoBanco() async {
-    final lista = await _dbService.getLancamentosByDay(_dataSelecionada);
+    // 1) Carrega os lançamentos do dia selecionado
+    final lista = await _repositoryLancamento.getByDay(_dataSelecionada);
+
+    // 2) Carrega as fontes de renda ativas
+    final fontes = await _rendaRepository.listarFontes(apenasAtivas: true);
+
+    // 3) Filtra só as que estão marcadas para entrar no cálculo diário
+    final fontesParaDiario =
+        fontes.where((f) => f.incluirNaRendaDiaria == true).toList();
+
+    // 4) Descobre quantos dias tem no mês da data selecionada
+    final diasMes =
+        DateTime(_dataSelecionada.year, _dataSelecionada.month + 1, 0).day;
+
+    // 5) Soma a renda diária de todas as fontes marcadas
+    //    Ex: fonte 1 => 2000/30, fonte 2 => 1500/30, etc.
+    final rendaDiaria = fontesParaDiario.fold<double>(
+      0.0,
+      (soma, f) => soma + (f.valorBase / diasMes),
+    );
+
     setState(() {
       _lancamentos
         ..clear()
         ..addAll(lista);
+      _rendaDiaria = rendaDiaria;
     });
   }
 
   Future<void> _carregarCartoes() async {
-    final lista = await _dbService.getCartoesCredito();
+    final lista = await _repositoryCartaoCredito.getCartoesCredito();
     setState(() {
       _cartoes = lista;
     });
@@ -87,9 +148,22 @@ class _HomePageState extends State<HomePage> {
 
   // --------- totais / filtros ---------
 
+  /// Total de RECEITAS (pagas) do dia vindo APENAS dos lançamentos
+  double get _totalReceitaDia {
+    return _lancamentos
+        .where((l) => l.pago && l.tipoMovimento == TipoMovimento.receita)
+        .fold(0.0, (total, l) => total + l.valor);
+  }
+
+  /// Total de GASTOS (despesas pagas, excluindo pagamento de fatura)
   double get _totalGastoDia {
     return _lancamentos
-        .where((l) => l.pago && !l.pagamentoFatura)
+        .where(
+          (l) =>
+              l.pago &&
+              !l.pagamentoFatura &&
+              l.tipoMovimento == TipoMovimento.despesa,
+        )
         .fold(0.0, (total, l) => total + l.valor);
   }
 
@@ -151,7 +225,10 @@ class _HomePageState extends State<HomePage> {
 
     for (final c in cartoesFechandoNoDia) {
       if (c.id != null) {
-        await _dbService.gerarFaturaDoCartao(c.id!, referencia: diaSelecionado);
+        await _repositoryCartaoCredito.gerarFaturaDoCartao(
+          c.id!,
+          referencia: diaSelecionado,
+        );
       }
     }
 
@@ -338,9 +415,8 @@ class _HomePageState extends State<HomePage> {
     await _carregarCartoes();
 
     // carrega contas bancárias ativas
-    final List<ContaBancaria> contas = await _dbService.getContasBancarias(
-      apenasAtivas: true,
-    );
+    final List<ContaBancaria> contas = await _repositoryContaBancaria
+        .getContasBancarias(apenasAtivas: true);
 
     await showModalBottomSheet(
       context: context,
@@ -392,9 +468,55 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (confirmar == true && lanc.id != null) {
-      await _dbService.deletarLancamento(lanc.id!);
+      await _repositoryLancamento.deletar(lanc.id!);
       await _carregarDoBanco();
     }
+  }
+
+  Future<void> _pagarLancamento(Lancamento lanc) async {
+    if (lanc.id == null) return;
+
+    final bool ehCartaoCredito =
+        lanc.formaPagamento == FormaPagamento.credito && lanc.idCartao != null;
+
+    // 1) Pergunta antes de pagar
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            ehCartaoCredito && lanc.pagamentoFatura
+                ? 'Pagamento de fatura'
+                : 'Marcar lançamento como pago',
+          ),
+          content: Text(
+            ehCartaoCredito && lanc.pagamentoFatura
+                ? 'Deseja registrar o pagamento desta fatura de '
+                    '${_currency.format(lanc.valor)}?'
+                : 'Deseja marcar como pago o lançamento de '
+                    '${_currency.format(lanc.valor)} (${lanc.descricao})?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) return;
+
+    // 2) Regras de pagamento – lança em lancamentos + conta_pagar
+    await _regraOutraCompra.marcarLancamentoComoPagoSincronizado(lanc, true);
+
+    // 3) Recarrega os lançamentos do dia
+    await _carregarDoBanco();
   }
 
   // ============ BUILD ============
@@ -406,7 +528,17 @@ class _HomePageState extends State<HomePage> {
     final dataFormatada = _dateDiaFormat.format(_dataSelecionada);
     final fechamentoNoDiaSelecionado = _diaSelecionadoEhFechamentoDeAlgumCartao;
 
-    final totalGastoFormatado = _currency.format(_totalGastoDia);
+    // 👇 despesas (somente despesa paga, sem pagamento de fatura)
+    final totalDespesasFormatado = _currency.format(_totalGastoDia);
+
+    // total de receitas = lançamentos de receita pagos + renda diária das fontes marcadas
+    final double totalReceitasComRenda = _totalReceitaDia + _rendaDiaria;
+    final totalReceitasFormatado = _currency.format(totalReceitasComRenda);
+
+    // 👇 se tiver renda diária > 0, mostramos a linha extra no card
+    final String rendaDiariaFormatada =
+        _rendaDiaria > 0 ? _currency.format(_rendaDiaria) : '';
+
     final String totalPagamentoFaturaFormatado =
         _totalPagamentoFaturaDia > 0
             ? _currency.format(_totalPagamentoFaturaDia)
@@ -457,7 +589,9 @@ class _HomePageState extends State<HomePage> {
             ResumoDiaCard(
               ehHoje: ehHoje,
               dataFormatada: dataFormatada,
-              totalGastoFormatado: totalGastoFormatado,
+              totalDespesasFormatado: totalDespesasFormatado,
+              totalReceitasFormatado: totalReceitasFormatado,
+              rendaDiariaFormatada: rendaDiariaFormatada, // 👈 NOVO
               totalPagamentoFaturaFormatado: totalPagamentoFaturaFormatado,
               onDiaAnterior: _diaAnterior,
               onProximoDia: _proximoDia,
@@ -472,6 +606,8 @@ class _HomePageState extends State<HomePage> {
                 dateHoraFormat: _dateHoraFormat,
                 onEditar: (l) => _abrirFormLancamento(existente: l),
                 onExcluir: _excluirLancamento,
+                onPagar: _pagarLancamento,
+                onVerItensFatura: _verItensFatura,
               ),
             ),
           ],
@@ -517,6 +653,168 @@ class _HomePageState extends State<HomePage> {
           cartoes: _cartoes,
           contas: _contas,
           currency: _currency,
+        );
+      },
+    );
+  }
+
+  Future<void> _verItensFatura(Lancamento fatura) async {
+    // Busca os itens da fatura no repositório
+    final itens = await _cartaoRepo.getLancamentosDaFatura(fatura);
+
+    if (itens.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhum lançamento associado a esta fatura.'),
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+
+        return DraggableScrollableSheet(
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  // “pegador” em cima
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    itens.length == 1
+                        ? 'Lançamento vinculado'
+                        : 'Lançamentos da fatura',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      itemCount: itens.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (ctx, index) {
+                        final lanc = itens[index];
+                        final grupo = lanc.grupoParcelas;
+                        final temGrupo = grupo != null && grupo.isNotEmpty;
+
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 1.5,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Ícone da forma de pagamento
+                                CircleAvatar(
+                                  radius: 18,
+                                  child: Icon(
+                                    lanc.formaPagamento.icon,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+
+                                // Descrição + data + forma + grupo/parcela
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        lanc.descricao,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _dateHoraFormat.format(lanc.dataHora),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Forma de pagamento: '
+                                        '${lanc.formaPagamento.label.toUpperCase()}',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      if (temGrupo) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Grupo: $grupo · '
+                                          'Parcela ${lanc.parcelaNumero ?? 1}/${lanc.parcelaTotal ?? 1}',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // Valor à direita
+                                Text(
+                                  _currency.format(lanc.valor),
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );

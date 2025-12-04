@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 
 class ContaPagarForm extends StatefulWidget {
@@ -16,8 +16,9 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
   final _formKey = GlobalKey<FormState>();
   final _descricaoController = TextEditingController();
   final _valorController = TextEditingController();
-  final _dbService = DbService();
   DateTime _dataVencimento = DateTime.now();
+
+  final ContaPagarRepository _repository = ContaPagarRepository();
 
   final _dateFormat = DateFormat('dd/MM/yyyy');
 
@@ -102,7 +103,7 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
       );
     }
 
-    await _dbService.salvarContaPagar(conta);
+    await _repository.salvar(conta);
 
     if (!mounted) return;
     Navigator.pop(context, true);

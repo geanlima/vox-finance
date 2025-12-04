@@ -6,12 +6,17 @@ import 'migrations_v1.dart';
 import 'migrations_v2_v15.dart';
 
 class MigrationFactory {
-  /// Criação inicial (versão 1) – cria todas as tabelas do zero
-  static Future<void> create(Database db) async {
+  /// Criação inicial (versão 1) – cria todas as tabelas base
+  /// e já aplica migrações até a versão alvo.
+  static Future<void> create(Database db, int targetVersion) async {
+    // cria estrutura base (v1)
     await MigrationV1.create(db);
+
+    // aplica todas as migrações de 2 até targetVersion
+    await MigrationV2toV15.upgrade(db, 1, targetVersion);
   }
 
-  /// Upgrades do banco (2 até 15) – usando o oldVersion
+  /// Upgrades do banco – da versão [oldVersion] até [newVersion]
   static Future<void> upgrade(
     Database db,
     int oldVersion,

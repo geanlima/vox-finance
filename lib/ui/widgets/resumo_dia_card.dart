@@ -3,25 +3,39 @@ import 'package:flutter/material.dart';
 class ResumoDiaCard extends StatelessWidget {
   final bool ehHoje;
   final String dataFormatada;
-  final String totalGastoFormatado;
+
+  /// Total apenas de DESPESAS no dia
+  final String totalDespesasFormatado;
+
+  /// Total de RECEITAS no dia (você pode passar já SOMANDO lançamentos + renda diária)
+  final String totalReceitasFormatado;
+
+  /// (Opcional) Renda diária calculada a partir das fontes de renda
+  /// Se null ou vazia, não mostra a linha explicativa.
+  final String? rendaDiariaFormatada;
 
   /// Se for string vazia, não mostra a linha de fatura
   final String totalPagamentoFaturaFormatado;
+
   final VoidCallback onDiaAnterior;
   final VoidCallback onProximoDia;
   final VoidCallback onSelecionarData;
+
+  /// Callback quando tocar em algum total
   final VoidCallback onTapTotal;
 
   const ResumoDiaCard({
     super.key,
     required this.ehHoje,
     required this.dataFormatada,
-    required this.totalGastoFormatado,
+    required this.totalDespesasFormatado,
+    required this.totalReceitasFormatado,
     required this.totalPagamentoFaturaFormatado,
     required this.onDiaAnterior,
     required this.onProximoDia,
     required this.onSelecionarData,
     required this.onTapTotal,
+    this.rendaDiariaFormatada, // 👈 novo, opcional
   });
 
   @override
@@ -81,13 +95,13 @@ class ResumoDiaCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Total gasto no dia (ajustado p/ não dar overflow)
+            // Total DESPESAS
             Row(
               children: [
                 const Expanded(
                   child: Text(
-                    'Total gasto no dia',
-                    style: TextStyle(fontSize: 16),
+                    'Despesas no dia',
+                    style: TextStyle(fontSize: 15),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -103,18 +117,19 @@ class ResumoDiaCard extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              totalGastoFormatado,
+                              totalDespesasFormatado,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.right,
                               style: const TextStyle(
-                                fontSize: 22,
+                                fontSize: 20,
                                 fontWeight: FontWeight.bold,
+                                color: Colors.redAccent,
                               ),
                             ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(Icons.bar_chart, size: 18),
+                          const Icon(Icons.arrow_downward, size: 18),
                         ],
                       ),
                     ),
@@ -123,9 +138,66 @@ class ResumoDiaCard extends StatelessWidget {
               ],
             ),
 
-            // Linha extra de pagamento de fatura (se houver)
-            if (totalPagamentoFaturaFormatado.isNotEmpty) ...[
+            const SizedBox(height: 4),
+
+            // Total RECEITAS (já pode ser: lançamentos + renda diária)
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Receitas no dia',
+                    style: TextStyle(fontSize: 15),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: InkWell(
+                    onTap: onTapTotal,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              totalReceitasFormatado,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_upward, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // Linha opcional explicando a renda diária das fontes
+            if (rendaDiariaFormatada != null &&
+                rendaDiariaFormatada!.isNotEmpty) ...[
               const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Inclui renda diária: $rendaDiariaFormatada',
+                  style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+                ),
+              ),
+            ],
+
+            if (totalPagamentoFaturaFormatado.isNotEmpty) ...[
+              const SizedBox(height: 8),
               Text(
                 'Pagamento de fatura: $totalPagamentoFaturaFormatado',
                 style: const TextStyle(

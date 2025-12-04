@@ -41,7 +41,7 @@ class AppTheme {
     scaffoldBackgroundColor: lightBackground,
     appBarTheme: const AppBarTheme(
       backgroundColor: lightPrimary,
-      foregroundColor: Colors.white,
+      foregroundColor: lightBackground,
       elevation: 0,
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -50,7 +50,7 @@ class AppTheme {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white,
+      fillColor: lightBackground,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
     ),
   );

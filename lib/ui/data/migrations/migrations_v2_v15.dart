@@ -2,20 +2,18 @@
 import 'package:sqflite/sqflite.dart';
 
 class MigrationV2toV15 {
-  /// Executa todas as migrações da 2 até a 15,
+  /// Executa todas as migrações da 2 em diante,
   /// dependendo do [oldVersion].
   static Future<void> upgrade(
     Database db,
     int oldVersion,
     int newVersion,
   ) async {
-    // ---- V4: id_cartao em lancamentos + tabela cartao_credito básica ----
+    // =========================
+    // V4: id_cartao + cartao_credito
+    // =========================
     if (oldVersion < 4) {
-      try {
-        await db.execute(
-          'ALTER TABLE lancamentos ADD COLUMN id_cartao INTEGER;',
-        );
-      } catch (_) {}
+      await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
 
       await db.execute('''
         CREATE TABLE IF NOT EXISTS cartao_credito (
@@ -27,22 +25,17 @@ class MigrationV2toV15 {
       ''');
     }
 
-    // ---- V6: foto_path + dia_vencimento no cartão ----
+    // =========================
+    // V6: foto_path + dia_vencimento no cartão
+    // =========================
     if (oldVersion < 6) {
-      try {
-        await db.execute(
-          'ALTER TABLE cartao_credito ADD COLUMN foto_path TEXT;',
-        );
-      } catch (_) {}
-
-      try {
-        await db.execute(
-          'ALTER TABLE cartao_credito ADD COLUMN dia_vencimento INTEGER;',
-        );
-      } catch (_) {}
+      await _addColumnSafe(db, 'cartao_credito', 'foto_path', 'TEXT');
+      await _addColumnSafe(db, 'cartao_credito', 'dia_vencimento', 'INTEGER');
     }
 
-    // ---- V7: tabela USUARIOS ----
+    // =========================
+    // V7: tabela USUARIOS
+    // =========================
     if (oldVersion < 7) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -56,45 +49,38 @@ class MigrationV2toV15 {
       ''');
     }
 
-    // ---- V8: adiciona foto_path em bancos antigos (se faltar) ----
+    // =========================
+    // V8: foto_path em usuários antigos
+    // =========================
     if (oldVersion < 8) {
-      try {
-        await db.execute('ALTER TABLE usuarios ADD COLUMN foto_path TEXT;');
-      } catch (_) {}
+      await _addColumnSafe(db, 'usuarios', 'foto_path', 'TEXT');
     }
 
-    // ---- V9: tipo, permite_parcelamento, limite, dia_fechamento ----
+    // =========================
+    // V9: tipo, permite_parcelamento, limite, dia_fechamento (cartão)
+    // =========================
     if (oldVersion < 9) {
-      try {
-        await db.execute(
-          'ALTER TABLE cartao_credito ADD COLUMN tipo INTEGER DEFAULT 0;',
-        );
-      } catch (_) {}
-
-      try {
-        await db.execute(
-          'ALTER TABLE cartao_credito ADD COLUMN permite_parcelamento INTEGER DEFAULT 1;',
-        );
-      } catch (_) {}
-
-      try {
-        await db.execute('ALTER TABLE cartao_credito ADD COLUMN limite REAL;');
-      } catch (_) {}
-
-      try {
-        await db.execute(
-          'ALTER TABLE cartao_credito ADD COLUMN dia_fechamento INTEGER;',
-        );
-      } catch (_) {}
+      await _addColumnSafe(db, 'cartao_credito', 'tipo', 'INTEGER DEFAULT 0');
+      await _addColumnSafe(
+        db,
+        'cartao_credito',
+        'permite_parcelamento',
+        'INTEGER DEFAULT 1',
+      );
+      await _addColumnSafe(db, 'cartao_credito', 'limite', 'REAL');
+      await _addColumnSafe(db, 'cartao_credito', 'dia_fechamento', 'INTEGER');
     }
 
-    // ---- V10: controla_fatura ----
+    // =========================
+    // V10: controla_fatura
+    // =========================
     if (oldVersion < 10) {
-      try {
-        await db.execute(
-          'ALTER TABLE cartao_credito ADD COLUMN controla_fatura INTEGER DEFAULT 1;',
-        );
-      } catch (_) {}
+      await _addColumnSafe(
+        db,
+        'cartao_credito',
+        'controla_fatura',
+        'INTEGER DEFAULT 1',
+      );
 
       try {
         await db.execute('''
@@ -106,7 +92,9 @@ class MigrationV2toV15 {
       } catch (_) {}
     }
 
-    // ---- V11: conta_bancaria + id_conta em lancamentos ----
+    // =========================
+    // V11: conta_bancaria + id_conta em lancamentos
+    // =========================
     if (oldVersion < 11) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS conta_bancaria (
@@ -120,14 +108,12 @@ class MigrationV2toV15 {
         );
       ''');
 
-      try {
-        await db.execute(
-          'ALTER TABLE lancamentos ADD COLUMN id_conta INTEGER;',
-        );
-      } catch (_) {}
+      await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
     }
 
-    // ---- V13: normaliza nome da coluna 'ultimos4' ----
+    // =========================
+    // V13: normaliza nome da coluna 'ultimos4'
+    // =========================
     if (oldVersion < 13) {
       try {
         final info = await db.rawQuery('PRAGMA table_info(cartao_credito);');
@@ -164,22 +150,158 @@ class MigrationV2toV15 {
       } catch (_) {}
     }
 
-    // ---- V14 / V15: garante id_conta em lancamentos ----
+    // =========================
+    // V14 / V15: garante id_conta em lancamentos
+    // =========================
     if (oldVersion < 15) {
-      try {
-        final infoLanc = await db.rawQuery('PRAGMA table_info(lancamentos);');
+      await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
+    }
 
-        final temIdConta = infoLanc.any(
-          (col) => (col['name'] as String).toLowerCase() == 'id_conta',
+    // =========================
+    // V16: id_lancamento em conta_pagar
+    // =========================
+    if (oldVersion < 16) {
+      await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
+    }
+
+    // =========================
+    // V17: tabelas de fatura de cartão
+    // =========================
+    if (oldVersion < 17) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fatura_cartao (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_cartao INTEGER NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          data_fechamento INTEGER NOT NULL,
+          data_vencimento INTEGER NOT NULL,
+          valor_total REAL NOT NULL,
+          pago INTEGER NOT NULL DEFAULT 0,
+          data_pagamento INTEGER
         );
+      ''');
 
-        if (!temIdConta) {
-          await db.execute(
-            'ALTER TABLE lancamentos ADD COLUMN id_conta INTEGER;',
-          );
-        }
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fatura_cartao_lancamento (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_fatura INTEGER NOT NULL,
+          id_lancamento INTEGER NOT NULL
+        );
+      ''');
+    }
+
+    // =========================
+    // V18: tipo_movimento em lancamentos
+    // =========================
+    if (oldVersion < 18) {
+      await _addColumnSafe(
+        db,
+        'lancamentos',
+        'tipo_movimento',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+    }
+
+    // =========================
+    // V19: fontes_renda / destinos_renda
+    // =========================
+    if (oldVersion < 19) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fontes_renda (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nome TEXT NOT NULL,
+          valor_base REAL NOT NULL DEFAULT 0,
+          fixa INTEGER NOT NULL DEFAULT 1,
+          dia_previsto INTEGER,
+          ativa INTEGER NOT NULL DEFAULT 1,
+          incluir_na_renda_diaria INTEGER NOT NULL DEFAULT 0
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS destinos_renda (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_fonte INTEGER NOT NULL,
+          nome TEXT NOT NULL,
+          percentual REAL NOT NULL,
+          ativo INTEGER NOT NULL DEFAULT 1,
+          FOREIGN KEY (id_fonte) REFERENCES fontes_renda (id)
+        );
+      ''');
+    }
+
+    // =========================
+    // V20: ajusta bancos antigos de fontes_renda
+    // =========================
+    if (oldVersion < 20) {
+      await _addColumnSafe(
+        db,
+        'fontes_renda',
+        'valor_base',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'fontes_renda',
+        'fixa',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+      await _addColumnSafe(db, 'fontes_renda', 'dia_previsto', 'INTEGER');
+      await _addColumnSafe(
+        db,
+        'fontes_renda',
+        'ativa',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+
+      // tenta copiar valor_mensal -> valor_base se existir
+      try {
+        await db.execute('''
+          UPDATE fontes_renda
+          SET valor_base = valor_mensal
+          WHERE (valor_base IS NULL OR valor_base = 0)
+            AND valor_mensal IS NOT NULL;
+        ''');
       } catch (_) {}
     }
+
+    // =========================
+    // V21: garante 'ativo' em destinos_renda
+    // =========================
+    if (oldVersion < 21) {
+      await _addColumnSafe(
+        db,
+        'destinos_renda',
+        'ativo',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+    }
+
+    // =========================
+    // V22: flag incluir_na_renda_diaria em fontes_renda
+    // =========================
+    if (oldVersion < 22) {
+      await _addColumnSafe(
+        db,
+        'fontes_renda',
+        'incluir_na_renda_diaria',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+
+    // =========================
+    // PÓS-MIGRAÇÃO: garante colunas críticas
+    // (útil se alguma migração passou batida)
+    // =========================
+    await _addColumnSafe(
+      db,
+      'lancamentos',
+      'tipo_movimento',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
+    await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).
@@ -196,13 +318,8 @@ class MigrationV2toV15 {
       );
     ''');
 
-    try {
-      await db.execute('ALTER TABLE usuarios ADD COLUMN senha TEXT;');
-    } catch (_) {}
-
-    try {
-      await db.execute('ALTER TABLE usuarios ADD COLUMN foto_path TEXT;');
-    } catch (_) {}
+    await _addColumnSafe(db, 'usuarios', 'senha', 'TEXT');
+    await _addColumnSafe(db, 'usuarios', 'foto_path', 'TEXT');
 
     // CONTA_BANCARIA
     await db.execute('''
@@ -216,5 +333,59 @@ class MigrationV2toV15 {
         ativa INTEGER NOT NULL DEFAULT 1
       );
     ''');
+
+    // FONTES_RENDA
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fontes_renda (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        valor_base REAL NOT NULL DEFAULT 0,
+        fixa INTEGER NOT NULL DEFAULT 1,
+        dia_previsto INTEGER,
+        ativa INTEGER NOT NULL DEFAULT 1
+      );
+    ''');
+
+    // DESTINOS_RENDA
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS destinos_renda (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_fonte INTEGER NOT NULL,
+        nome TEXT NOT NULL,
+        percentual REAL NOT NULL,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (id_fonte) REFERENCES fontes_renda (id)
+      );
+    ''');
+
+    // E garante de novo colunas importantes em lancamentos
+    await _addColumnSafe(
+      db,
+      'lancamentos',
+      'tipo_movimento',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
+    await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
+  }
+
+  /// Helper genérico para "ALTER TABLE ADD COLUMN" com segurança.
+  static Future<void> _addColumnSafe(
+    Database db,
+    String table,
+    String column,
+    String columnDef,
+  ) async {
+    try {
+      final info = await db.rawQuery('PRAGMA table_info($table);');
+      final exists = info.any(
+        (col) => (col['name'] as String).toLowerCase() == column.toLowerCase(),
+      );
+      if (!exists) {
+        await db.execute('ALTER TABLE $table ADD COLUMN $column $columnDef;');
+      }
+    } catch (_) {
+      // se der erro (ex: tabela não existe ainda), ignoramos silenciosamente
+    }
   }
 }
