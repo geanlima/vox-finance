@@ -6,7 +6,7 @@ import 'package:vox_finance/ui/core/enum/categoria.dart';
 /// Tipo do movimento financeiro:
 /// - receita  -> entra dinheiro
 /// - despesa  -> sai dinheiro
-enum TipoMovimento { receita, despesa }
+enum TipoMovimento { receita, despesa, ambos }
 
 extension TipoMovimentoExt on TipoMovimento {
   String get label {
@@ -15,6 +15,8 @@ extension TipoMovimentoExt on TipoMovimento {
         return 'Receita';
       case TipoMovimento.despesa:
         return 'Despesa';
+      case TipoMovimento.ambos:
+        return 'Ambos';
     }
   }
 }
@@ -34,6 +36,7 @@ class Lancamento {
   bool pago;
   DateTime? dataPagamento;
 
+  /// Categoria "padrão" (enum)
   Categoria categoria;
 
   int? idCartao;
@@ -44,8 +47,11 @@ class Lancamento {
   int? parcelaNumero;
   int? parcelaTotal;
 
-  /// ⭐ NOVO: se é receita ou despesa
+  /// ⭐ se é receita ou despesa
   TipoMovimento tipoMovimento;
+
+  /// ⭐ NOVO: referência à categoria_personalizada (se houver)
+  int? idCategoriaPersonalizada;
 
   Lancamento({
     this.id,
@@ -65,6 +71,9 @@ class Lancamento {
 
     /// por padrão tudo que existe hoje continua sendo DESPESA
     this.tipoMovimento = TipoMovimento.despesa,
+
+    /// se não tiver categoria personalizada, fica null
+    this.idCategoriaPersonalizada,
   });
 
   // ----------------------------------------------------------
@@ -86,6 +95,7 @@ class Lancamento {
     int? parcelaNumero,
     int? parcelaTotal,
     TipoMovimento? tipoMovimento,
+    int? idCategoriaPersonalizada,
   }) {
     return Lancamento(
       id: id ?? this.id,
@@ -103,6 +113,8 @@ class Lancamento {
       parcelaNumero: parcelaNumero ?? this.parcelaNumero,
       parcelaTotal: parcelaTotal ?? this.parcelaTotal,
       tipoMovimento: tipoMovimento ?? this.tipoMovimento,
+      idCategoriaPersonalizada:
+          idCategoriaPersonalizada ?? this.idCategoriaPersonalizada,
     );
   }
 
@@ -127,9 +139,11 @@ class Lancamento {
       'parcela_numero': parcelaNumero,
       'parcela_total': parcelaTotal,
 
-      // ⭐ NOVO CAMPO: inteiro (0 = receita, 1 = despesa)
-      // (se o banco ainda não tiver a coluna, o SQLite ignora na inserção)
+      // ⭐ inteiro (0 = receita, 1 = despesa, 2 = ambos)
       'tipo_movimento': tipoMovimento.index,
+
+      // ⭐ NOVO: FK para categorias_personalizadas
+      'id_categoria_personalizada': idCategoriaPersonalizada,
     };
   }
 
@@ -184,6 +198,9 @@ class Lancamento {
       parcelaNumero: map['parcela_numero'] as int?,
       parcelaTotal: map['parcela_total'] as int?,
       tipoMovimento: tipoMov,
+
+      // ⭐ lê do banco (pode ser null)
+      idCategoriaPersonalizada: map['id_categoria_personalizada'] as int?,
     );
   }
 }

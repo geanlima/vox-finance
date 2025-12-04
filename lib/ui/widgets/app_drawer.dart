@@ -6,6 +6,7 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/data/models/usuario.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
+import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -214,7 +215,16 @@ class _AppDrawerState extends State<AppDrawer> {
               label: 'Minha renda',
               route: '/minha-renda',
             ),
-
+            ListTile(
+              leading: const Icon(Icons.category),
+              title: const Text('Minhas categorias'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).pushNamed(CategoriasPersonalizadasPage.routeName);
+              },
+            ),
             const Spacer(),
 
             // ==========================

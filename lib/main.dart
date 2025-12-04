@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:vox_finance/ui/pages/auth/login_unificado_page.dart';
+import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/renda/minha_renda_page.dart';
 import 'firebase_options.dart';
 
@@ -39,6 +40,8 @@ class VoxFinanceApp extends StatelessWidget {
       routes: {
         '/login': (_) => const LoginUnificadoPage(),
         '/': (_) => const HomePage(),
+        '/categorias-personalizadas':
+            (_) => const CategoriasPersonalizadasPage(),
         '/contas-pagar': (_) => const ContasPagarPage(),
         '/cartoes-credito': (_) => const CartaoCreditoPage(),
         '/contas-bancarias': (_) => const ContasPage(),
