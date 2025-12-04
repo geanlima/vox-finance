@@ -6,6 +6,8 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/data/models/usuario.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
+import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
+import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -176,7 +178,7 @@ class _AppDrawerState extends State<AppDrawer> {
             _menuItem(
               context,
               icon: Icons.calendar_month,
-              label: 'Resumo do mês',
+              label: 'Resumo do mês (Gastos)',
               route: '/graficos',
             ),
 
@@ -214,9 +216,27 @@ class _AppDrawerState extends State<AppDrawer> {
               label: 'Minha renda',
               route: '/minha-renda',
             ),
-
+            ListTile(
+              leading: const Icon(Icons.category),
+              title: const Text('Minhas categorias'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).pushNamed(CategoriasPersonalizadasPage.routeName);
+              },
+            ),
             const Spacer(),
-
+            ListTile(
+              leading: const Icon(Icons.color_lens),
+              title: const Text('Tema do aplicativo'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ConfigTemaPage()),
+                );
+              },
+            ),
             // ==========================
             // 🚪 SAIR
             // ==========================

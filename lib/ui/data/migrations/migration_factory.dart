@@ -1,8 +1,9 @@
 // lib/ui/data/migrations/migration_factory.dart
 
 import 'package:sqflite/sqflite.dart';
+import 'package:vox_finance/ui/data/migrations/migrations_v1.dart';
 
-import 'migrations_v1.dart';
+// os nomes abaixo DEVEM bater com os arquivos de verdade
 import 'migrations_v2_v15.dart';
 
 class MigrationFactory {
@@ -12,7 +13,7 @@ class MigrationFactory {
     // cria estrutura base (v1)
     await MigrationV1.create(db);
 
-    // aplica todas as migrações de 2 até targetVersion
+    // aplica todas as migrações de 2 até targetVersion (hoje 22)
     await MigrationV2toV15.upgrade(db, 1, targetVersion);
   }
 
