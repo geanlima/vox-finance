@@ -10,6 +10,10 @@ class ContaPagarRepository {
   // ============================================================
   //  C R U D   B Á S I C O
   // ============================================================
+  Future<void> deletarPorId(int id) async {
+    final db = await _db;
+    await db.delete('contas_pagar', where: 'id = ?', whereArgs: [id]);
+  }
 
   Future<int> salvar(ContaPagar conta) async {
     final db = await _db;
