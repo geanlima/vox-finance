@@ -558,6 +558,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   // ======= RESUMO POR FORMA (MÊS) =======
 
+  // ======= RESUMO POR FORMA (MÊS) =======
   void _mostrarResumoPorFormaPagamentoMes() {
     if (_lancamentos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -565,49 +566,167 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           content: Text('Não há lançamentos neste mês para detalhar.'),
         ),
       );
-    } else {
-      final totaisPorGrupo = _totaisPorFormaPagamentoAgrupado();
-
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: (context) {
-          final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Gastos por forma de pagamento / cartão',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  mesAnoLabel,
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                ...totaisPorGrupo.values.map((grupo) {
-                  return ListTile(
-                    leading: CircleAvatar(child: Icon(grupo.icon, size: 18)),
-                    title: Text(grupo.label),
-                    trailing: Text(
-                      _currency.format(grupo.total),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  );
-                }),
-              ],
-            ),
-          );
-        },
-      );
+      return;
     }
+
+    // resumo e lançamentos por grupo
+    final totaisPorGrupo = _totaisPorFormaPagamentoAgrupado();
+    final lancsPorGrupo = _lancamentosPorGrupoFormaPagamento();
+    final grupos = totaisPorGrupo.values.toList();
+
+    final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final tema = Theme.of(context);
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Cabeçalho
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gastos por forma de pagamento / cartão',
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          mesAnoLabel,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+
+                  // Lista de cards (rolável)
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: grupos.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final grupo = grupos[index];
+                        final lancs =
+                            lancsPorGrupo[grupo.label] ?? const <Lancamento>[];
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            _mostrarDetalheLancamentos(
+                              titulo: 'Detalhe por forma / cartão',
+                              subtitulo:
+                                  '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                              lancamentos: lancs,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: tema.colorScheme.surfaceVariant
+                                  .withOpacity(0.3),
+                            ),
+                            child: Row(
+                              children: [
+                                // ícone
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: tema.colorScheme.primary.withOpacity(
+                                      0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    grupo.icon,
+                                    size: 18,
+                                    color: tema.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+
+                                // label
+                                Expanded(
+                                  child: Text(
+                                    grupo.label,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // total
+                                Text(
+                                  _currency.format(grupo.total),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // ======= DETALHAMENTO (VISUAL NOVO) =======

@@ -316,6 +316,21 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V25: forma_pagamento em conta_pagar
+    // =========================
+    if (oldVersion < 25) {
+      await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
+    }
+
+    // =========================
+    // V26: id_cartao e id_conta em conta_pagar
+    // =========================
+    if (oldVersion < 26) {
+      await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
+      await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -326,7 +341,16 @@ class MigrationV2toV15 {
     );
     await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
     await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(
+      db,
+      'lancamentos',
+      'id_categoria_personalizada',
+      'INTEGER',
+    );
     await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).
@@ -407,6 +431,29 @@ class MigrationV2toV15 {
       );
     ''');
 
+    // FATURA_CARTAO
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fatura_cartao (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_cartao INTEGER NOT NULL,
+        ano INTEGER NOT NULL,
+        mes INTEGER NOT NULL,
+        data_fechamento INTEGER NOT NULL,
+        data_vencimento INTEGER NOT NULL,
+        valor_total REAL NOT NULL,
+        pago INTEGER NOT NULL DEFAULT 0,
+        data_pagamento INTEGER
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fatura_cartao_lancamento (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_fatura INTEGER NOT NULL,
+        id_lancamento INTEGER NOT NULL
+      );
+    ''');
+
     // Lancamentos / conta_pagar
     await _addColumnSafe(
       db,
@@ -417,6 +464,9 @@ class MigrationV2toV15 {
     await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
     await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
     await _addColumnSafe(
       db,
       'lancamentos',
