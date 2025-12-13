@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable
+
 import 'package:sqflite/sqflite.dart';
 
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
