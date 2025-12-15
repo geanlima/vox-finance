@@ -1,10 +1,11 @@
 // ignore_for_file: deprecated_member_use, unreachable_switch_default, no_leading_underscores_for_local_identifiers, unused_local_variable
 
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 
+import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
@@ -12,6 +13,10 @@ import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+
+// ⭐ NOVO: categorias personalizadas
+import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
@@ -26,6 +31,15 @@ class _GrupoFormaPagamento {
     required this.icon,
     required this.total,
   });
+}
+
+/// ⭐ NOVO: grupo de categoria (nome + total + cor vinda do banco, se houver)
+class _GrupoCategoria {
+  final String label; // nome da categoria (tabela ou enum)
+  double total;
+  Color? corDefinida; // cor vinda do banco (pode ser null)
+
+  _GrupoCategoria({required this.label, required this.total, this.corDefinida});
 }
 
 class GraficoPizzaComponent extends StatefulWidget {
@@ -63,6 +77,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   // 🔹 Contas bancárias carregadas do banco
   List<ContaBancaria> _contas = [];
 
+  // 🔹 Categorias personalizadas carregadas do banco
+  final _categoriaRepo = CategoriaPersonalizadaRepository();
+  List<CategoriaPersonalizada> _categoriasPersonalizadas = [];
+
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
     Color(0xFF2196F3),
@@ -79,7 +97,29 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     Color(0xFF673AB7),
   ];
 
+  final _random = Random(); // ⭐ para cores aleatórias
+
   Color _colorForIndex(int index) => _palette[index % _palette.length];
+
+  // ⭐ Se tiver cor da categoria → usa
+  //   Se não tiver → pega da paleta; se esgotar, gera uma aleatória
+  Color _colorForGrupoCategoria(int index, Color? corDefinida) {
+    if (corDefinida != null) {
+      return corDefinida;
+    }
+
+    if (index < _palette.length) {
+      return _palette[index];
+    }
+
+    // aleatória quando não tiver cor e estourar a paleta
+    return Color.fromARGB(
+      0xFF,
+      _random.nextInt(256),
+      _random.nextInt(256),
+      _random.nextInt(256),
+    );
+  }
 
   @override
   void initState() {
@@ -121,10 +161,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final CartaoCreditoRepository _repositoryCartao = CartaoCreditoRepository();
     final ContaBancariaRepository _repositoryConta = ContaBancariaRepository();
 
-    final lista = await _repositoryLancamento.getByPeriodo(
-      inicioMes,
-      fimMes,
-    );
+    final lista = await _repositoryLancamento.getByPeriodo(inicioMes, fimMes);
     final cards = await _repositoryCartao.getCartoesCredito();
     final contas = await _repositoryConta.getContasBancarias();
 
@@ -138,12 +175,55 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       filtrados = filtrados.where((l) => !l.pagamentoFatura);
     }
 
+    final lancsFiltrados = filtrados.toList();
+
+    // ⭐ Carrega categorias personalizadas apenas para os tipos usados
+    final tiposUsados = lancsFiltrados.map((l) => l.tipoMovimento).toSet();
+    final List<CategoriaPersonalizada> cats = [];
+    for (final tipo in tiposUsados) {
+      try {
+        final listaTipo = await _categoriaRepo.listarPorTipo(tipo);
+        cats.addAll(listaTipo);
+      } catch (_) {
+        // se o método não existir / der erro, ignoramos silenciosamente
+      }
+    }
+
     setState(() {
-      _lancamentos = filtrados.toList();
+      _lancamentos = lancsFiltrados;
       _cartoes = cards;
       _contas = contas;
+      _categoriasPersonalizadas = cats;
       _carregando = false;
     });
+  }
+
+  // ======= HELPERS DE CATEGORIA PERSONALIZADA =======
+
+  CategoriaPersonalizada? _categoriaPersPorId(int? id) {
+    if (id == null) return null;
+    try {
+      return _categoriasPersonalizadas.firstWhere((c) => c.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Color? _parseCorHex(String? corHex) {
+    if (corHex == null) return null;
+    var hex = corHex.trim();
+    if (hex.isEmpty) return null;
+
+    hex = hex.replaceAll('#', '');
+    if (hex.length == 6) {
+      hex = 'FF$hex';
+    }
+    if (hex.length != 8) return null;
+
+    final value = int.tryParse(hex, radix: 16);
+    if (value == null) return null;
+
+    return Color(value);
   }
 
   // ======= TOTAIS =======
@@ -175,12 +255,61 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
   }
 
-  Map<Categoria, double> _totaisPorCategoria() {
-    final Map<Categoria, double> totais = {};
+  /// 🔹 Agrupa por categoria considerando:
+  /// - se tiver idCategoriaPersonalizada → usa nome + cor da tabela
+  /// - senão → usa nome do enum Categoria
+  Map<String, _GrupoCategoria> _totaisPorCategoriaAgrupado() {
+    final Map<String, _GrupoCategoria> mapa = {};
+
     for (final l in _lancamentos) {
-      totais.update(l.categoria, (v) => v + l.valor, ifAbsent: () => l.valor);
+      String label;
+      Color? corDb;
+
+      final catPers = _categoriaPersPorId(l.idCategoriaPersonalizada);
+      if (catPers != null) {
+        label = catPers.nome;
+        corDb = _parseCorHex(catPers.corHex);
+      } else {
+        // mantém compatibilidade com o enum antigo
+        label = CategoriaService.toName(l.categoria);
+        corDb = null;
+      }
+
+      if (mapa.containsKey(label)) {
+        mapa[label]!.total += l.valor;
+        if (corDb != null && mapa[label]!.corDefinida == null) {
+          mapa[label]!.corDefinida = corDb;
+        }
+      } else {
+        mapa[label] = _GrupoCategoria(
+          label: label,
+          total: l.valor,
+          corDefinida: corDb,
+        );
+      }
     }
-    return totais;
+
+    return mapa;
+  }
+
+  /// 🔹 Mapa: label da categoria → lista de lançamentos
+  Map<String, List<Lancamento>> _lancamentosPorCategoriaAgrupado() {
+    final Map<String, List<Lancamento>> mapa = {};
+
+    for (final l in _lancamentos) {
+      String label;
+
+      final catPers = _categoriaPersPorId(l.idCategoriaPersonalizada);
+      if (catPers != null) {
+        label = catPers.nome;
+      } else {
+        label = CategoriaService.toName(l.categoria);
+      }
+
+      mapa.putIfAbsent(label, () => []).add(l);
+    }
+
+    return mapa;
   }
 
   /// 🔹 Monta o label do grupo:
@@ -345,17 +474,18 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     if (_lancamentos.isEmpty) return [];
 
     if (_tipo == TipoAgrupamentoPizza.categoria) {
-      final data = _totaisPorCategoria();
-      final total = data.values.fold<double>(0.0, (a, b) => a + b);
+      // 🔹 Agora usando categorias da tabela + enum
+      final data = _totaisPorCategoriaAgrupado();
+      final total = data.values.fold<double>(0.0, (a, b) => a + b.total);
       if (total == 0) return [];
 
-      final entries = data.entries.toList();
+      final entries = data.values.toList();
 
       return List.generate(entries.length, (i) {
-        final entry = entries[i];
-        final valor = entry.value;
+        final grupo = entries[i];
+        final valor = grupo.total;
         final percent = (valor / total) * 100;
-        final color = _colorForIndex(i);
+        final color = _colorForGrupoCategoria(i, grupo.corDefinida);
 
         return PieChartSectionData(
           value: valor,
@@ -428,6 +558,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   // ======= RESUMO POR FORMA (MÊS) =======
 
+  // ======= RESUMO POR FORMA (MÊS) =======
   void _mostrarResumoPorFormaPagamentoMes() {
     if (_lancamentos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -435,49 +566,167 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           content: Text('Não há lançamentos neste mês para detalhar.'),
         ),
       );
-    } else {
-      final totaisPorGrupo = _totaisPorFormaPagamentoAgrupado();
-
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: (context) {
-          final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Gastos por forma de pagamento / cartão',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  mesAnoLabel,
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                ...totaisPorGrupo.values.map((grupo) {
-                  return ListTile(
-                    leading: CircleAvatar(child: Icon(grupo.icon, size: 18)),
-                    title: Text(grupo.label),
-                    trailing: Text(
-                      _currency.format(grupo.total),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  );
-                }),
-              ],
-            ),
-          );
-        },
-      );
+      return;
     }
+
+    // resumo e lançamentos por grupo
+    final totaisPorGrupo = _totaisPorFormaPagamentoAgrupado();
+    final lancsPorGrupo = _lancamentosPorGrupoFormaPagamento();
+    final grupos = totaisPorGrupo.values.toList();
+
+    final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final tema = Theme.of(context);
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Cabeçalho
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gastos por forma de pagamento / cartão',
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          mesAnoLabel,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+
+                  // Lista de cards (rolável)
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: grupos.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final grupo = grupos[index];
+                        final lancs =
+                            lancsPorGrupo[grupo.label] ?? const <Lancamento>[];
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            _mostrarDetalheLancamentos(
+                              titulo: 'Detalhe por forma / cartão',
+                              subtitulo:
+                                  '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                              lancamentos: lancs,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: tema.colorScheme.surfaceVariant
+                                  .withOpacity(0.3),
+                            ),
+                            child: Row(
+                              children: [
+                                // ícone
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: tema.colorScheme.primary.withOpacity(
+                                      0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    grupo.icon,
+                                    size: 18,
+                                    color: tema.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+
+                                // label
+                                Expanded(
+                                  child: Text(
+                                    grupo.label,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // total
+                                Text(
+                                  _currency.format(grupo.total),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // ======= DETALHAMENTO (VISUAL NOVO) =======
@@ -633,6 +882,15 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       itemBuilder: (context, index) {
                         final l = lancamentos[index];
 
+                        // label de categoria para o detalhe:
+                        final catPers = _categoriaPersPorId(
+                          l.idCategoriaPersonalizada,
+                        );
+                        final labelCategoria =
+                            catPers != null
+                                ? catPers.nome
+                                : CategoriaService.toName(l.categoria);
+
                         return Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -670,8 +928,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '${_dateHoraFormat.format(l.dataHora)} • '
-                                      '${CategoriaService.toName(l.categoria)}',
+                                      '${_dateHoraFormat.format(l.dataHora)} • $labelCategoria',
                                       style: const TextStyle(
                                         fontSize: 11,
                                         color: Colors.grey,
@@ -1167,32 +1424,31 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   // ======= LEGENDAS – VISUAL EM CARD =======
 
   Widget _buildLegendaCategoria() {
-    final data = _totaisPorCategoria();
-    final total = data.values.fold<double>(0.0, (a, b) => a + b);
-    final entries = data.entries.toList();
+    final data = _totaisPorCategoriaAgrupado();
+    final dataLancs = _lancamentosPorCategoriaAgrupado();
+    final total = data.values.fold<double>(0.0, (a, b) => a + b.total);
+    final entries = data.values.toList();
 
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,
       itemBuilder: (context, index) {
-        final entry = entries[index];
-        final cat = entry.key;
-        final valor = entry.value;
+        final grupo = entries[index];
+        final valor = grupo.total;
         final percent = total == 0 ? 0 : (valor / total) * 100;
-        final color = _colorForIndex(index);
+        final color = _colorForGrupoCategoria(index, grupo.corDefinida);
+        final lancs = dataLancs[grupo.label] ?? const <Lancamento>[];
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () {
-              final lancs =
-                  _lancamentos.where((l) => l.categoria == cat).toList();
               _mostrarDetalheLancamentos(
                 titulo: 'Detalhe por categoria',
                 subtitulo:
-                    '${CategoriaService.toName(cat)} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                    '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
                 lancamentos: lancs,
               );
             },
@@ -1220,7 +1476,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          CategoriaService.toName(cat),
+                          grupo.label,
                           style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         Text(

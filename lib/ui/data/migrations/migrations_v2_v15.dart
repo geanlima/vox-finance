@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 class MigrationV2toV15 {
   /// Executa todas as migrações da 2 em diante,
-  /// dependendo do [oldVersion].
+  /// dependendo do [oldVersion] até [newVersion].
   static Future<void> upgrade(
     Database db,
     int oldVersion,
@@ -255,7 +255,6 @@ class MigrationV2toV15 {
         'INTEGER NOT NULL DEFAULT 1',
       );
 
-      // tenta copiar valor_mensal -> valor_base se existir
       try {
         await db.execute('''
           UPDATE fontes_renda
@@ -291,8 +290,48 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V23: categorias_personalizadas
+    // =========================
+    if (oldVersion < 23) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS categorias_personalizadas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nome TEXT NOT NULL,
+          tipo_movimento INTEGER NOT NULL,
+          cor TEXT
+        );
+      ''');
+    }
+
+    // =========================
+    // V24: id_categoria_personalizada em lancamentos
+    // =========================
+    if (oldVersion < 24) {
+      await _addColumnSafe(
+        db,
+        'lancamentos',
+        'id_categoria_personalizada',
+        'INTEGER',
+      );
+    }
+
+    // =========================
+    // V25: forma_pagamento em conta_pagar
+    // =========================
+    if (oldVersion < 25) {
+      await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
+    }
+
+    // =========================
+    // V26: id_cartao e id_conta em conta_pagar
+    // =========================
+    if (oldVersion < 26) {
+      await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
+      await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
-    // (útil se alguma migração passou batida)
     // =========================
     await _addColumnSafe(
       db,
@@ -302,6 +341,16 @@ class MigrationV2toV15 {
     );
     await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
     await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(
+      db,
+      'lancamentos',
+      'id_categoria_personalizada',
+      'INTEGER',
+    );
+    await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).
@@ -346,6 +395,13 @@ class MigrationV2toV15 {
       );
     ''');
 
+    await _addColumnSafe(
+      db,
+      'fontes_renda',
+      'incluir_na_renda_diaria',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+
     // DESTINOS_RENDA
     await db.execute('''
       CREATE TABLE IF NOT EXISTS destinos_renda (
@@ -358,7 +414,47 @@ class MigrationV2toV15 {
       );
     ''');
 
-    // E garante de novo colunas importantes em lancamentos
+    await _addColumnSafe(
+      db,
+      'destinos_renda',
+      'ativo',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+
+    // CATEGORIAS_PERSONALIZADAS
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS categorias_personalizadas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        tipo_movimento INTEGER NOT NULL,
+        cor TEXT
+      );
+    ''');
+
+    // FATURA_CARTAO
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fatura_cartao (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_cartao INTEGER NOT NULL,
+        ano INTEGER NOT NULL,
+        mes INTEGER NOT NULL,
+        data_fechamento INTEGER NOT NULL,
+        data_vencimento INTEGER NOT NULL,
+        valor_total REAL NOT NULL,
+        pago INTEGER NOT NULL DEFAULT 0,
+        data_pagamento INTEGER
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fatura_cartao_lancamento (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_fatura INTEGER NOT NULL,
+        id_lancamento INTEGER NOT NULL
+      );
+    ''');
+
+    // Lancamentos / conta_pagar
     await _addColumnSafe(
       db,
       'lancamentos',
@@ -367,6 +463,19 @@ class MigrationV2toV15 {
     );
     await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
     await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
+    await _addColumnSafe(
+      db,
+      'lancamentos',
+      'id_categoria_personalizada',
+      'INTEGER',
+    );
+
+    // 🔹 POPULA CATEGORIAS PADRÃO (apenas se tabela estiver vazia)
+    await _seedCategoriasPadrao(db);
   }
 
   /// Helper genérico para "ALTER TABLE ADD COLUMN" com segurança.
@@ -386,6 +495,55 @@ class MigrationV2toV15 {
       }
     } catch (_) {
       // se der erro (ex: tabela não existe ainda), ignoramos silenciosamente
+    }
+  }
+
+  /// 🔥 SEED de categorias padrão na tabela categorias_personalizadas
+  static Future<void> _seedCategoriasPadrao(Database db) async {
+    try {
+      // Verifica se já existe categoria
+      final result = await db.rawQuery('''
+        SELECT COUNT(*) AS total 
+        FROM categorias_personalizadas
+      ''');
+
+      final total = (result.first['total'] as int?) ?? 0;
+      if (total > 0) return;
+
+      final batch = db.batch();
+
+      final inserts = [
+        'Alimentação',
+        'Educação',
+        'Família',
+        'Finanças Pessoais',
+        'Impostos e Taxas',
+        'Lazer e Entretenimento',
+        'Moradia',
+        'Outros',
+        'Presentes e Doações',
+        'Saúde',
+        'Seguros',
+        'Tecnologia',
+        'Transporte',
+        'Vestuário',
+      ];
+
+      for (final nome in inserts) {
+        batch.insert('categorias_personalizadas', {
+          'nome': nome,
+          'tipo_movimento': 1, // padrão = despesa
+          'cor': null,
+        });
+      }
+
+      await batch.commit(noResult: true);
+
+      // ignore: avoid_print
+      print('✔ Categorias padrão inseridas com sucesso.');
+    } catch (e) {
+      // ignore: avoid_print
+      print('Erro ao inserir categorias padrão: $e');
     }
   }
 }

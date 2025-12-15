@@ -18,6 +18,15 @@ class TotaisDia {
 class LancamentoRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();
 
+  Future<void> deletarPorGrupo(String grupoParcelas) async {
+    final db = await _db;
+    await db.delete(
+      'lancamentos',
+      where: 'grupo_parcelas = ?',
+      whereArgs: [grupoParcelas],
+    );
+  }
+
   Future<Lancamento?> getById(int id) async {
     final db = await _db;
 
@@ -127,6 +136,11 @@ class LancamentoRepository {
 
   Future<void> deletar(int id) async {
     final db = await _db;
+
+    // 1) Apaga a parcela de contas a pagar vinculada a este lançamento
+    await db.delete('conta_pagar', where: 'id_lancamento = ?', whereArgs: [id]);
+
+    // 2) Apaga o lançamento em si
     await db.delete('lancamentos', where: 'id = ?', whereArgs: [id]);
   }
 
