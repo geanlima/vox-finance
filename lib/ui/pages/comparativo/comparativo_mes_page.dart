@@ -45,22 +45,20 @@ class _FiltroCategoria {
   });
 
   factory _FiltroCategoria.todas() => const _FiltroCategoria(
-        idCategoriaPersonalizada: null,
-        categoriaEnum: null,
-        label: 'Todas',
-        todas: true,
-      );
+    idCategoriaPersonalizada: null,
+    categoriaEnum: null,
+    label: 'Todas',
+    todas: true,
+  );
 
   factory _FiltroCategoria.fromEnum(Categoria c) => _FiltroCategoria(
-        idCategoriaPersonalizada: null,
-        categoriaEnum: c,
-        label: CategoriaService.toName(c),
-        todas: false,
-      );
+    idCategoriaPersonalizada: null,
+    categoriaEnum: c,
+    label: CategoriaService.toName(c),
+    todas: false,
+  );
 
-  factory _FiltroCategoria.fromPersonalizada(
-    CategoriaPersonalizada cat,
-  ) =>
+  factory _FiltroCategoria.fromPersonalizada(CategoriaPersonalizada cat) =>
       _FiltroCategoria(
         idCategoriaPersonalizada: cat.id,
         categoriaEnum: null,
@@ -166,40 +164,42 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final inicioMes = DateTime(ano, mes, 1);
     final fimMes = DateTime(ano, mes + 1, 0, 23, 59, 59);
 
-    final lancs = await _repository.getByPeriodo(inicioMes, fimMes);
+    final lancs = await _repository.getDespesasByPeriodo(inicioMes, fimMes);
 
-    final filtrados = lancs.where((l) {
-      if (!l.pago) return false;
-      if (l.pagamentoFatura) return false;
+    final filtrados =
+        lancs.where((l) {
+          if (!l.pago) return false;
+          if (l.pagamentoFatura) return false;
 
-      // 🔹 FILTRO POR CATEGORIA (agora com enum + personalizada)
-      if (_tipo == TipoComparativoMes.categoria &&
-          !_filtroCategoriaSelecionado.eTodas) {
-        final filtro = _filtroCategoriaSelecionado;
+          // 🔹 FILTRO POR CATEGORIA (agora com enum + personalizada)
+          if (_tipo == TipoComparativoMes.categoria &&
+              !_filtroCategoriaSelecionado.eTodas) {
+            final filtro = _filtroCategoriaSelecionado;
 
-        // se filtro for categoria personalizada
-        if (filtro.idCategoriaPersonalizada != null) {
-          if (l.idCategoriaPersonalizada != filtro.idCategoriaPersonalizada) {
+            // se filtro for categoria personalizada
+            if (filtro.idCategoriaPersonalizada != null) {
+              if (l.idCategoriaPersonalizada !=
+                  filtro.idCategoriaPersonalizada) {
+                return false;
+              }
+            }
+            // se filtro for categoria do enum
+            else if (filtro.categoriaEnum != null) {
+              // se lançamento está em categoria personalizada, não entra
+              if (l.idCategoriaPersonalizada != null) return false;
+              if (l.categoria != filtro.categoriaEnum) return false;
+            }
+          }
+
+          // 🔹 FILTRO POR FORMA PGTO (mantido)
+          if (_tipo == TipoComparativoMes.formaPagamento &&
+              _formaPagamentoSelecionada != null &&
+              l.formaPagamento != _formaPagamentoSelecionada) {
             return false;
           }
-        }
-        // se filtro for categoria do enum
-        else if (filtro.categoriaEnum != null) {
-          // se lançamento está em categoria personalizada, não entra
-          if (l.idCategoriaPersonalizada != null) return false;
-          if (l.categoria != filtro.categoriaEnum) return false;
-        }
-      }
 
-      // 🔹 FILTRO POR FORMA PGTO (mantido)
-      if (_tipo == TipoComparativoMes.formaPagamento &&
-          _formaPagamentoSelecionada != null &&
-          l.formaPagamento != _formaPagamentoSelecionada) {
-        return false;
-      }
-
-      return true;
-    }).toList();
+          return true;
+        }).toList();
 
     final Map<int, double> valoresPorDia = {};
     for (final l in filtrados) {
@@ -367,12 +367,14 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
 
     final tema = Theme.of(context);
     final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
-    final labelComp1 = _mesComparacao == null
-        ? null
-        : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
-    final labelComp2 = _mesComparacao2 == null
-        ? null
-        : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
+    final labelComp1 =
+        _mesComparacao == null
+            ? null
+            : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
+    final labelComp2 =
+        _mesComparacao2 == null
+            ? null
+            : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
 
     final titulos = <String>[labelBase];
     if (labelComp1 != null) titulos.add(labelComp1);
@@ -614,12 +616,14 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final tema = Theme.of(context);
 
     final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
-    final labelComparacao1 = _mesComparacao == null
-        ? 'Nenhum'
-        : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
-    final labelComparacao2 = _mesComparacao2 == null
-        ? 'Nenhum'
-        : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
+    final labelComparacao1 =
+        _mesComparacao == null
+            ? 'Nenhum'
+            : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
+    final labelComparacao2 =
+        _mesComparacao2 == null
+            ? 'Nenhum'
+            : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
 
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
@@ -877,74 +881,71 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
             // 🔹 AJUSTE: dropdown de categoria agora mistura enum + personalizadas
             _tipo == TipoComparativoMes.categoria
                 ? DropdownButtonFormField<_FiltroCategoria>(
-                    value: _filtroCategoriaSelecionado,
-                    decoration: const InputDecoration(
-                      labelText: 'Categoria',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: _FiltroCategoria.todas(),
-                        child: const Text('Todas'),
-                      ),
-                      ...Categoria.values.map(
-                        (c) => DropdownMenuItem(
-                          value: _FiltroCategoria.fromEnum(c),
-                          child: Text(CategoriaService.toName(c)),
-                        ),
-                      ),
-                      if (_categoriasPersonalizadas.isNotEmpty) ...[
-                        const DropdownMenuItem(
-                          enabled: false,
-                          value: null,
-                          child: Text(
-                            '--- Personalizadas ---',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                        ),
-                        ..._categoriasPersonalizadas.map(
-                          (cat) => DropdownMenuItem(
-                            value: _FiltroCategoria.fromPersonalizada(cat),
-                            child: Text(cat.nome),
-                          ),
-                        ),
-                      ],
-                    ],
-                    onChanged: (novoFiltro) {
-                      if (novoFiltro == null) return;
-                      setState(() => _filtroCategoriaSelecionado = novoFiltro);
-                      _recarregarDados();
-                    },
-                  )
-                : DropdownButtonFormField<FormaPagamento?>(
-                    value: _formaPagamentoSelecionada,
-                    decoration: const InputDecoration(
-                      labelText: 'Forma pgto',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Todas'),
-                      ),
-                      ...FormaPagamento.values.map(
-                        (f) => DropdownMenuItem(
-                          value: f,
-                          child: Row(
-                            children: [
-                              Icon(f.icon, size: 16),
-                              const SizedBox(width: 6),
-                              Text(f.label),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (nova) {
-                      setState(() => _formaPagamentoSelecionada = nova);
-                      _recarregarDados();
-                    },
+                  value: _filtroCategoriaSelecionado,
+                  decoration: const InputDecoration(
+                    labelText: 'Categoria',
+                    border: OutlineInputBorder(),
                   ),
+                  items: [
+                    DropdownMenuItem(
+                      value: _FiltroCategoria.todas(),
+                      child: const Text('Todas'),
+                    ),
+                    ...Categoria.values.map(
+                      (c) => DropdownMenuItem(
+                        value: _FiltroCategoria.fromEnum(c),
+                        child: Text(CategoriaService.toName(c)),
+                      ),
+                    ),
+                    if (_categoriasPersonalizadas.isNotEmpty) ...[
+                      const DropdownMenuItem(
+                        enabled: false,
+                        value: null,
+                        child: Text(
+                          '--- Personalizadas ---',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      ),
+                      ..._categoriasPersonalizadas.map(
+                        (cat) => DropdownMenuItem(
+                          value: _FiltroCategoria.fromPersonalizada(cat),
+                          child: Text(cat.nome),
+                        ),
+                      ),
+                    ],
+                  ],
+                  onChanged: (novoFiltro) {
+                    if (novoFiltro == null) return;
+                    setState(() => _filtroCategoriaSelecionado = novoFiltro);
+                    _recarregarDados();
+                  },
+                )
+                : DropdownButtonFormField<FormaPagamento?>(
+                  value: _formaPagamentoSelecionada,
+                  decoration: const InputDecoration(
+                    labelText: 'Forma pgto',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Todas')),
+                    ...FormaPagamento.values.map(
+                      (f) => DropdownMenuItem(
+                        value: f,
+                        child: Row(
+                          children: [
+                            Icon(f.icon, size: 16),
+                            const SizedBox(width: 6),
+                            Text(f.label),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (nova) {
+                    setState(() => _formaPagamentoSelecionada = nova);
+                    _recarregarDados();
+                  },
+                ),
 
             const SizedBox(height: 16),
 

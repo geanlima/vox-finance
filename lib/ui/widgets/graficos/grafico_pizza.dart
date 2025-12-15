@@ -161,7 +161,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final CartaoCreditoRepository _repositoryCartao = CartaoCreditoRepository();
     final ContaBancariaRepository _repositoryConta = ContaBancariaRepository();
 
-    final lista = await _repositoryLancamento.getByPeriodo(inicioMes, fimMes);
+    final lista = await _repositoryLancamento.getDespesasByPeriodo(inicioMes, fimMes);
     final cards = await _repositoryCartao.getCartoesCredito();
     final contas = await _repositoryConta.getContasBancarias();
 

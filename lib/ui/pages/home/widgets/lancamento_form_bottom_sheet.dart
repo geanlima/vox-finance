@@ -706,172 +706,173 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
   // ============================================================
 
   Future<void> _salvar() async {
-  // 1) Valida o formulário (campos obrigatórios)
-  final formOk = _formKey.currentState?.validate() ?? false;
-  if (!formOk) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Corrija os campos destacados antes de salvar.'),
-      ),
-    );
-    return;
-  }
-
-  // Forma de pagamento não deveria ser nula por causa do validator,
-  // mas garantimos aqui por segurança.
-  if (_formaSelecionada == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selecione a forma de pagamento.')),
-    );
-    return;
-  }
-
-  // 2) Valor
-  late final double valor;
-  try {
-    valor = CurrencyInputFormatter.parse(_valorController.text);
-  } catch (_) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Valor inválido.')),
-    );
-    return;
-  }
-
-  // 3) Regras de cartão
-  _cartoesFiltrados = _filtrarCartoes(_formaSelecionada, _pagamentoFatura);
-  final bool temCartaoCompativel = _cartoesFiltrados.isNotEmpty;
-
-  final bool precisaCartao =
-      (_formaSelecionada == FormaPagamento.credito &&
-          temCartaoCompativel &&
-          !_pagamentoFatura) ||
-      (_pagamentoFatura && temCartaoCompativel);
-
-  if (precisaCartao && _cartaoSelecionado == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _pagamentoFatura
-              ? 'Selecione qual cartão você está pagando a fatura.'
-              : 'Selecione o cartão de crédito usado.',
-        ),
-      ),
-    );
-    return;
-  }
-
-  // 4) Regras de conta bancária
-  final bool precisaContaBancaria =
-      (_formaSelecionada == FormaPagamento.pix ||
-          _formaSelecionada == FormaPagamento.boleto ||
-          _formaSelecionada == FormaPagamento.transferencia) &&
-      _contas.isNotEmpty;
-
-  if (precisaContaBancaria && _contaSelecionada == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selecione a conta bancária utilizada.')),
-    );
-    return;
-  }
-
-  // 5) Categoria (sempre da tabela categorias_personalizadas)
-  final catSel = _categoriaSelecionada;
-  if (catSel == null) {
-    // Em teoria o validator do combo já garante, mas deixo por segurança
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selecione a categoria.')),
-    );
-    return;
-  }
-
-  // Descrição
-  String descricao = _descricaoController.text.trim();
-  if (descricao.isEmpty || descricao == 'Sem descrição') {
-    descricao = catSel.nome;
-  }
-
-  // Enum "antigo" só para compatibilidade
-  final Categoria categoriaEnum = _categoriaEnumFromNome(catSel.nome);
-
-  // Código da categoria na tabela
-  final int? idCategoriaPersonalizada = catSel.id;
-
-  // 6) Monta o objeto Lancamento
-  final Lancamento lanc;
-  if (_existente != null) {
-    lanc = _existente!.copyWith(
-      valor: valor,
-      descricao: descricao,
-      formaPagamento: _formaSelecionada!,
-      dataHora: _dataLancamento,
-      pagamentoFatura: _pagamentoFatura,
-      categoria: categoriaEnum,
-      pago: _pago,
-      dataPagamento:
-          _pago ? (_existente!.dataPagamento ?? DateTime.now()) : null,
-      idCartao: _cartaoSelecionado?.id,
-      idConta: _contaSelecionada?.id,
-      tipoMovimento: _tipoMovimento,
-      idCategoriaPersonalizada: idCategoriaPersonalizada,
-    );
-  } else {
-    lanc = Lancamento(
-      valor: valor,
-      descricao: descricao,
-      formaPagamento: _formaSelecionada!,
-      dataHora: _dataLancamento,
-      pagamentoFatura: _pagamentoFatura,
-      categoria: categoriaEnum,
-      pago: _pago,
-      dataPagamento: _pago ? DateTime.now() : null,
-      idCartao: _cartaoSelecionado?.id,
-      idConta: _contaSelecionada?.id,
-      tipoMovimento: _tipoMovimento,
-      idCategoriaPersonalizada: idCategoriaPersonalizada,
-    );
-  }
-
-  // 7) Parcelado x simples
-  if (_existente == null && _parcelado) {
-    final qtd = int.tryParse(_qtdParcelasController.text) ?? 1;
-
-    if (qtd < 2) {
+    // 1) Valida o formulário (campos obrigatórios)
+    final formOk = _formKey.currentState?.validate() ?? false;
+    if (!formOk) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
+          content: Text('Corrija os campos destacados antes de salvar.'),
+        ),
+      );
+      return;
+    }
+
+    // Forma de pagamento não deveria ser nula por causa do validator,
+    // mas garantimos aqui por segurança.
+    if (_formaSelecionada == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione a forma de pagamento.')),
+      );
+      return;
+    }
+
+    // 2) Valor
+    late final double valor;
+    try {
+      valor = CurrencyInputFormatter.parse(_valorController.text);
+    } catch (_) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Valor inválido.')));
+      return;
+    }
+
+    // 3) Regras de cartão
+    _cartoesFiltrados = _filtrarCartoes(_formaSelecionada, _pagamentoFatura);
+    final bool temCartaoCompativel = _cartoesFiltrados.isNotEmpty;
+
+    final bool precisaCartao =
+        (_formaSelecionada == FormaPagamento.credito &&
+            temCartaoCompativel &&
+            !_pagamentoFatura) ||
+        (_pagamentoFatura && temCartaoCompativel);
+
+    if (precisaCartao && _cartaoSelecionado == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
-            'Informe uma quantidade de parcelas maior ou igual a 2.',
+            _pagamentoFatura
+                ? 'Selecione qual cartão você está pagando a fatura.'
+                : 'Selecione o cartão de crédito usado.',
           ),
         ),
       );
       return;
     }
 
-    // base SEM info de parcela; service completa e força NÃO pago
-    final base = lanc.copyWith(
-      grupoParcelas: null,
-      parcelaNumero: null,
-      parcelaTotal: null,
-    );
+    // 4) Regras de conta bancária
+    final bool precisaContaBancaria =
+        (_formaSelecionada == FormaPagamento.pix ||
+            _formaSelecionada == FormaPagamento.boleto ||
+            _formaSelecionada == FormaPagamento.transferencia) &&
+        _contas.isNotEmpty;
 
-    if (_formaSelecionada == FormaPagamento.credito) {
-      final regraCartaoParceladoService = RegraCartaoParceladoService();
+    if (precisaContaBancaria && _contaSelecionada == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione a conta bancária utilizada.')),
+      );
+      return;
+    }
 
-      regraCartaoParceladoService.processarCompraParcelada(
-        compraBase: base,
-        qtdParcelas: qtd,
+    // 5) Categoria (sempre da tabela categorias_personalizadas)
+    final catSel = _categoriaSelecionada;
+    if (catSel == null) {
+      // Em teoria o validator do combo já garante, mas deixo por segurança
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Selecione a categoria.')));
+      return;
+    }
+
+    // Descrição
+    String descricao = _descricaoController.text.trim();
+    if (descricao.isEmpty || descricao == 'Sem descrição') {
+      descricao = catSel.nome;
+    }
+
+    // Enum "antigo" só para compatibilidade
+    final Categoria categoriaEnum = _categoriaEnumFromNome(catSel.nome);
+
+    // Código da categoria na tabela
+    final int? idCategoriaPersonalizada = catSel.id;
+
+    // 6) Monta o objeto Lancamento
+    final Lancamento lanc;
+    if (_existente != null) {
+      lanc = _existente!.copyWith(
+        valor: valor,
+        descricao: descricao,
+        formaPagamento: _formaSelecionada!,
+        dataHora: _dataLancamento,
+        pagamentoFatura: _pagamentoFatura,
+        categoria: categoriaEnum,
+        pago: _pago,
+        dataPagamento:
+            _pago ? (_existente!.dataPagamento ?? DateTime.now()) : null,
+        idCartao: _cartaoSelecionado?.id,
+        idConta: _contaSelecionada?.id,
+        tipoMovimento: _tipoMovimento,
+        idCategoriaPersonalizada: idCategoriaPersonalizada,
       );
     } else {
-      await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
+      lanc = Lancamento(
+        valor: valor,
+        descricao: descricao,
+        formaPagamento: _formaSelecionada!,
+        dataHora: _dataLancamento,
+        pagamentoFatura: _pagamentoFatura,
+        categoria: categoriaEnum,
+        pago: _pago,
+        dataPagamento: _pago ? DateTime.now() : null,
+        idCartao: _cartaoSelecionado?.id,
+        idConta: _contaSelecionada?.id,
+        tipoMovimento: _tipoMovimento,
+        idCategoriaPersonalizada: idCategoriaPersonalizada,
+      );
     }
-  } else {
-    await _repositoryLancamento.salvar(lanc);
+
+    // 7) Parcelado x simples
+    if (_existente == null && _parcelado) {
+      final qtd = int.tryParse(_qtdParcelasController.text) ?? 1;
+
+      if (qtd < 2) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Informe uma quantidade de parcelas maior ou igual a 2.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      // base SEM info de parcela; service completa e força NÃO pago
+      final base = lanc.copyWith(
+        grupoParcelas: null,
+        parcelaNumero: null,
+        parcelaTotal: null,
+      );
+
+      if (_formaSelecionada == FormaPagamento.credito) {
+        final regraCartaoParceladoService = RegraCartaoParceladoService(
+          lancRepo: _repositoryLancamento, // opcional, mas bom pra padronizar
+        );
+
+        await regraCartaoParceladoService.processarCompraParcelada(
+          compraBase: base,
+          qtdParcelas: qtd,
+        );
+      } else {
+        await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
+      }
+    } else {
+      await _repositoryLancamento.salvar(lanc);
+    }
+
+    // 8) Atualiza tela e fecha modal
+    await widget.onSaved();
+    Navigator.pop(context);
   }
-
-  // 8) Atualiza tela e fecha modal
-  await widget.onSaved();
-  Navigator.pop(context);
-}
-
 
   /// Mapeia o NOME da categoria da tabela para o enum antigo,
   /// para manter compatibilidade com telas/gráficos que usam Categoria.
