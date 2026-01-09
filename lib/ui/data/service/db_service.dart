@@ -1,5 +1,3 @@
-// ignore_for_file: unused_local_variable, unused_catch_stack, empty_catches, unused_element
-
 import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
@@ -12,12 +10,35 @@ class DbService {
 
   Database? _db;
 
-  // ============================================================
-  //  A C E S S O   A O   B A N C O
-  // ============================================================
-
   Future<Database> get db async {
     _db ??= await DatabaseInitializer.initialize();
     return _db!;
+  }
+
+  /// ✅ Força o SQLite (WAL) a consolidar alterações no arquivo .db
+  Future<void> checkpoint() async {
+    final d = _db;
+    if (d != null && d.isOpen) {
+      try {
+        await d.execute('PRAGMA wal_checkpoint(FULL);');
+      } catch (_) {
+        // se não estiver em WAL ou der erro, ignora
+      }
+    }
+  }
+
+  Future<void> close() async {
+    final d = _db;
+    if (d != null && d.isOpen) {
+      // ✅ garante consistência antes de copiar o arquivo
+      await checkpoint();
+
+      await d.close();
+      _db = null;
+    }
+  }
+
+  Future<void> reopen() async {
+    _db = await DatabaseInitializer.initialize();
   }
 }
