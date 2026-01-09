@@ -1,38 +1,25 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart'; // 👈 IMPORTANTE
+import 'package:google_sign_in/google_sign_in.dart';
 
 class FirebaseAuthService {
-  FirebaseAuthService._internal();
-  static final FirebaseAuthService instance = FirebaseAuthService._internal();
+  FirebaseAuthService._();
+  static final instance = FirebaseAuthService._();
 
-  factory FirebaseAuthService() => instance;
+  final _auth = FirebaseAuth.instance;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  Future<User?> signInWithGoogle({bool forceAccountPicker = true}) async {
+    final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
-  // =========================================
-  // LOGIN COM E-MAIL / SENHA (Firebase)
-  // =========================================
-  Future<User?> loginWithEmailPassword(String email, String senha) async {
-    final cred = await _auth.signInWithEmailAndPassword(
-      email: email,
-      password: senha,
-    );
-    return cred.user;
-  }
+    if (forceAccountPicker) {
+      // ✅ limpa sessão para obrigar o seletor de contas
+      await googleSignIn.signOut();
 
-  Future<void> signOut() async {
-    await FirebaseAuth.instance.signOut();
-  }
+      // (opcional, mais forte) remove a permissão e força escolher de novo
+      // await googleSignIn.disconnect();
+    }
 
-  // =========================================
-  // LOGIN COM GOOGLE
-  // =========================================
-  Future<User?> signInWithGoogle() async {
-    // Abre a tela de escolha de conta do Google
-    final googleUser = await GoogleSignIn().signIn();
-
-    // Se o usuário cancelar, volta null
-    if (googleUser == null) return null;
+    final googleUser = await googleSignIn.signIn();
+    if (googleUser == null) return null; // cancelado
 
     final googleAuth = await googleUser.authentication;
 
@@ -45,10 +32,9 @@ class FirebaseAuthService {
     return userCred.user;
   }
 
-  User? get currentUser => _auth.currentUser;
-
-  Future<void> logout() async {
+  Future<void> signOut() async {
     await _auth.signOut();
-    await GoogleSignIn().signOut(); // opcional, pra sair do Google também
+    await GoogleSignIn()
+        .signOut(); // garante que a sessão do Google saia também
   }
 }

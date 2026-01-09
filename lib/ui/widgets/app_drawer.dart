@@ -1,11 +1,12 @@
-// ignore_for_file: deprecated_member_use, unused_field, unnecessary_null_comparison, use_build_context_synchronously
+// ignore_for_file: deprecated_member_use, unnecessary_null_comparison, use_build_context_synchronously
 
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
-import 'package:vox_finance/ui/data/models/usuario.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
+import 'package:vox_finance/ui/data/models/usuario.dart';
+import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 
@@ -19,9 +20,13 @@ class AppDrawer extends StatefulWidget {
 }
 
 class _AppDrawerState extends State<AppDrawer> {
-  Usuario? _usuario;
-  bool _carregandoUsuario = true;
   final UsuarioRepository _repositoryUsuario = UsuarioRepository();
+
+  Usuario? _usuarioLocal;
+  fb.User? _usuarioFirebase;
+
+  bool _carregandoUsuario = true;
+
   @override
   void initState() {
     super.initState();
@@ -30,83 +35,97 @@ class _AppDrawerState extends State<AppDrawer> {
 
   Future<void> _carregarUsuario() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final loginType = prefs.getString('loginType'); // 'firebase' | 'local'
+
+      if (loginType == 'firebase') {
+        final current = fb.FirebaseAuth.instance.currentUser;
+
+        if (!mounted) return;
+        setState(() {
+          _usuarioFirebase = current;
+          _usuarioLocal = null;
+          _carregandoUsuario = false;
+        });
+        return;
+      }
+
       final usuario = await _repositoryUsuario.obterPrimeiro();
+
       if (!mounted) return;
       setState(() {
-        _usuario = usuario;
+        _usuarioLocal = usuario;
+        _usuarioFirebase = null;
         _carregandoUsuario = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _carregandoUsuario = false;
-      });
+      setState(() => _carregandoUsuario = false);
     }
   }
 
+  // ✅ helper: navegação que sempre fecha o drawer e evita empilhar rota igual
+  void _go(String route) {
+    Navigator.pop(context); // fecha drawer
+    if (ModalRoute.of(context)?.settings.name == route) return;
+    Navigator.pushNamed(context, route);
+  }
+
   Future<void> _logout() async {
-    // Fecha o Drawer
     Navigator.pop(context);
 
     final prefs = await SharedPreferences.getInstance();
-
-    // Lê o tipo de login salvo: 'firebase' ou 'local'
     final loginType = prefs.getString('loginType');
 
-    // Se login foi via Firebase, faz signOut no Firebase
     if (loginType == 'firebase') {
       await FirebaseAuthService.instance.signOut();
-    } else {
-      // Se for login local, aqui você pode limpar coisas específicas do local se quiser
-      // ex: await DbService.instance.limparUsuarioLocal();
     }
 
-    // Limpa flags de login
     await prefs.setBool('isLoggedIn', false);
     await prefs.remove('loginType');
 
-    // Volta para a tela de login, limpando a navegação
-    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    // ✅ volta pro gate (ele decide login/home)
+    Navigator.pushNamedAndRemoveUntil(context, '/gate', (_) => false);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    final String nomeOuEmail;
-    final String subtitulo;
+    final String nome;
+    final String email;
+    final String iniciais;
 
-    if (_usuario == null) {
-      nomeOuEmail = 'Bem-vindo';
-      subtitulo = 'Toque em "Criar conta" ou faça login';
+    if (_carregandoUsuario) {
+      nome = 'Carregando...';
+      email = '';
+      iniciais = '';
+    } else if (_usuarioFirebase != null) {
+      nome =
+          _usuarioFirebase!.displayName?.trim().isNotEmpty == true
+              ? _usuarioFirebase!.displayName!.trim()
+              : 'Usuário Google';
+
+      email = _usuarioFirebase!.email ?? '';
+      iniciais = _iniciaisFromText(nome.isNotEmpty ? nome : email);
+    } else if (_usuarioLocal != null) {
+      nome =
+          (_usuarioLocal!.nome != null && _usuarioLocal!.nome.trim().isNotEmpty)
+              ? _usuarioLocal!.nome.trim()
+              : 'Usuário local';
+
+      email = _usuarioLocal!.email;
+      iniciais = _iniciaisFromText(nome.isNotEmpty ? nome : email);
     } else {
-      nomeOuEmail =
-          (_usuario!.nome != null && _usuario!.nome.trim().isNotEmpty)
-              ? _usuario!.nome
-              : _usuario!.email;
-      subtitulo = _usuario!.email;
-    }
-
-    // Iniciais para o avatar
-    String iniciais = '';
-    if (_usuario != null) {
-      final base =
-          (_usuario!.nome != null && _usuario!.nome.trim().isNotEmpty)
-              ? _usuario!.nome.trim()
-              : _usuario!.email.trim();
-      final partes = base.split(' ');
-      if (partes.length == 1) {
-        iniciais = partes.first.characters.first.toUpperCase();
-      } else {
-        iniciais =
-            '${partes.first.characters.first.toUpperCase()}${partes.last.characters.first.toUpperCase()}';
-      }
+      nome = 'Bem-vindo';
+      email = 'Faça login';
+      iniciais = '';
     }
 
     return Drawer(
       child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: ListView(
+          padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: colors.primary),
@@ -117,7 +136,7 @@ class _AppDrawerState extends State<AppDrawer> {
                     radius: 26,
                     backgroundColor: colors.onPrimary.withOpacity(0.1),
                     child:
-                        _usuario == null
+                        iniciais.isEmpty
                             ? Icon(
                               Icons.person,
                               color: colors.onPrimary,
@@ -139,7 +158,7 @@ class _AppDrawerState extends State<AppDrawer> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          nomeOuEmail,
+                          nome,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -150,7 +169,7 @@ class _AppDrawerState extends State<AppDrawer> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          subtitulo,
+                          email,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -165,45 +184,36 @@ class _AppDrawerState extends State<AppDrawer> {
               ),
             ),
 
-            // ==========================
-            // 📌 ÍTENS DO MENU
-            // ==========================
+            // ✅ MENU
             _menuItem(
               context,
               icon: Icons.table_rows,
               label: 'Lançamentos',
               route: '/',
             ),
-
             _menuItem(
               context,
               icon: Icons.calendar_month,
               label: 'Resumo do mês (Gastos)',
               route: '/graficos',
             ),
-
             ListTile(
               leading: const Icon(Icons.compare_arrows),
               title: const Text('Comparativo de meses'),
-              onTap: () {
-                Navigator.pushNamed(context, '/comparativo-mes');
-              },
+              onTap: () => _go('/comparativo-mes'),
             ),
-
             _menuItem(
               context,
               icon: Icons.credit_card,
               label: 'Cartão',
               route: '/cartoes-credito',
             ),
-
             _menuItem(
               context,
               icon: Icons.receipt_long,
               label: 'Contas a pagar',
               route: '/contas-pagar',
             ),
-
             _menuItem(
               context,
               icon: Icons.account_balance,
@@ -220,26 +230,35 @@ class _AppDrawerState extends State<AppDrawer> {
               leading: const Icon(Icons.category),
               title: const Text('Minhas categorias'),
               onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
+                Navigator.pop(context);
+                Navigator.pushNamed(
                   context,
-                ).pushNamed(CategoriasPersonalizadasPage.routeName);
+                  CategoriasPersonalizadasPage.routeName,
+                );
               },
             ),
-            const Spacer(),
+
+            const Divider(height: 24),
+
+            ListTile(
+              leading: const Icon(Icons.backup),
+              title: const Text('Backup na nuvem'),
+              onTap: () => _go('/backup-cloud'),
+            ),
             ListTile(
               leading: const Icon(Icons.color_lens),
               title: const Text('Tema do aplicativo'),
               onTap: () {
+                Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const ConfigTemaPage()),
                 );
               },
             ),
-            // ==========================
-            // 🚪 SAIR
-            // ==========================
+
+            const Divider(height: 24),
+
             ListTile(
               leading: Icon(Icons.logout, color: colors.error),
               title: Text(
@@ -252,6 +271,7 @@ class _AppDrawerState extends State<AppDrawer> {
               onTap: _logout,
             ),
 
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(
@@ -267,6 +287,20 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
       ),
     );
+  }
+
+  String _iniciaisFromText(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return '';
+
+    final partes =
+        t.split(RegExp(r'\s+')).where((p) => p.trim().isNotEmpty).toList();
+    if (partes.isEmpty) return '';
+
+    if (partes.length == 1) {
+      return partes.first.characters.first.toUpperCase();
+    }
+    return '${partes.first.characters.first.toUpperCase()}${partes.last.characters.first.toUpperCase()}';
   }
 
   Widget _menuItem(
@@ -293,12 +327,7 @@ class _AppDrawerState extends State<AppDrawer> {
       ),
       selected: selected,
       selectedTileColor: colors.primary.withOpacity(0.08),
-      onTap: () {
-        Navigator.pop(context);
-        if (ModalRoute.of(context)?.settings.name != route) {
-          Navigator.pushNamed(context, route);
-        }
-      },
+      onTap: () => _go(route),
     );
   }
 }

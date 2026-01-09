@@ -1,4 +1,4 @@
-package com.example.vox_finance
+package com.br.voxfinance
 
 import io.flutter.embedding.android.FlutterActivity
 

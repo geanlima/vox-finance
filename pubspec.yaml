@@ -12,7 +12,17 @@ dependencies:
   flutter:
     sdk: flutter
 
+  google_sign_in: ^6.2.1
+  googleapis: ^13.2.0
+  googleapis_auth: ^1.6.0
+  http: ^1.2.2
+
+  crypto: ^3.0.3
   cupertino_icons: ^1.0.8
+
+  firebase_storage: ^12.3.4
+  file_picker: ^8.3.7
+  share_plus: ^7.2.1
 
   # ================================
   # BANCO DE DADOS — SQFLITE
@@ -27,7 +37,6 @@ dependencies:
   firebase_core: ^3.8.0
   firebase_auth: ^5.3.3
   cloud_firestore: ^5.6.12
-  google_sign_in: ^6.2.1
 
   # ================================
   # OUTRAS DEPENDÊNCIAS
