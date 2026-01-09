@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.vox_finance"
+    namespace = "com.br.voxfinance"
     compileSdk = flutter.compileSdkVersion
 
     // 👇 ALTERE AQUI
@@ -25,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.vox_finance"
+        applicationId = "com.br.voxfinance"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
