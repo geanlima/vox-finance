@@ -185,6 +185,26 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
 
             // ✅ MENU
+
+            // ✅ NOVO: Despesas (TreeView) -> Fixas / Variáveis
+            _treeGroup(
+              context,
+              icon: Icons.account_tree_outlined,
+              title: '💸 Despesas',
+              children: [
+                _subItem(
+                  icon: Icons.lock_outline,
+                  title: '🔒 Despesas fixas',
+                  route: '/despesas-fixas',
+                ),
+                _subItem(
+                  icon: Icons.autorenew_outlined,
+                  title: '🔁 Despesas variáveis',
+                  route: '/despesas-variaveis',
+                ),
+              ],
+            ),
+
             _menuItem(
               context,
               icon: Icons.table_rows,
@@ -301,6 +321,53 @@ class _AppDrawerState extends State<AppDrawer> {
       return partes.first.characters.first.toUpperCase();
     }
     return '${partes.first.characters.first.toUpperCase()}${partes.last.characters.first.toUpperCase()}';
+  }
+
+  // ✅ TreeGroup (ExpansionTile) — estilo “tree view”
+  Widget _treeGroup(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+
+    return ExpansionTile(
+      leading: Icon(icon, color: colors.onBackground.withOpacity(0.75)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      childrenPadding: const EdgeInsets.only(left: 18),
+      children: children,
+    );
+  }
+
+  // ✅ SubItem do tree group
+  Widget _subItem({
+    required IconData icon,
+    required String title,
+    required String route,
+  }) {
+    final selected = ModalRoute.of(context)?.settings.name == route;
+    final colors = Theme.of(context).colorScheme;
+
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        icon,
+        size: 20,
+        color: selected ? colors.primary : colors.onBackground.withOpacity(0.7),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color:
+              selected ? colors.primary : colors.onBackground.withOpacity(0.85),
+          fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+        ),
+      ),
+      selected: selected,
+      selectedTileColor: colors.primary.withOpacity(0.08),
+      onTap: () => _go(route),
+    );
   }
 
   Widget _menuItem(

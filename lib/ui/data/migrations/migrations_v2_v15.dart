@@ -331,6 +331,21 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V27: tipo_despesa em lancamentos (1=fixed, 2=variable)
+    // =========================
+    if (oldVersion < 27) {
+      await _addColumnSafe(
+        db,
+        'lancamentos',
+        'tipo_despesa',
+        'INTEGER NOT NULL DEFAULT 2',
+      );
+
+  // (Opcional) Se quiser “pago” e “pagamento_fatura” não mexer, não precisa.
+  // Se quiser tentar classificar automaticamente algumas coisas pelo texto, eu recomendo NÃO fazer agora.
+}
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
