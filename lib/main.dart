@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:vox_finance/v2/presentation/pages/despesas_fixas/despesas_fixas_page.dart';
 
 import 'firebase_options.dart';
 
@@ -71,6 +72,10 @@ class VoxFinanceApp extends StatelessWidget {
       '/comparativo-mes': (_) => const ComparativoMesPage(),
       '/minha-renda': (_) => const MinhaRendaPage(),
       '/backup-cloud': (_) => const BackupRestoreCloudPage(),
+
+      // ✅ NOVO: rotas do Drawer
+      '/despesas-fixas': (_) => const DespesasFixasPage(),
+      //'/despesas-variaveis': (_) => const DespesaVariavelPage(),
     };
   }
 }

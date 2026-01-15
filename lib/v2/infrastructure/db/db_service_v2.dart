@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v10_parcelamentos.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v11_formas_pagamento_upgrade.dart';
+import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v12_dividas.dart';
 
 import 'migrations/migration_v1.dart';
 import 'migrations/migration_v2.dart';
@@ -17,7 +18,7 @@ import 'migrations/migration_v9_despesas_variaveis.dart';
 
 class DbServiceV2 {
   static const _dbName = 'vox_finance_v2.db';
-  static const _latest = 10;
+  static const _latest = 12;
 
   Database? _db;
   Database get db => _db!;
@@ -88,6 +89,7 @@ class DbServiceV2 {
       MigrationV9DespesasVariaveis(),
       MigrationV10Parcelamentos(),
       MigrationV11FormasPagamentoUpgrade(),
+      MigrationV12Dividas(),
     ]..sort((a, b) => a.version.compareTo(b.version));
 
     final current =
