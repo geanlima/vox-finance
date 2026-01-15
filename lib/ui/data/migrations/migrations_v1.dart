@@ -39,7 +39,8 @@ class MigrationV1 {
         id_cartao INTEGER,
         id_conta INTEGER,
         tipo_movimento INTEGER NOT NULL DEFAULT 1,
-        id_categoria_personalizada INTEGER
+        id_categoria_personalizada INTEGER,
+        tipo_despesa INTEGER NOT NULL DEFAULT 2
       );
     ''');
 

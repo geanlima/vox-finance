@@ -21,6 +21,21 @@ extension TipoMovimentoExt on TipoMovimento {
   }
 }
 
+/// ⭐ NOVO: tipo de despesa (para agrupar no menu em Fixas/Variáveis)
+/// Obs: só faz sentido quando tipoMovimento == despesa
+enum TipoDespesa { fixa, variavel }
+
+extension TipoDespesaExt on TipoDespesa {
+  String get label {
+    switch (this) {
+      case TipoDespesa.fixa:
+        return 'Fixa';
+      case TipoDespesa.variavel:
+        return 'Variável';
+    }
+  }
+}
+
 class Lancamento {
   int? id;
   double valor;
@@ -50,8 +65,12 @@ class Lancamento {
   /// ⭐ se é receita ou despesa
   TipoMovimento tipoMovimento;
 
-  /// ⭐ NOVO: referência à categoria_personalizada (se houver)
+  /// ⭐ referência à categoria_personalizada (se houver)
   int? idCategoriaPersonalizada;
+
+  /// ⭐ NOVO: fixa/variável
+  /// por padrão, tudo que já existe vira "variável"
+  TipoDespesa tipoDespesa;
 
   Lancamento({
     this.id,
@@ -74,6 +93,9 @@ class Lancamento {
 
     /// se não tiver categoria personalizada, fica null
     this.idCategoriaPersonalizada,
+
+    /// ⭐ NOVO: por padrão "variável" (melhor fallback para bases antigas)
+    this.tipoDespesa = TipoDespesa.variavel,
   });
 
   // ----------------------------------------------------------
@@ -96,6 +118,7 @@ class Lancamento {
     int? parcelaTotal,
     TipoMovimento? tipoMovimento,
     int? idCategoriaPersonalizada,
+    TipoDespesa? tipoDespesa, // ⭐ NOVO
   }) {
     return Lancamento(
       id: id ?? this.id,
@@ -115,6 +138,7 @@ class Lancamento {
       tipoMovimento: tipoMovimento ?? this.tipoMovimento,
       idCategoriaPersonalizada:
           idCategoriaPersonalizada ?? this.idCategoriaPersonalizada,
+      tipoDespesa: tipoDespesa ?? this.tipoDespesa, // ⭐ NOVO
     );
   }
 
@@ -142,8 +166,11 @@ class Lancamento {
       // ⭐ inteiro (0 = receita, 1 = despesa, 2 = ambos)
       'tipo_movimento': tipoMovimento.index,
 
-      // ⭐ NOVO: FK para categorias_personalizadas
+      // ⭐ FK para categorias_personalizadas
       'id_categoria_personalizada': idCategoriaPersonalizada,
+
+      // ⭐ NOVO: 0 = fixa, 1 = variavel
+      'tipo_despesa': tipoDespesa.index,
     };
   }
 
@@ -177,6 +204,21 @@ class Lancamento {
       }
     }
 
+    // ⭐ NOVO: tipo_despesa (pode não existir em bases antigas)
+    final tdRaw = map['tipo_despesa'];
+    TipoDespesa tipoDesp;
+    if (tdRaw == null) {
+      // ⚠️ DADOS ANTIGOS: assume VARIÁVEL
+      tipoDesp = TipoDespesa.variavel;
+    } else {
+      final tdIndex = tdRaw as int;
+      if (tdIndex >= 0 && tdIndex < TipoDespesa.values.length) {
+        tipoDesp = TipoDespesa.values[tdIndex];
+      } else {
+        tipoDesp = TipoDespesa.variavel;
+      }
+    }
+
     return Lancamento(
       id: map['id'] as int?,
       valor: (map['valor'] as num).toDouble(),
@@ -201,6 +243,9 @@ class Lancamento {
 
       // ⭐ lê do banco (pode ser null)
       idCategoriaPersonalizada: map['id_categoria_personalizada'] as int?,
+
+      // ⭐ NOVO
+      tipoDespesa: tipoDesp,
     );
   }
 }
