@@ -1,4 +1,5 @@
 import 'package:vox_finance/v2/infrastructure/repositories/balanco_repository.dart';
+import 'package:vox_finance/v2/infrastructure/repositories/caca_precos_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/categorias_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/cofrinho_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/desejos_compras_repository.dart';
@@ -31,6 +32,7 @@ class InjectorV2 {
   static late final PessoasDevedorasRepository pessoasDevedorasRepo;
   static late final CofrinhoRepository cofrinhoRepo;
   static late final DesejosComprasRepository desejosComprasRepo;
+  static late final CacaPrecosRepository cacaPrecosRepo;
 
   static Future<void> init() async {
     db = DbServiceV2();
@@ -51,6 +53,7 @@ class InjectorV2 {
     pessoasDevedorasRepo = PessoasDevedorasRepository(db.db);
     cofrinhoRepo = CofrinhoRepository(db.db);
     desejosComprasRepo = DesejosComprasRepository(db.db);
+    cacaPrecosRepo = CacaPrecosRepository(db.db);
 
     await categoriasRepo.seedPadraoSeVazio();
   }
