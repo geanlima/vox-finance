@@ -8,6 +8,7 @@ import 'package:vox_finance/v2/infrastructure/repositories/despesas_variaveis_re
 import 'package:vox_finance/v2/infrastructure/repositories/dividas_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/formas_pagamento_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/ganhos_repository.dart';
+import 'package:vox_finance/v2/infrastructure/repositories/investimentos_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/mural_sonhos_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/parcelamentos_repository.dart';
 import 'package:vox_finance/v2/infrastructure/repositories/pessoas_devedoras_repository.dart';
@@ -37,6 +38,7 @@ class InjectorV2 {
   static late final CacaPrecosRepository cacaPrecosRepo;
   static late final MuralSonhosRepository muralSonhosRepo;
   static late final DesafioFinanceiroRepository desafioFinanceiroRepo;
+  static late final InvestimentosRepository investimentosRepo;
 
   static Future<void> init() async {
     db = DbServiceV2();
@@ -60,6 +62,7 @@ class InjectorV2 {
     cacaPrecosRepo = CacaPrecosRepository(db.db);
     muralSonhosRepo = MuralSonhosRepository(db.db);
     desafioFinanceiroRepo = DesafioFinanceiroRepository(db.db);
+    investimentosRepo = InvestimentosRepository(db.db);
 
     await categoriasRepo.seedPadraoSeVazio();
   }

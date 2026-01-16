@@ -11,6 +11,7 @@ import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v15_desejo
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v16_caca_precos.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v17_mural_sonhos.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v18_desafio_financeiro.dart';
+import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v19_investimentos.dart';
 
 import 'migrations/migration_v1.dart';
 import 'migrations/migration_v2.dart';
@@ -102,6 +103,7 @@ class DbServiceV2 {
       MigrationV16CacaPrecos(),
       MigrationV17MuralSonhos(),
       MigrationV18DesafioFinanceiro(),
+      MigrationV19Investimentos(),
     ]..sort((a, b) => a.version.compareTo(b.version));
 
     final current =
