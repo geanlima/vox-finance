@@ -34,6 +34,29 @@ class LancamentoRepository {
 
   // ----------------- CRUD -----------------
 
+  Future<List<Lancamento>> getDespesasFixasByDay(DateTime dia) async {
+    final db = await _db;
+
+    final inicio = DateTime(dia.year, dia.month, dia.day);
+    final fim = inicio.add(const Duration(days: 1));
+
+    return (await db.query(
+      'lancamentos',
+      where: '''
+      data_hora >= ? AND data_hora < ?
+      AND tipo_movimento = ?
+      AND tipo_despesa = ?
+    ''',
+      whereArgs: [
+        inicio.millisecondsSinceEpoch,
+        fim.millisecondsSinceEpoch,
+        tipoDespesaDb,
+        1, // FIXA (ajuste conforme seu mapeamento)
+      ],
+      orderBy: 'data_hora DESC',
+    )).map((e) => Lancamento.fromMap(e)).toList();
+  }
+
   Future<void> deletarPorGrupo(String grupoParcelas) async {
     final db = await _db;
     await db.delete(

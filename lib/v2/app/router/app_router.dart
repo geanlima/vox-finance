@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:vox_finance/v2/presentation/pages/calendario_vencimentos/calendario_vencimentos_page.dart';
 import 'package:vox_finance/v2/presentation/pages/categorias/categorias_page.dart';
+import 'package:vox_finance/v2/presentation/pages/dividas/minhas_dividas_page.dart';
+import 'package:vox_finance/v2/presentation/pages/pessoas_devedoras/pessoas_que_me_devem_page.dart';
 
 import '../../presentation/pages/home/home_page.dart';
 import '../../presentation/pages/notas_rapidas/notas_rapidas_page.dart';
@@ -11,8 +13,6 @@ import '../../presentation/pages/despesas_fixas/despesas_fixas_page.dart';
 import '../../presentation/pages/despesas_variaveis/despesas_variaveis_page.dart';
 import '../../presentation/pages/formas_pagamento/formas_pagamento_page.dart';
 import '../../presentation/pages/parcelamento/parcelamento_page.dart';
-import '../../presentation/pages/dividas/dividas_page.dart';
-import '../../presentation/pages/pessoas_me_devem/pessoas_me_devem_page.dart';
 import '../../presentation/pages/cofrinho/cofrinho_page.dart';
 import '../../presentation/pages/desejo_compras/desejo_compras_page.dart';
 import '../../presentation/pages/caca_precos/caca_precos_page.dart';
@@ -61,12 +61,12 @@ class AppRouterV2 {
 
     formasPagamento: (_) => const FormasPagamentoPage(),
     parcelamento: (_) => const ParcelamentosPage(),
-    dividas: (_) => const DividasPage(),
-    pessoasMeDevem: (_) => const PessoasMeDevemPage(),
+    dividas: (_) => const MinhasDividasPage(),
+    pessoasMeDevem: (_) => const PessoasQueMeDevemPage(),
     categorias: (_) => const CategoriasPage(),
 
     cofrinho: (_) => const CofrinhoPage(),
-    desejoCompras: (_) => const DesejoComprasPage(),
+    desejoCompras: (_) => const DesejosComprasPage(),
     cacaPrecos: (_) => const CacaPrecosPage(),
     muralSonhos: (_) => const MuralSonhosPage(),
     desafioFinanceiro: (_) => const DesafioFinanceiroPage(),
