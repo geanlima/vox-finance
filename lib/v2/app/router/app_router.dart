@@ -66,7 +66,7 @@ class AppRouterV2 {
     categorias: (_) => const CategoriasPage(),
 
     cofrinho: (_) => const CofrinhoPage(),
-    desejoCompras: (_) => const DesejoComprasPage(),
+    desejoCompras: (_) => const DesejosComprasPage(),
     cacaPrecos: (_) => const CacaPrecosPage(),
     muralSonhos: (_) => const MuralSonhosPage(),
     desafioFinanceiro: (_) => const DesafioFinanceiroPage(),
