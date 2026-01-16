@@ -10,6 +10,7 @@ import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v14_cofrin
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v15_desejos_compras.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v16_caca_precos.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v17_mural_sonhos.dart';
+import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v18_desafio_financeiro.dart';
 
 import 'migrations/migration_v1.dart';
 import 'migrations/migration_v2.dart';
@@ -23,7 +24,7 @@ import 'migrations/migration_v9_despesas_variaveis.dart';
 
 class DbServiceV2 {
   static const _dbName = 'vox_finance_v2.db';
-  static const _latest = 17;
+  static const _latest = 18;
 
   Database? _db;
   Database get db => _db!;
@@ -100,6 +101,7 @@ class DbServiceV2 {
       MigrationV15DesejosCompras(),
       MigrationV16CacaPrecos(),
       MigrationV17MuralSonhos(),
+      MigrationV18DesafioFinanceiro(),
     ]..sort((a, b) => a.version.compareTo(b.version));
 
     final current =
