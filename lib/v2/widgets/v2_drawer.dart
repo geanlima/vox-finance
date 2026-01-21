@@ -1,148 +1,234 @@
-import 'package:flutter/material.dart';
-import 'package:vox_finance/v2/app/router/app_router.dart';
+// ignore_for_file: deprecated_member_use
 
-class V2Drawer extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:vox_finance/v2/app/router/app_router.dart';
+import 'package:vox_finance/ui/core/nav/app_navigator.dart';
+import 'package:vox_finance/ui/core/service/app_version_service.dart';
+
+class V2Drawer extends StatefulWidget {
   const V2Drawer({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    void goTo(String route) {
-      Navigator.pop(context);
-      final current = ModalRoute.of(context)?.settings.name;
-      if (current == route) return;
-      Navigator.pushNamed(context, route);
-    }
+  State<V2Drawer> createState() => _V2DrawerState();
+}
 
-    Widget actionItem({
-      required IconData icon,
-      required String title,
-      VoidCallback? onTap,
-      Color? color,
-    }) {
-      return ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(title, style: TextStyle(color: color)),
+class _V2DrawerState extends State<V2Drawer> {
+  String _nome = 'VoxFinance V2';
+  String _email = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    // 1) tenta Firebase
+    final u = FirebaseAuth.instance.currentUser;
+    String? nome = u?.displayName;
+    String? email = u?.email;
+
+    // 2) fallback (se você guarda algo no SharedPreferences na V1)
+    // ajuste as chaves abaixo para as que você usa no seu app
+    final sp = await SharedPreferences.getInstance();
+    nome ??= sp.getString('userName');
+    email ??= sp.getString('userEmail');
+
+    if (!mounted) return;
+
+    setState(() {
+      _nome =
+          (nome != null && nome.trim().isNotEmpty) ? nome.trim() : 'Usuário';
+      _email = (email != null && email.trim().isNotEmpty) ? email.trim() : '';
+    });
+  }
+
+  String _iniciais(String nome) {
+    final parts =
+        nome.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    if (parts.isEmpty) return 'U';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+        .toUpperCase();
+  }
+
+  void _goTo(BuildContext context, String route) {
+    if (Navigator.canPop(context)) Navigator.pop(context);
+
+    final current = ModalRoute.of(context)?.settings.name;
+    if (current == route) return;
+
+    Navigator.pushNamed(context, route);
+  }
+
+  Future<void> _trocarVersao(BuildContext context) async {
+    if (Navigator.canPop(context)) Navigator.pop(context);
+    await AppVersionService.clearSelectedVersion();
+    await AppNavigator.goToGateClearingStack();
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    if (Navigator.canPop(context)) Navigator.pop(context);
+
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool('isLoggedIn', false);
+    await sp.remove('loginType');
+
+    await AppVersionService.clearSelectedVersion();
+    await AppNavigator.goToGateClearingStack();
+  }
+
+  Widget _header(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final iniciais = _iniciais(_nome);
+
+    return Material(
+      color: cs.primary,
+      child: InkWell(
         onTap: () {
-          Navigator.pop(context);
-          onTap?.call();
+          // opcional: abrir uma tela "Perfil" no futuro
+          // _goTo(context, AppRouterV2.perfil);
         },
-      );
-    }
-
-    Widget treeGroup({
-      required IconData icon,
-      required String title,
-      required List<Widget> children,
-      bool initiallyExpanded = false,
-    }) {
-      final cs = Theme.of(context).colorScheme;
-
-      return ExpansionTile(
-        leading: Icon(icon),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        initiallyExpanded: initiallyExpanded,
-        childrenPadding: const EdgeInsets.only(left: 18),
-        iconColor: cs.onSurfaceVariant,
-        collapsedIconColor: cs.onSurfaceVariant,
-        children: children,
-      );
-    }
-
-    Widget subItem({
-      required IconData icon,
-      required String title,
-      required String route,
-    }) {
-      return ListTile(
-        dense: true,
-        leading: Icon(icon, size: 20),
-        title: Text(title),
-        onTap: () => goTo(route),
-      );
-    }
-
-    // ✅ HEADER (fica fora do scroll)
-    final header = Container(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-      color: Theme.of(context).colorScheme.primary,
-      child: Row(
-        children: [
-          Icon(
-            Icons.account_balance_wallet,
-            color: Theme.of(context).colorScheme.onPrimary,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: cs.onPrimary.withOpacity(.18),
+                child: Text(
+                  iniciais,
+                  style: TextStyle(
+                    color: cs.onPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _nome,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: cs.onPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _email.isEmpty ? ' ' : _email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: cs.onPrimary.withOpacity(.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Text(
-            'VoxFinance V2',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
+        ),
       ),
     );
+  }
 
+  Widget _treeGroup(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+    bool initiallyExpanded = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return ExpansionTile(
+      leading: Icon(icon),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      initiallyExpanded: initiallyExpanded,
+      childrenPadding: const EdgeInsets.only(left: 18),
+      iconColor: cs.onSurfaceVariant,
+      collapsedIconColor: cs.onSurfaceVariant,
+      children: children,
+    );
+  }
+
+  Widget _subItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String route,
+    TextStyle? titleStyle,
+  }) {
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, size: 20),
+      title: Text(title, style: titleStyle),
+      onTap: () => _goTo(context, route),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Drawer(
       child: SafeArea(
         child: Column(
           children: [
-            header,
+            _header(context),
 
-            // ✅ PARTE QUE ROLA
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // 🧾 Diário e Visão Geral (TREE)
-                  treeGroup(
+                  // ✅ HOME (com fonte maior se você quiser)
+                  _subItem(
+                    context,
+                    icon: Icons.home_outlined,
+                    title: '🏠 Home',
+                    route: AppRouterV2.home,
+                    titleStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+
+                  const Divider(),
+
+                  _treeGroup(
+                    context,
                     icon: Icons.dashboard_outlined,
                     title: '🧾 Diário e Visão Geral',
                     children: [
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.note_alt_outlined,
                         title: '🧠 Notas rápidas',
                         route: AppRouterV2.notasRapidas,
                       ),
-
-                      // CATEGORIAS (TREE dentro do grupo diário) — opcional
-                      ExpansionTile(
-                        leading: const Icon(Icons.category_outlined),
-                        title: const Text(
-                          '📚 Categorias',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        childrenPadding: const EdgeInsets.only(left: 18),
-                        children: [
-                          ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.edit_outlined, size: 20),
-                            title: const Text('Cadastro de categorias'),
-                            onTap: () => goTo(AppRouterV2.categorias),
-                          ),
-                          ListTile(
-                            dense: true,
-                            leading: const Icon(
-                              Icons.pie_chart_outline,
-                              size: 20,
-                            ),
-                            title: const Text('Limites / Gastos por categoria'),
-                            onTap: () => goTo(AppRouterV2.gastosCategorias),
-                          ),
-                        ],
-                      ),
-
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.insights_outlined,
                         title: '📊 Balanço do mês/ano',
                         route: AppRouterV2.balanco,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.pie_chart_outline,
                         title: '📊 Gastos por Categorias',
                         route: AppRouterV2.gastosCategorias,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.calendar_month_outlined,
                         title: '📅 Calendário de Vencimentos',
                         route: AppRouterV2.calendarioVencimentos,
@@ -152,22 +238,25 @@ class V2Drawer extends StatelessWidget {
 
                   const Divider(),
 
-                  // 💵 Fluxo de dinheiro (TREE)
-                  treeGroup(
+                  _treeGroup(
+                    context,
                     icon: Icons.swap_horiz_outlined,
                     title: '💵 Fluxo de dinheiro',
                     children: [
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.attach_money,
                         title: '💰 Meus Ganhos',
                         route: AppRouterV2.meusGanhos,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.home_outlined,
                         title: '🏠 Despesas Fixas',
                         route: AppRouterV2.despesasFixas,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.shopping_cart_outlined,
                         title: '🛒 Despesas Variáveis',
                         route: AppRouterV2.despesasVariaveis,
@@ -177,27 +266,31 @@ class V2Drawer extends StatelessWidget {
 
                   const Divider(),
 
-                  // 💳 Pagamentos e obrigações (TREE)
-                  treeGroup(
+                  _treeGroup(
+                    context,
                     icon: Icons.credit_card_outlined,
                     title: '💳 Pagamentos e obrigações',
                     children: [
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.account_balance_outlined,
                         title: '🏦 Minhas Formas de Pagamento',
                         route: AppRouterV2.formasPagamento,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.credit_card_outlined,
                         title: '💳 Controle de Parcelamento',
                         route: AppRouterV2.parcelamento,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.receipt_long_outlined,
                         title: '💸 Minhas Dívidas',
                         route: AppRouterV2.dividas,
                       ),
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.groups_outlined,
                         title: '👥 Pessoas que me devem',
                         route: AppRouterV2.pessoasMeDevem,
@@ -207,47 +300,13 @@ class V2Drawer extends StatelessWidget {
 
                   const Divider(),
 
-                  // 🎯 Metas, desejos e gamificação (TREE)
-                  treeGroup(
-                    icon: Icons.emoji_events_outlined,
-                    title: '🎯 Metas, desejos e gamificação',
-                    children: [
-                      subItem(
-                        icon: Icons.savings_outlined,
-                        title: '🐷 Meu Cofrinho',
-                        route: AppRouterV2.cofrinho,
-                      ),
-                      subItem(
-                        icon: Icons.shopping_bag_outlined,
-                        title: '🛍️ Desejo de Compras',
-                        route: AppRouterV2.desejoCompras,
-                      ),
-                      subItem(
-                        icon: Icons.search_outlined,
-                        title: '🔎 Caça aos preços',
-                        route: AppRouterV2.cacaPrecos,
-                      ),
-                      subItem(
-                        icon: Icons.emoji_events_outlined,
-                        title: '🎯 Mural dos Sonhos',
-                        route: AppRouterV2.muralSonhos,
-                      ),
-                      subItem(
-                        icon: Icons.fitness_center_outlined,
-                        title: '💪 Desafio Financeiro',
-                        route: AppRouterV2.desafioFinanceiro,
-                      ),
-                    ],
-                  ),
-
-                  const Divider(),
-
-                  // 📈 Patrimônio (TREE)
-                  treeGroup(
+                  _treeGroup(
+                    context,
                     icon: Icons.trending_up_outlined,
                     title: '📈 Patrimônio',
                     children: [
-                      subItem(
+                      _subItem(
+                        context,
                         icon: Icons.trending_up_outlined,
                         title: '📈 Meus Investimentos',
                         route: AppRouterV2.investimentos,
@@ -257,26 +316,19 @@ class V2Drawer extends StatelessWidget {
 
                   const Divider(),
 
-                  // ⚙️ Configurações (TREE)
-                  treeGroup(
+                  _treeGroup(
+                    context,
                     icon: Icons.settings_outlined,
                     title: '⚙️ Configurações',
                     children: [
                       ListTile(
                         dense: true,
-                        leading: const Icon(Icons.cloud_outlined, size: 20),
-                        title: const Text('☁️ Backup na nuvem'),
-                        onTap: () {
-                          Navigator.pop(context);                          
-                        },
-                      ),
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.palette_outlined, size: 20),
-                        title: const Text('🎨 Tema do aplicativo'),
-                        onTap: () {
-                          Navigator.pop(context);                          
-                        },
+                        leading: const Icon(
+                          Icons.swap_horiz_outlined,
+                          size: 20,
+                        ),
+                        title: const Text('🔁 Trocar versão (V1/V2)'),
+                        onTap: () => _trocarVersao(context),
                       ),
                     ],
                   ),
@@ -286,21 +338,11 @@ class V2Drawer extends StatelessWidget {
               ),
             ),
 
-            // ✅ RODAPÉ FIXO (Sair sempre no final)
             const Divider(height: 1),
-            actionItem(
-              icon: Icons.logout,
-              title: 'Sair',
-              color: Colors.red,
-              onTap: () {
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('v2', style: Theme.of(context).textTheme.bodySmall),
-              ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Sair', style: TextStyle(color: Colors.red)),
+              onTap: () => _logout(context),
             ),
           ],
         ),

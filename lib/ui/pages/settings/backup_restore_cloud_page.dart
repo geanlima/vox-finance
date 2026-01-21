@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, unused_element
+// ignore_for_file: deprecated_member_use, unused_element, control_flow_in_finally
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -138,20 +138,23 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
 
   Future<void> _restaurarBackup() async {
     if (_uid.isEmpty) {
+      if (!mounted) return;
       _snack('Você precisa estar logado para restaurar da nuvem.');
       return;
     }
 
     if (_firebaseIndisponivel) {
+      if (!mounted) return;
       _snack(
         'Firebase Storage está indisponível sem billing. Use Google Drive.',
       );
       return;
     }
 
+    // ✅ usa dialogContext para fechar o dialog com segurança
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Restaurar backup'),
           content: Text(
@@ -161,11 +164,11 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Restaurar'),
             ),
           ],
@@ -173,12 +176,18 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
       },
     );
 
+    // ✅ depois de await, sempre valide
+    if (!mounted) return;
     if (ok != true) return;
 
     setState(() => _loading = true);
+
     try {
       final restored = await BackupManager.instance.restore(userId: _uid);
+      if (!mounted) return;
+
       await _carregarMetadata();
+      if (!mounted) return;
 
       if (restored) {
         _snack('Backup restaurado! (banco local atualizado)');
@@ -186,9 +195,11 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
         _snack('Nenhum backup encontrado para este usuário.');
       }
     } catch (e) {
+      if (!mounted) return;
       _snack('Falha ao restaurar backup: $e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
   }
 

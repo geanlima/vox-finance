@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_element, unnecessary_to_list_in_spreads
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unnecessary_to_list_in_spreads
 
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
@@ -21,7 +21,7 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
   int _totalPendente = 0;
   List<DividaRow> _itens = const [];
 
-  // ✅ maps para mostrar nome/emoji no UI sem JOIN
+  // labels para UI sem JOIN
   final Map<int, String> _catLabelById = {};
   final Map<int, String> _fpLabelById = {};
 
@@ -35,14 +35,15 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
 
-    // carrega dados auxiliares (labels) em paralelo
     final catsF = InjectorV2.categoriasRepo.listarCategorias(
-      tipo: 'variavel', // se depois criar tipo "divida", muda aqui
+      tipo: 'variavel', // se criar tipo "divida", trocar aqui
       apenasAtivas: true,
     );
-    final fpsF = InjectorV2.formasPagamentoRepo.listarFormas(apenasAtivas: true);
+    final fpsF = InjectorV2.formasPagamentoRepo.listarFormas(
+      apenasAtivas: true,
+    );
 
     final itensF = _repo.listarNoMes(_ano, _mes);
     final totalF = _repo.totalPendenteNoMes(_ano, _mes);
@@ -54,21 +55,25 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
 
     if (!mounted) return;
 
-    _catLabelById.clear();
-    for (final c in cats) {
-      _catLabelById[c.id] = '${c.emoji ?? '🏷️'} ${c.nome}';
-    }
+    _catLabelById
+      ..clear()
+      ..addEntries(
+        cats.map((c) => MapEntry(c.id, '${c.emoji ?? '🏷️'} ${c.nome}')),
+      );
 
-    _fpLabelById.clear();
-    for (final f in fps) {
-      _fpLabelById[f.id] = f.nome;
-    }
+    _fpLabelById
+      ..clear()
+      ..addEntries(fps.map((f) => MapEntry(f.id, f.nome)));
 
     setState(() {
       _itens = itens;
       _totalPendente = total;
       _loading = false;
     });
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _prevMes() {
@@ -120,21 +125,9 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
   DateTime _addMonths(DateTime d, int months) {
     final y = d.year + ((d.month - 1 + months) ~/ 12);
     final m = ((d.month - 1 + months) % 12) + 1;
-    final day = d.day;
-    // evita dia inválido (ex.: 31 -> fevereiro)
     final lastDay = DateTime(y, m + 1, 0).day;
-    final safeDay = day > lastDay ? lastDay : day;
+    final safeDay = d.day > lastDay ? lastDay : d.day;
     return DateTime(y, m, safeDay);
-  }
-
-  DateTime _parseIsoToDate(String iso) {
-    final p = iso.split('-');
-    if (p.length != 3) return DateTime.now();
-    return DateTime(
-      int.tryParse(p[0]) ?? DateTime.now().year,
-      int.tryParse(p[1]) ?? DateTime.now().month,
-      int.tryParse(p[2]) ?? DateTime.now().day,
-    );
   }
 
   @override
@@ -149,68 +142,86 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(mesAno,
-                  style: const TextStyle(fontWeight: FontWeight.w900)),
+              child: Text(
+                mesAno,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
             ),
           ),
-          IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextMes),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: _nextMes,
+          ),
           const SizedBox(width: 6),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           IconButton(icon: const Icon(Icons.add), onPressed: _novaDivida),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card(
-                    child: ListTile(
-                      title: const Text('Total pendente (mês)'),
-                      subtitle: Text(mesAno),
-                      trailing: Text(
-                        _money(_totalPendente),
-                        style: const TextStyle(fontWeight: FontWeight.w900),
+      body:
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Card(
+                      child: ListTile(
+                        title: const Text('Total pendente (mês)'),
+                        subtitle: Text(mesAno),
+                        trailing: Text(
+                          _money(_totalPendente),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (_itens.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 24),
-                      child: Center(child: Text('Nenhuma dívida neste mês.')),
-                    )
-                  else
-                    ..._itens.map(_item).toList(),
-                ],
+                    const SizedBox(height: 12),
+                    if (_itens.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24),
+                        child: Center(child: Text('Nenhuma dívida neste mês.')),
+                      )
+                    else
+                      ..._itens.map(_item).toList(),
+                  ],
+                ),
               ),
-            ),
+    );
+  }
+
+  Widget _statusChip(bool quitado) {
+    final cs = Theme.of(context).colorScheme;
+    final bg =
+        quitado
+            ? Colors.green.withOpacity(.15)
+            : cs.errorContainer.withOpacity(.65);
+    final fg = quitado ? Colors.green : cs.onErrorContainer;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: bg,
+      ),
+      child: Text(
+        quitado ? 'QUITADA' : 'ATIVA',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: fg),
+      ),
     );
   }
 
   Widget _item(DividaRow d) {
-    final cs = Theme.of(context).colorScheme;
+    final catText =
+        d.categoriaId == null
+            ? 'Sem categoria'
+            : (_catLabelById[d.categoriaId!] ?? '🏷️ Categoria');
 
-    final catText = d.categoriaId == null
-        ? 'Sem categoria'
-        : (_catLabelById[d.categoriaId!] ?? '🏷️ Categoria');
-
-    final fpText = d.formaPagamentoId == null
-        ? 'Sem forma de pagamento'
-        : (_fpLabelById[d.formaPagamentoId!] ?? 'Forma de pagamento');
+    final fpText =
+        d.formaPagamentoId == null
+            ? 'Sem forma de pagamento'
+            : (_fpLabelById[d.formaPagamentoId!] ?? 'Forma de pagamento');
 
     final dataDivText = _fmtDatePt(d.dataDividaIso);
-
-    final pend = d.parcelasPendentes;
-    final total = d.parcelasTotal;
-
-    final statusLabel = d.isQuitado ? 'QUITADA' : 'ATIVA';
-    final statusBg = d.isQuitado
-        ? Colors.green.withOpacity(.15)
-        : cs.errorContainer.withOpacity(.65);
-    final statusFg = d.isQuitado ? Colors.green : cs.onErrorContainer;
 
     return Card(
       child: ListTile(
@@ -225,79 +236,69 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
               style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
-            Text('Pendentes: $pend/$total',
-                style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                color: statusBg,
-              ),
-              child: Text(
-                statusLabel,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: statusFg,
-                ),
-              ),
+            Text(
+              'Pendentes: ${d.parcelasPendentes}/${d.parcelasTotal}',
+              style: const TextStyle(fontSize: 12),
             ),
+            const SizedBox(height: 6),
+            _statusChip(d.isQuitado),
           ],
         ),
-
-        // ✅ Tap = paga 1 parcela
         onTap: () async {
           await _repo.pagarUmaParcela(d.id);
           await _load();
         },
-
-        // ✅ Long press = opções rápidas
         onLongPress: () async {
           final action = await showModalBottomSheet<String>(
             context: context,
             showDragHandle: true,
-            builder: (ctx) => SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.check_circle_outline),
-                    title: const Text('Marcar como quitada'),
-                    onTap: () => Navigator.pop(ctx, 'quitado'),
+            builder:
+                (ctx) => SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.check_circle_outline),
+                        title: const Text('Marcar como quitada'),
+                        onTap: () => Navigator.pop(ctx, 'quitado'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.pause_circle_outline),
+                        title: const Text('Marcar como ativa'),
+                        onTap: () => Navigator.pop(ctx, 'ativo'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.undo),
+                        title: const Text('Desfazer 1 parcela paga'),
+                        onTap: () => Navigator.pop(ctx, 'undo'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.delete_outline),
+                        title: const Text('Excluir'),
+                        onTap: () => Navigator.pop(ctx, 'delete'),
+                      ),
+                    ],
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.pause_circle_outline),
-                    title: const Text('Marcar como ativa'),
-                    onTap: () => Navigator.pop(ctx, 'ativo'),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.undo),
-                    title: const Text('Desfazer 1 parcela paga'),
-                    onTap: () => Navigator.pop(ctx, 'undo'),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.delete_outline),
-                    title: const Text('Excluir'),
-                    onTap: () => Navigator.pop(ctx, 'delete'),
-                  ),
-                ],
-              ),
-            ),
+                ),
           );
 
           if (action == null) return;
 
           if (action == 'delete') {
+            final ok = await _confirmDelete('${d.credor} • ${d.descricao}');
+            if (!ok) return;
             await _repo.deletar(d.id);
             await _load();
+            _snack('Dívida removida.');
             return;
           }
+
           if (action == 'undo') {
             await _repo.desfazerPagamentoUmaParcela(d.id);
             await _load();
             return;
           }
+
           if (action == 'quitado' || action == 'ativo') {
             await _repo.atualizarStatus(d.id, action);
             await _load();
@@ -307,260 +308,385 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
     );
   }
 
+  Future<bool> _confirmDelete(String desc) async {
+    return (await showDialog<bool>(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: const Text('Excluir dívida?'),
+                content: Text('Deseja excluir "$desc"?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Excluir'),
+                  ),
+                ],
+              ),
+        )) ??
+        false;
+  }
+
   Future<void> _novaDivida() async {
-    final credorCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final valorParcelaCtrl = TextEditingController();
-    final parcelasTotalCtrl = TextEditingController(text: '1');
-
-    String status = 'ativo';
-    bool repetir1Mes = false;
-
-    // data inicial dentro do mês selecionado
-    final now = DateTime.now();
-    DateTime dataDivida = DateTime(
-      _ano,
-      _mes,
-      (now.year == _ano && now.month == _mes) ? now.day : 1,
-    );
-
-    int? categoriaId;
-    int? formaPagamentoId;
-
     final categorias = await InjectorV2.categoriasRepo.listarCategorias(
       tipo: 'variavel',
       apenasAtivas: true,
     );
+    final formas = await InjectorV2.formasPagamentoRepo.listarFormas(
+      apenasAtivas: true,
+    );
 
-    final formas =
-        await InjectorV2.formasPagamentoRepo.listarFormas(apenasAtivas: true);
-
-    if (!mounted) return;
-
-    await showModalBottomSheet(
+    final ok = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+      builder:
+          (_) => _DividaModal(
+            repo: _repo,
+            ano: _ano,
+            mes: _mes,
+            categorias: categorias,
+            formas: formas,
+            parseMoneyToCents: _parseMoneyToCents,
+            addMonths: _addMonths,
+          ),
+    );
 
-        return StatefulBuilder(
-          builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nova dívida',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 12),
+    if (ok == true) {
+      await _load();
+      _snack('Dívida salva!');
+    }
+  }
+}
 
-                  TextField(
-                    controller: credorCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Credor',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+/// =============================
+/// Modal separado
+/// =============================
+class _DividaModal extends StatefulWidget {
+  final DividasRepository repo;
+  final int ano;
+  final int mes;
+  final List<dynamic> categorias;
+  final List<dynamic> formas;
 
-                  TextField(
-                    controller: descCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Descrição da dívida',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+  final int Function(String) parseMoneyToCents;
+  final DateTime Function(DateTime, int) addMonths;
 
-                  DropdownButtonFormField<int?>(
-                    value: categoriaId,
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sem categoria'),
-                      ),
-                      ...categorias.map((c) {
-                        final label = '${c.emoji ?? '🏷️'} ${c.nome}';
-                        return DropdownMenuItem<int?>(
-                          value: c.id,
-                          child: Text(label),
-                        );
-                      }),
-                    ],
-                    onChanged: (v) => setModal(() => categoriaId = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Categoria',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+  const _DividaModal({
+    required this.repo,
+    required this.ano,
+    required this.mes,
+    required this.categorias,
+    required this.formas,
+    required this.parseMoneyToCents,
+    required this.addMonths,
+  });
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.calendar_month_outlined),
-                          label: Text(
-                              '${dataDivida.day}/${dataDivida.month}/${dataDivida.year}'),
-                          onPressed: () async {
-                            final d = await showDatePicker(
-                              context: ctx,
-                              initialDate: dataDivida,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-                            if (d != null) setModal(() => dataDivida = d);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: valorParcelaCtrl,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(
-                            labelText: 'Valor parcela (R\$)',
-                            border: OutlineInputBorder(),
-                            prefixText: 'R\$ ',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+  @override
+  State<_DividaModal> createState() => _DividaModalState();
+}
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: parcelasTotalCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Parcelas total',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: status,
-                          items: const [
-                            DropdownMenuItem(value: 'ativo', child: Text('Ativa')),
-                            DropdownMenuItem(value: 'quitado', child: Text('Quitada')),
-                            DropdownMenuItem(value: 'cancelado', child: Text('Cancelada')),
-                          ],
-                          onChanged: (v) => setModal(() => status = v ?? 'ativo'),
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+class _DividaModalState extends State<_DividaModal> {
+  final credorCtrl = TextEditingController();
+  final descCtrl = TextEditingController();
+  final valorParcelaCtrl = TextEditingController();
+  final parcelasTotalCtrl = TextEditingController(text: '1');
 
-                  DropdownButtonFormField<int?>(
-                    value: formaPagamentoId,
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sem forma de pagamento'),
-                      ),
-                      ...formas.map(
-                        (f) => DropdownMenuItem<int?>(
-                          value: f.id,
-                          child: Text(f.nome),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) => setModal(() => formaPagamentoId = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Forma de pagamento',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+  String status = 'ativo';
+  bool repetir1Mes = false;
+  int? categoriaId;
+  int? formaPagamentoId;
 
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: repetir1Mes,
-                    onChanged: (v) => setModal(() => repetir1Mes = v),
-                    title: const Text('Repetir 1 mês'),
-                    subtitle:
-                        const Text('Replica esta dívida para o próximo mês (simples)'),
-                  ),
+  late DateTime dataDivida;
+  bool _saving = false;
 
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.save),
-                      label: const Text('Salvar'),
-                      onPressed: () async {
-                        final credor = credorCtrl.text.trim();
-                        final desc = descCtrl.text.trim();
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    dataDivida = DateTime(
+      widget.ano,
+      widget.mes,
+      (now.year == widget.ano && now.month == widget.mes) ? now.day : 1,
+    );
+  }
 
-                        if (credor.isEmpty || desc.isEmpty) return;
+  @override
+  void dispose() {
+    credorCtrl.dispose();
+    descCtrl.dispose();
+    valorParcelaCtrl.dispose();
+    parcelasTotalCtrl.dispose();
+    super.dispose();
+  }
 
-                        final valorParcela =
-                            _parseMoneyToCents(valorParcelaCtrl.text);
-                        if (valorParcela <= 0) return;
+  String _dateLabel(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.year.toString().padLeft(4, '0')}';
 
-                        final parcelasTotal =
-                            int.tryParse(parcelasTotalCtrl.text.trim()) ?? 1;
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: dataDivida,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (d != null) setState(() => dataDivida = d);
+  }
 
-                        final pendentes =
-                            (status == 'quitado') ? 0 : parcelasTotal;
+  Future<void> _salvar() async {
+    if (_saving) return;
 
-                        await _repo.inserir(
-                          credor: credor,
-                          descricao: desc,
-                          valorParcelaCentavos: valorParcela,
-                          parcelasTotal: parcelasTotal,
-                          parcelasPendentes: pendentes,
-                          dataDivida: dataDivida,
-                          status: status,
-                          categoriaId: categoriaId,
-                          formaPagamentoId: formaPagamentoId,
-                          repetir1Mes: repetir1Mes,
-                        );
+    final credor = credorCtrl.text.trim();
+    final desc = descCtrl.text.trim();
+    if (credor.isEmpty || desc.isEmpty) return;
 
-                        if (ctx.mounted) Navigator.pop(ctx);
+    final valorParcela = widget.parseMoneyToCents(valorParcelaCtrl.text);
+    if (valorParcela <= 0) return;
 
-                        if (repetir1Mes) {
-                          final nextDate = _addMonths(dataDivida, 1);
+    final parcelasTotal = int.tryParse(parcelasTotalCtrl.text.trim()) ?? 1;
+    final pendentes = (status == 'quitado') ? 0 : parcelasTotal;
 
-                          await _repo.inserir(
-                            credor: credor,
-                            descricao: desc,
-                            valorParcelaCentavos: valorParcela,
-                            parcelasTotal: parcelasTotal,
-                            parcelasPendentes: (status == 'quitado') ? 0 : parcelasTotal,
-                            dataDivida: nextDate,
-                            status: status,
-                            categoriaId: categoriaId,
-                            formaPagamentoId: formaPagamentoId,
-                            repetir1Mes: false,
-                          );
-                        }
+    setState(() => _saving = true);
+    try {
+      await widget.repo.inserir(
+        credor: credor,
+        descricao: desc,
+        valorParcelaCentavos: valorParcela,
+        parcelasTotal: parcelasTotal,
+        parcelasPendentes: pendentes,
+        dataDivida: dataDivida,
+        status: status,
+        categoriaId: categoriaId,
+        formaPagamentoId: formaPagamentoId,
+        repetir1Mes: repetir1Mes,
+      );
 
-                        await _load();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+      if (repetir1Mes) {
+        final nextDate = widget.addMonths(dataDivida, 1);
+        await widget.repo.inserir(
+          credor: credor,
+          descricao: desc,
+          valorParcelaCentavos: valorParcela,
+          parcelasTotal: parcelasTotal,
+          parcelasPendentes: (status == 'quitado') ? 0 : parcelasTotal,
+          dataDivida: nextDate,
+          status: status,
+          categoriaId: categoriaId,
+          formaPagamentoId: formaPagamentoId,
+          repetir1Mes: false,
         );
-      },
+      }
+
+      if (mounted) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: viewInsets),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.90,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Nova dívida',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: credorCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Credor',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: descCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Descrição da dívida',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      DropdownButtonFormField<int?>(
+                        value: categoriaId,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem categoria'),
+                          ),
+                          ...widget.categorias.map((c) {
+                            return DropdownMenuItem<int?>(
+                              value: c.id,
+                              child: Text('${c.emoji ?? '🏷️'} ${c.nome}'),
+                            );
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => categoriaId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Categoria',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.calendar_month_outlined),
+                              label: Text(_dateLabel(dataDivida)),
+                              onPressed: _pickDate,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: valorParcelaCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Valor parcela (R\$)',
+                                border: OutlineInputBorder(),
+                                prefixText: 'R\$ ',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: parcelasTotalCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Parcelas total',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: status,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'ativo',
+                                  child: Text('Ativa'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'quitado',
+                                  child: Text('Quitada'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'cancelado',
+                                  child: Text('Cancelada'),
+                                ),
+                              ],
+                              onChanged:
+                                  (v) => setState(() => status = v ?? 'ativo'),
+                              decoration: const InputDecoration(
+                                labelText: 'Status',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      DropdownButtonFormField<int?>(
+                        value: formaPagamentoId,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem forma de pagamento'),
+                          ),
+                          ...widget.formas.map((f) {
+                            return DropdownMenuItem<int?>(
+                              value: f.id,
+                              child: Text(f.nome),
+                            );
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => formaPagamentoId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Forma de pagamento',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: repetir1Mes,
+                        onChanged: (v) => setState(() => repetir1Mes = v),
+                        title: const Text('Repetir 1 mês'),
+                        subtitle: const Text(
+                          'Replica esta dívida para o próximo mês',
+                        ),
+                      ),
+
+                      const SizedBox(height: 90),
+                    ],
+                  ),
+                ),
+              ),
+
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _salvar,
+                    icon:
+                        _saving
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.save),
+                    label: Text(_saving ? 'Salvando...' : 'Salvar'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
