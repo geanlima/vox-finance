@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_element, unnecessary_to_list_in_spreads
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unnecessary_to_list_in_spreads
 
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
@@ -31,15 +31,21 @@ class _DespesasVariaveisPageState extends State<DespesasVariaveisPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
+
     final itens = await _repo.listarNoMes(_ano, _mes);
     final total = await _repo.totalNoMes(_ano, _mes);
+
     if (!mounted) return;
     setState(() {
       _itens = itens;
       _total = total;
       _loading = false;
     });
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   String _money(int c) =>
@@ -51,23 +57,6 @@ class _DespesasVariaveisPageState extends State<DespesasVariaveisPage> {
     if (p.length != 3) return iso;
     return '${p[2]}/${p[1]}/${p[0]}';
   }
-
-  int _parseMoneyToCents(String input) {
-    var s = input.trim();
-    if (s.isEmpty) return 0;
-    s = s.replaceAll('R\$', '').replaceAll(' ', '');
-    if (s.contains(',')) {
-      s = s.replaceAll('.', '');
-      s = s.replaceAll(',', '.');
-    }
-    final v = double.tryParse(s) ?? 0.0;
-    return (v * 100).round();
-  }
-
-  String _toIso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -113,8 +102,28 @@ class _DespesasVariaveisPageState extends State<DespesasVariaveisPage> {
     );
   }
 
-  Widget _item(DespesaVariavelRow d) {
+  Widget _statusChip(bool isPago) {
     final cs = Theme.of(context).colorScheme;
+    final bg =
+        isPago
+            ? Colors.green.withOpacity(.15)
+            : cs.errorContainer.withOpacity(.65);
+    final fg = isPago ? Colors.green : cs.onErrorContainer;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: bg,
+      ),
+      child: Text(
+        isPago ? 'PAGO' : 'A PAGAR',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: fg),
+      ),
+    );
+  }
+
+  Widget _item(DespesaVariavelRow d) {
     final isPago = d.status == 'pago';
 
     final catText =
@@ -142,24 +151,7 @@ class _DespesasVariaveisPageState extends State<DespesasVariaveisPage> {
               style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                color:
-                    isPago
-                        ? Colors.green.withOpacity(.15)
-                        : cs.errorContainer.withOpacity(.65),
-              ),
-              child: Text(
-                isPago ? 'PAGO' : 'A PAGAR',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: isPago ? Colors.green : cs.onErrorContainer,
-                ),
-              ),
-            ),
+            _statusChip(isPago),
           ],
         ),
         onTap: () async {
@@ -167,23 +159,39 @@ class _DespesasVariaveisPageState extends State<DespesasVariaveisPage> {
           await _load();
         },
         onLongPress: () async {
+          final ok = await _confirmDelete(d.descricao);
+          if (!ok) return;
           await _repo.deletar(d.id);
           await _load();
+          _snack('Despesa removida.');
         },
       ),
     );
   }
 
+  Future<bool> _confirmDelete(String desc) async {
+    return (await showDialog<bool>(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: const Text('Excluir despesa?'),
+                content: Text('Deseja excluir "$desc"?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Excluir'),
+                  ),
+                ],
+              ),
+        )) ??
+        false;
+  }
+
   Future<void> _novaDespesa() async {
-    final descCtrl = TextEditingController();
-    final valorCtrl = TextEditingController();
-
-    String status = 'a_pagar';
-    DateTime data = DateTime.now();
-
-    int? categoriaId;
-    int? formaPagamentoId;
-
     // ✅ carrega listas reais, usando seus repos
     final categorias = await InjectorV2.categoriasRepo.listarCategorias(
       tipo: 'variavel',
@@ -196,167 +204,294 @@ class _DespesasVariaveisPageState extends State<DespesasVariaveisPage> {
 
     if (!mounted) return;
 
-    await showModalBottomSheet(
+    final ok = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+      builder:
+          (_) => _DespesaVariavelModal(
+            ano: _ano,
+            mes: _mes,
+            repo: _repo,
+            categorias: categorias,
+            formas: formas,
+          ),
+    );
 
-        return StatefulBuilder(
-          builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nova despesa variável',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 12),
+    if (ok == true) {
+      await _load();
+      _snack('Despesa variável salva!');
+    }
+  }
+}
 
-                  TextField(
-                    controller: descCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Descrição',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+/// =============================
+/// Modal separado (organização)
+/// =============================
+class _DespesaVariavelModal extends StatefulWidget {
+  final int ano;
+  final int mes;
+  final DespesasVariaveisRepository repo;
 
-                  DropdownButtonFormField<int?>(
-                    value: categoriaId,
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sem categoria'),
-                      ),
-                      ...categorias.map((c) {
-                        final label = '${c.emoji ?? '🏷️'} ${c.nome}';
-                        return DropdownMenuItem<int?>(
-                          value: c.id,
-                          child: Text(label),
-                        );
-                      }),
-                    ],
-                    onChanged: (v) => setModal(() => categoriaId = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Categoria',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+  final List<dynamic>
+  categorias; // repo retorna model (dynamic aqui pra não chutar tipo)
+  final List<dynamic> formas;
 
-                  Row(
+  const _DespesaVariavelModal({
+    required this.ano,
+    required this.mes,
+    required this.repo,
+    required this.categorias,
+    required this.formas,
+  });
+
+  @override
+  State<_DespesaVariavelModal> createState() => _DespesaVariavelModalState();
+}
+
+class _DespesaVariavelModalState extends State<_DespesaVariavelModal> {
+  final descCtrl = TextEditingController();
+  final valorCtrl = TextEditingController();
+
+  String status = 'a_pagar';
+  DateTime data = DateTime.now();
+
+  int? categoriaId;
+  int? formaPagamentoId;
+
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    descCtrl.dispose();
+    valorCtrl.dispose();
+    super.dispose();
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  int _parseMoneyToCents(String input) {
+    var s = input.trim();
+    if (s.isEmpty) return 0;
+    s = s.replaceAll('R\$', '').replaceAll(' ', '');
+    if (s.contains(',')) {
+      s = s.replaceAll('.', '');
+      s = s.replaceAll(',', '.');
+    }
+    final v = double.tryParse(s) ?? 0.0;
+    return (v * 100).round();
+  }
+
+  String _dateLabel() =>
+      '${data.day.toString().padLeft(2, '0')}/'
+      '${data.month.toString().padLeft(2, '0')}/'
+      '${data.year.toString().padLeft(4, '0')}';
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: data,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (d != null) setState(() => data = d);
+  }
+
+  Future<void> _salvar() async {
+    if (_saving) return;
+
+    final desc = descCtrl.text.trim();
+    if (desc.isEmpty) {
+      _snack('Informe a descrição.');
+      return;
+    }
+
+    final cents = _parseMoneyToCents(valorCtrl.text);
+    if (cents <= 0) {
+      _snack('Informe um valor válido.');
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await widget.repo.inserir(
+        descricao: desc,
+        valorCentavos: cents,
+        dataGasto: data,
+        status: status,
+        anoRef: widget.ano,
+        mesRef: widget.mes,
+        categoriaId: categoriaId,
+        formaPagamentoId: formaPagamentoId,
+      );
+
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) _snack('Erro ao salvar: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom; // teclado
+    final safeBottom =
+        MediaQuery.of(context).padding.bottom; // barra do sistema
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: viewInsets),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.80,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.calendar_month_outlined),
-                          label: Text('${data.day}/${data.month}/${data.year}'),
-                          onPressed: () async {
-                            final d = await showDatePicker(
-                              context: ctx,
-                              initialDate: data,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
+                      const Text(
+                        'Nova despesa variável',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: descCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Descrição',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      DropdownButtonFormField<int?>(
+                        value: categoriaId,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem categoria'),
+                          ),
+                          ...widget.categorias.map((c) {
+                            final label = '${c.emoji ?? '🏷️'} ${c.nome}';
+                            return DropdownMenuItem<int?>(
+                              value: c.id,
+                              child: Text(label),
                             );
-                            if (d != null) setModal(() => data = d);
-                          },
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => categoriaId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Categoria',
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: valorCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.calendar_month_outlined),
+                              label: Text(_dateLabel()),
+                              onPressed: _pickDate,
+                            ),
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Valor (R\$)',
-                            border: OutlineInputBorder(),
-                            prefixText: 'R\$ ',
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: valorCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Valor (R\$)',
+                                border: OutlineInputBorder(),
+                                prefixText: 'R\$ ',
+                              ),
+                            ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      DropdownButtonFormField<String>(
+                        value: status,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'a_pagar',
+                            child: Text('A pagar'),
+                          ),
+                          DropdownMenuItem(value: 'pago', child: Text('Pago')),
+                        ],
+                        onChanged:
+                            (v) => setState(() => status = v ?? 'a_pagar'),
+                        decoration: const InputDecoration(
+                          labelText: 'Status',
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                  DropdownButtonFormField<String>(
-                    value: status,
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'a_pagar',
-                        child: Text('A pagar'),
+                      DropdownButtonFormField<int?>(
+                        value: formaPagamentoId,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem forma de pagamento'),
+                          ),
+                          ...widget.formas.map((f) {
+                            return DropdownMenuItem<int?>(
+                              value: f.id,
+                              child: Text(f.nome),
+                            );
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => formaPagamentoId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Forma de pagamento',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                      DropdownMenuItem(value: 'pago', child: Text('Pago')),
+
+                      const SizedBox(height: 90), // espaço pro botão fixo
                     ],
-                    onChanged: (v) => setModal(() => status = v ?? 'a_pagar'),
-                    decoration: const InputDecoration(
-                      labelText: 'Status',
-                      border: OutlineInputBorder(),
-                    ),
                   ),
-                  const SizedBox(height: 12),
-
-                  DropdownButtonFormField<int?>(
-                    value: formaPagamentoId,
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sem forma de pagamento'),
-                      ),
-                      ...formas.map((f) {
-                        return DropdownMenuItem<int?>(
-                          value: f.id,
-                          child: Text(f.nome),
-                        );
-                      }),
-                    ],
-                    onChanged: (v) => setModal(() => formaPagamentoId = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Forma de pagamento',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.save),
-                      label: const Text('Salvar'),
-                      onPressed: () async {
-                        final desc = descCtrl.text.trim();
-                        if (desc.isEmpty) return;
-
-                        final cents = _parseMoneyToCents(valorCtrl.text);
-                        if (cents <= 0) return;
-
-                        await _repo.inserir(
-                          descricao: desc,
-                          valorCentavos: cents,
-                          dataGasto: data,
-                          status: status,
-                          anoRef: _ano,
-                          mesRef: _mes,
-                          categoriaId: categoriaId,
-                          formaPagamentoId: formaPagamentoId,
-                        );
-
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        await _load();
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
-            );
-          },
-        );
-      },
+
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _salvar,
+                    icon:
+                        _saving
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.save),
+                    label: Text(_saving ? 'Salvando...' : 'Salvar'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
