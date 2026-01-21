@@ -1,7 +1,10 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, curly_braces_in_flow_control_structures
+
+import 'dart:io' show Platform;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:vox_finance/ui/core/service/local_auth_service.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
@@ -9,11 +12,13 @@ import 'package:vox_finance/ui/core/service/backup_service.dart';
 import 'package:vox_finance/ui/core/service/session_service.dart';
 
 import 'package:vox_finance/ui/pages/auth/register_page.dart';
-import 'package:vox_finance/ui/pages/home/home_page.dart';
 import 'package:vox_finance/ui/widgets/google_signin_button.dart';
 
 class LoginUnificadoPage extends StatefulWidget {
-  const LoginUnificadoPage({super.key});
+  /// ✅ Gate usa isso para seguir o fluxo depois do login
+  final Future<void> Function()? onLoginOk;
+
+  const LoginUnificadoPage({super.key, this.onLoginOk});
 
   @override
   State<LoginUnificadoPage> createState() => _LoginUnificadoPageState();
@@ -28,59 +33,49 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
 
-  // ============================================================
-  // AUXILIARES
-  // ============================================================
-
   void _show(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
     );
   }
 
-  Future<void> _checkAlreadyLogged() async {
-    // ✅ Fonte de verdade do Firebase
-    final fbUser = FirebaseAuth.instance.currentUser;
-    if (fbUser != null) {
-      // garante sessão coerente
-      await SessionService.instance.saveLogin(
-        loginType: 'firebase',
-        uid: fbUser.uid,
-      );
+  Future<void> _goNextAfterLogin() async {
+    if (widget.onLoginOk != null) {
+      await widget.onLoginOk!(); // Gate decide a próxima tela
+    }
+  }
 
-      if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
-      return;
+  Future<void> _checkAlreadyLogged() async {
+    try {
+      final fbUser = FirebaseAuth.instance.currentUser;
+      if (fbUser != null) {
+        await SessionService.instance.saveLogin(
+          loginType: 'firebase',
+          uid: fbUser.uid,
+        );
+        await _goNextAfterLogin();
+        return;
+      }
+    } catch (e) {
+      debugPrint('checkAlreadyLogged(firebase) error: $e');
+      // se Firebase ainda não estiver pronto, ignora e segue
     }
 
-    // ✅ Fallback: login local persistido (se você marcou "Manter conectado")
     final logged = await SessionService.instance.isLoggedIn();
     final loginType = await SessionService.instance.getLoginType();
 
     if (logged && loginType == 'local') {
-      if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
-      return;
+      await _goNextAfterLogin();
     }
-
-    // não está logado -> fica na tela
   }
 
   void _toggleRememberMe(bool? value) {
-    setState(() {
-      _rememberMe = value ?? false;
-    });
+    setState(() => _rememberMe = value ?? false);
   }
 
-  // ============================================================
-  // LOGIN LOCAL
-  // ============================================================
-
   Future<void> _loginLocal() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -90,13 +85,11 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
       final senha = _senhaController.text.trim();
 
       final usuario = await LocalAuthService.instance.loginLocal(email, senha);
-
       if (usuario == null) {
         _show("Usuário ou senha inválidos.");
         return;
       }
 
-      // ✅ se marcou "Manter conectado", salva sessão. Se não marcou, limpa.
       if (_rememberMe) {
         await SessionService.instance.saveLogin(loginType: 'local');
       } else {
@@ -104,28 +97,50 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
       }
 
       _show("Login efetuado com sucesso.");
-
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
-    } catch (_) {
-      _show("Erro ao entrar.");
+      await _goNextAfterLogin();
+    } catch (e) {
+      debugPrint('loginLocal error: $e');
+      _show("Erro ao entrar: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ============================================================
-  // LOGIN GOOGLE
-  // ============================================================
+  String _humanFirebaseAuthError(FirebaseAuthException e) {
+    // pode ir melhorando conforme aparecerem novos códigos
+    switch (e.code) {
+      case 'wrong-password':
+        return 'Senha incorreta.';
+      case 'user-not-found':
+        return 'Usuário não encontrado.';
+      case 'invalid-email':
+        return 'E-mail inválido.';
+      case 'account-exists-with-different-credential':
+        return 'Este e-mail já existe com outro método de login.';
+      case 'popup-closed-by-user':
+        return 'Login cancelado.';
+      default:
+        return '${e.code} - ${e.message ?? "Erro de autenticação"}';
+    }
+  }
 
   Future<void> _loginGoogle() async {
+    if (_isLoading) return;
+
+    // ✅ Feedback claro no Desktop (normal dar problema)
+    // Se você quiser permitir no Windows depois, me diga e eu te passo o fluxo certo.
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      _show(
+        "Login com Google no desktop pode não funcionar nesse modelo.\n"
+        "Teste no Android (emulador/celular) ou use login local.",
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // ✅ dica: para sempre permitir escolher conta, faça signOut antes
+      // dica: garantir seletor de conta
       await FirebaseAuthService.instance.signOut();
 
       final user = await FirebaseAuthService.instance.signInWithGoogle();
@@ -135,32 +150,28 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
         return;
       }
 
-      // ✅ salva sessão do firebase com UID (essencial pro backup por usuário)
       await SessionService.instance.saveLogin(
         loginType: 'firebase',
         uid: user.uid,
       );
 
-      // ☁️ restaura o banco do usuário
       await BackupService.instance.restaurarTudo(user.uid);
 
       _show("Login com Google realizado.");
-
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
-    } catch (_) {
-      _show("Erro ao entrar com Google.");
+      await _goNextAfterLogin();
+    } on FirebaseAuthException catch (e) {
+      debugPrint('loginGoogle FirebaseAuthException: ${e.code} ${e.message}');
+      _show("Erro Google/Firebase: ${_humanFirebaseAuthError(e)}");
+    } on PlatformException catch (e) {
+      debugPrint('loginGoogle PlatformException: ${e.code} ${e.message}');
+      _show("Erro plataforma: ${e.code} - ${e.message}");
+    } catch (e) {
+      debugPrint('loginGoogle error: $e');
+      _show("Erro ao entrar com Google: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  // ============================================================
-  // CICLO DE VIDA
-  // ============================================================
 
   @override
   void initState() {
@@ -174,10 +185,6 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
     _senhaController.dispose();
     super.dispose();
   }
-
-  // ============================================================
-  // UI
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -206,28 +213,23 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'VoxFinance',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.headlineMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.6,
-                            fontSize: 32,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Entre com sua conta local ou Google',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white.withOpacity(0.85),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'VoxFinance',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
+                        fontSize: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Entre com sua conta local ou Google',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withOpacity(0.85),
+                      ),
                     ),
                     const SizedBox(height: 40),
                     Card(
@@ -244,7 +246,6 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
                         child: Form(
                           key: _formKey,
                           child: Column(
-                            mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
@@ -306,9 +307,8 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
                                   if (v == null || v.isEmpty) {
                                     return "Informe a senha";
                                   }
-                                  if (v.length < 4) {
+                                  if (v.length < 4)
                                     return "Mínimo 4 caracteres";
-                                  }
                                   return null;
                                 },
                               ),
@@ -323,7 +323,10 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
                                       children: [
                                         Checkbox(
                                           value: _rememberMe,
-                                          onChanged: _toggleRememberMe,
+                                          onChanged:
+                                              _isLoading
+                                                  ? null
+                                                  : _toggleRememberMe,
                                           visualDensity: VisualDensity.compact,
                                         ),
                                         Flexible(
@@ -343,11 +346,14 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: () {
-                                      _show(
-                                        'Recuperação de senha será implementada depois.',
-                                      );
-                                    },
+                                    onPressed:
+                                        _isLoading
+                                            ? null
+                                            : () {
+                                              _show(
+                                                'Recuperação de senha será implementada depois.',
+                                              );
+                                            },
                                     child: Text(
                                       'Esqueceu a senha?',
                                       style: theme.textTheme.bodySmall

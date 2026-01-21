@@ -31,15 +31,21 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
+
     final itens = await _repo.listarNoMes(_ano, _mes);
     final total = await _repo.totalNoMes(_ano, _mes);
+
     if (!mounted) return;
     setState(() {
       _itens = itens;
       _total = total;
       _loading = false;
     });
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   String _money(int c) =>
@@ -56,18 +62,6 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
-
-  int _parseMoneyToCents(String input) {
-    var s = input.trim();
-    if (s.isEmpty) return 0;
-    s = s.replaceAll('R\$', '').replaceAll(' ', '');
-    if (s.contains(',')) {
-      s = s.replaceAll('.', '');
-      s = s.replaceAll(',', '.');
-    }
-    final v = double.tryParse(s) ?? 0.0;
-    return (v * 100).round();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,8 +107,28 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     );
   }
 
-  Widget _item(ParcelaRow p) {
+  Widget _statusChip(bool isPago) {
     final cs = Theme.of(context).colorScheme;
+    final bg =
+        isPago
+            ? Colors.green.withOpacity(.15)
+            : cs.errorContainer.withOpacity(.65);
+    final fg = isPago ? Colors.green : cs.onErrorContainer;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: bg,
+      ),
+      child: Text(
+        isPago ? 'PAGO' : 'A PAGAR',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: fg),
+      ),
+    );
+  }
+
+  Widget _item(ParcelaRow p) {
     final isPago = p.status == 'pago';
 
     final catText =
@@ -124,12 +138,13 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
 
     final fpText =
         (p.fpNome == null || p.fpNome!.isEmpty) ? 'Sem forma' : p.fpNome!;
+
     final dataCompra = _fmtDatePt(p.dataCompraIso);
     final dataPg = _fmtDatePt(p.dataPagamentoIso);
 
     return Card(
       child: ListTile(
-        title: Text('${p.descricao}  •  ${p.numeroParcela}/${p.totalParcelas}'),
+        title: Text('${p.descricao} • ${p.numeroParcela}/${p.totalParcelas}'),
         subtitle: Text(
           '$catText • $fpText • Compra: $dataCompra • Pgto: $dataPg',
         ),
@@ -142,24 +157,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
               style: const TextStyle(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                color:
-                    isPago
-                        ? Colors.green.withOpacity(.15)
-                        : cs.errorContainer.withOpacity(.65),
-              ),
-              child: Text(
-                isPago ? 'PAGO' : 'A PAGAR',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: isPago ? Colors.green : cs.onErrorContainer,
-                ),
-              ),
-            ),
+            _statusChip(isPago),
           ],
         ),
         onTap: () async {
@@ -179,27 +177,39 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
           await _load();
         },
         onLongPress: () async {
+          final ok = await _confirmDelete(p.descricao);
+          if (!ok) return;
           await _repo.deletar(p.id);
           await _load();
+          _snack('Parcela removida.');
         },
       ),
     );
   }
 
+  Future<bool> _confirmDelete(String desc) async {
+    return (await showDialog<bool>(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: const Text('Excluir parcela?'),
+                content: Text('Deseja excluir "$desc"?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Excluir'),
+                  ),
+                ],
+              ),
+        )) ??
+        false;
+  }
+
   Future<void> _novaParcela() async {
-    final descCtrl = TextEditingController();
-    final valorCtrl = TextEditingController();
-    final numCtrl = TextEditingController(text: '1');
-    final totalCtrl = TextEditingController(text: '12');
-
-    DateTime dataCompra = DateTime.now();
-    String status = 'a_pagar';
-
-    int? categoriaId;
-    int? formaPagamentoId;
-    bool duplicar = false;
-
-    // ✅ usa seus métodos reais
     final categorias = await InjectorV2.categoriasRepo.listarCategorias(
       apenasAtivas: true,
     );
@@ -207,208 +217,326 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       apenasAtivas: true,
     );
 
-    await showModalBottomSheet(
+    final ok = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
-        return StatefulBuilder(
-          builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nova parcela',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 12),
+      builder:
+          (_) => _ParcelaModal(
+            repo: _repo,
+            ano: _ano,
+            mes: _mes,
+            categorias: categorias,
+            formas: formas,
+          ),
+    );
 
-                  TextField(
-                    controller: descCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Descrição',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+    if (ok == true) {
+      await _load();
+      _snack('Parcela salva!');
+    }
+  }
+}
 
-                  DropdownButtonFormField<int?>(
-                    value: categoriaId,
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sem categoria'),
-                      ),
-                      ...categorias.map((c) {
-                        final label = '${c.emoji ?? '🏷️'} ${c.nome}';
-                        return DropdownMenuItem<int?>(
-                          value: c.id,
-                          child: Text(label),
-                        );
-                      }),
-                    ],
-                    onChanged: (v) => setModal(() => categoriaId = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Categoria',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+/// =============================
+/// Modal separado
+/// =============================
+class _ParcelaModal extends StatefulWidget {
+  final ParcelamentosRepository repo;
+  final int ano;
+  final int mes;
+  final List<dynamic> categorias;
+  final List<dynamic> formas;
 
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.calendar_month_outlined),
-                    label: Text(
-                      'Data da compra: ${dataCompra.day}/${dataCompra.month}/${dataCompra.year}',
-                    ),
-                    onPressed: () async {
-                      final d = await showDatePicker(
-                        context: ctx,
-                        initialDate: dataCompra,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2100),
-                      );
-                      if (d != null) setModal(() => dataCompra = d);
-                    },
-                  ),
-                  const SizedBox(height: 12),
+  const _ParcelaModal({
+    required this.repo,
+    required this.ano,
+    required this.mes,
+    required this.categorias,
+    required this.formas,
+  });
 
-                  Row(
+  @override
+  State<_ParcelaModal> createState() => _ParcelaModalState();
+}
+
+class _ParcelaModalState extends State<_ParcelaModal> {
+  final descCtrl = TextEditingController();
+  final valorCtrl = TextEditingController();
+  final numCtrl = TextEditingController(text: '1');
+  final totalCtrl = TextEditingController(text: '12');
+
+  DateTime dataCompra = DateTime.now();
+  String status = 'a_pagar';
+
+  int? categoriaId;
+  int? formaPagamentoId;
+  bool duplicar = false;
+
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    descCtrl.dispose();
+    valorCtrl.dispose();
+    numCtrl.dispose();
+    totalCtrl.dispose();
+    super.dispose();
+  }
+
+  int _parseMoneyToCents(String input) {
+    var s = input.trim();
+    if (s.isEmpty) return 0;
+    s = s.replaceAll('R\$', '').replaceAll(' ', '');
+    if (s.contains(',')) {
+      s = s.replaceAll('.', '');
+      s = s.replaceAll(',', '.');
+    }
+    final v = double.tryParse(s) ?? 0.0;
+    return (v * 100).round();
+  }
+
+  String _dateLabel(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.year.toString().padLeft(4, '0')}';
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: dataCompra,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (d != null) setState(() => dataCompra = d);
+  }
+
+  Future<void> _salvar() async {
+    if (_saving) return;
+
+    final desc = descCtrl.text.trim();
+    if (desc.isEmpty) return;
+
+    final cents = _parseMoneyToCents(valorCtrl.text);
+    if (cents <= 0) return;
+
+    final num = int.tryParse(numCtrl.text.trim()) ?? 1;
+    final tot = int.tryParse(totalCtrl.text.trim()) ?? 1;
+
+    setState(() => _saving = true);
+    try {
+      await widget.repo.inserir(
+        dataCompraIso:
+            '${dataCompra.year}-${dataCompra.month.toString().padLeft(2, '0')}-${dataCompra.day.toString().padLeft(2, '0')}',
+        descricao: desc,
+        valorParcelaCentavos: cents,
+        status: status,
+        anoRef: widget.ano,
+        mesRef: widget.mes,
+        numeroParcela: num,
+        totalParcelas: tot,
+        categoriaId: categoriaId,
+        formaPagamentoId: formaPagamentoId,
+        duplicarParcela: duplicar,
+        dataPagamentoIso:
+            status == 'pago'
+                ? '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}'
+                : null,
+      );
+
+      if (mounted) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: viewInsets),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.85,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: numCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'N Parcela',
-                            border: OutlineInputBorder(),
-                          ),
+                      const Text(
+                        'Nova parcela',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: totalCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Total parcelas',
-                            border: OutlineInputBorder(),
-                          ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: descCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Descrição',
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                  TextField(
-                    controller: valorCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Valor da parcela (R\$)',
-                      border: OutlineInputBorder(),
-                      prefixText: 'R\$ ',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  DropdownButtonFormField<String>(
-                    value: status,
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'a_pagar',
-                        child: Text('A pagar'),
+                      DropdownButtonFormField<int?>(
+                        value: categoriaId,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem categoria'),
+                          ),
+                          ...widget.categorias.map((c) {
+                            return DropdownMenuItem<int?>(
+                              value: c.id,
+                              child: Text('${c.emoji ?? '🏷️'} ${c.nome}'),
+                            );
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => categoriaId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Categoria',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                      DropdownMenuItem(value: 'pago', child: Text('Pago')),
-                    ],
-                    onChanged: (v) => setModal(() => status = v ?? 'a_pagar'),
-                    decoration: const InputDecoration(
-                      labelText: 'Status',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                  DropdownButtonFormField<int?>(
-                    value: formaPagamentoId,
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sem forma de pagamento'),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        label: Text(
+                          'Data da compra: ${_dateLabel(dataCompra)}',
+                        ),
+                        onPressed: _pickDate,
                       ),
-                      ...formas.map((f) {
-                        return DropdownMenuItem<int?>(
-                          value: f.id,
-                          child: Text(f.nome),
-                        );
-                      }),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: numCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'N parcela',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: totalCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Total parcelas',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: valorCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Valor da parcela (R\$)',
+                          border: OutlineInputBorder(),
+                          prefixText: 'R\$ ',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      DropdownButtonFormField<String>(
+                        value: status,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'a_pagar',
+                            child: Text('A pagar'),
+                          ),
+                          DropdownMenuItem(value: 'pago', child: Text('Pago')),
+                        ],
+                        onChanged:
+                            (v) => setState(() => status = v ?? 'a_pagar'),
+                        decoration: const InputDecoration(
+                          labelText: 'Status',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      DropdownButtonFormField<int?>(
+                        value: formaPagamentoId,
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem forma de pagamento'),
+                          ),
+                          ...widget.formas.map((f) {
+                            return DropdownMenuItem<int?>(
+                              value: f.id,
+                              child: Text(f.nome),
+                            );
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => formaPagamentoId = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Forma de pagamento',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Duplicar parcela'),
+                        subtitle: const Text(
+                          'Criar próxima parcela automaticamente',
+                        ),
+                        value: duplicar,
+                        onChanged: (v) => setState(() => duplicar = v),
+                      ),
+
+                      const SizedBox(height: 90),
                     ],
-                    onChanged: (v) => setModal(() => formaPagamentoId = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Forma de pagamento',
-                      border: OutlineInputBorder(),
-                    ),
                   ),
-                  const SizedBox(height: 12),
-
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Duplicar parcela'),
-                    subtitle: const Text('Marca a opção do seu print (1/0).'),
-                    value: duplicar,
-                    onChanged: (v) => setModal(() => duplicar = v),
-                  ),
-
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.save),
-                      label: const Text('Salvar'),
-                      onPressed: () async {
-                        final desc = descCtrl.text.trim();
-                        if (desc.isEmpty) return;
-
-                        final cents = _parseMoneyToCents(valorCtrl.text);
-                        if (cents <= 0) return;
-
-                        final num = int.tryParse(numCtrl.text.trim()) ?? 1;
-                        final tot = int.tryParse(totalCtrl.text.trim()) ?? 1;
-
-                        final dataCompraIso = _toIso(dataCompra);
-                        final dataPagamentoIso =
-                            (status == 'pago') ? _toIso(DateTime.now()) : null;
-
-                        await _repo.inserir(
-                          dataCompraIso: dataCompraIso,
-                          descricao: desc,
-                          valorParcelaCentavos: cents,
-                          status: status,
-                          anoRef: _ano,
-                          mesRef: _mes,
-                          numeroParcela: num,
-                          totalParcelas: tot,
-                          categoriaId: categoriaId,
-                          formaPagamentoId: formaPagamentoId,
-                          duplicarParcela: duplicar,
-                          dataPagamentoIso: dataPagamentoIso,
-                        );
-
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        await _load();
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
-            );
-          },
-        );
-      },
+
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _salvar,
+                    icon:
+                        _saving
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.save),
+                    label: Text(_saving ? 'Salvando...' : 'Salvar'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
