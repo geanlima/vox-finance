@@ -346,6 +346,24 @@ class MigrationV2toV15 {
 }
 
     // =========================
+    // V28: despesas fixas (V1)
+    // =========================
+    if (oldVersion < 28) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS despesas_fixas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          descricao TEXT NOT NULL,
+          valor REAL NOT NULL,
+          dia_vencimento INTEGER NOT NULL,
+          forma_pagamento INTEGER,
+          ativo INTEGER NOT NULL DEFAULT 1,
+          gerar_automatico INTEGER NOT NULL DEFAULT 1,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -366,6 +384,18 @@ class MigrationV2toV15 {
     await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS despesas_fixas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        valor REAL NOT NULL,
+        dia_vencimento INTEGER NOT NULL,
+        forma_pagamento INTEGER,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        gerar_automatico INTEGER NOT NULL DEFAULT 1,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).

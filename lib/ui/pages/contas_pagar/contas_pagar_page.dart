@@ -14,6 +14,7 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
+import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 
 import 'conta_pagar_detalhe.dart';
 
@@ -65,6 +66,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   final LancamentoRepository _repositoryLancamento = LancamentoRepository();
   final CartaoCreditoRepository _cartaoLancamento = CartaoCreditoRepository();
   final ContaPagarRepository _contaPagarLancamento = ContaPagarRepository();
+  final DespesasFixasService _despesasFixasService = DespesasFixasService();
 
   List<ContaPagarResumo> _resumos = [];
   bool _mostrarSomentePendentes = true;
@@ -79,7 +81,12 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   void initState() {
     super.initState();
     _iaService = IAService(_isarService);
-    _carregar();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _despesasFixasService.gerarNoMesAtualSeNecessario();
+    await _carregar();
   }
 
   Future<String?> _obterDescricaoFormaPagamento(String grupoParcelas) async {

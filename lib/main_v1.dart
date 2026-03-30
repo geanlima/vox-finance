@@ -6,6 +6,7 @@ import 'package:vox_finance/ui/core/theme/app_theme.dart';
 
 import 'package:vox_finance/ui/pages/auth/auth_gate_page.dart';
 import 'package:vox_finance/ui/pages/auth/login_unificado_page.dart';
+import 'package:vox_finance/ui/pages/home/home_dashboard_page.dart';
 import 'package:vox_finance/ui/pages/home/home_page.dart';
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/renda/minha_renda_page.dart';
@@ -13,6 +14,7 @@ import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_mes_page.dart';
 import 'package:vox_finance/ui/pages/contas/contas_page.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/contas_pagar_page.dart';
+import 'package:vox_finance/ui/pages/despesas_fixas/despesas_fixas_page.dart';
 import 'package:vox_finance/ui/pages/grafico/graficos_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 
@@ -59,7 +61,8 @@ class VoxFinanceApp extends StatelessWidget {
     return {
       '/gate': (_) => const AuthGatePage(),
       '/login': (_) => const LoginUnificadoPage(),
-      '/': (_) => const HomePage(),
+      '/': (_) => const HomeDashboardPage(),
+      '/lancamentos': (_) => const HomePage(),
 
       '/categorias-personalizadas': (_) => const CategoriasPersonalizadasPage(),
       '/contas-pagar': (_) => const ContasPagarPage(),
@@ -70,8 +73,7 @@ class VoxFinanceApp extends StatelessWidget {
       '/minha-renda': (_) => const MinhaRendaPage(),
       '/backup-cloud': (_) => const BackupRestoreCloudPage(),
 
-      // ⚠️ NÃO importe página do v2 aqui (evita acoplamento/side effects)
-      // '/despesas-fixas': (_) => const DespesasFixasPage(),
+      '/despesas-fixas': (_) => const DespesasFixasPage(),
     };
   }
 }

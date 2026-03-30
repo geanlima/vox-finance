@@ -1,6 +1,8 @@
-// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+// ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
+
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/investimentos_repository.dart';
 
@@ -34,13 +36,13 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
   Color _tipoColor(int tipo) {
     switch (tipo) {
       case 1:
-        return Colors.blue; // renda fixa
+        return Colors.blue;
       case 2:
-        return Colors.purple; // renda variável
+        return Colors.purple;
       case 3:
-        return Colors.orange; // cripto
+        return Colors.orange;
       default:
-        return Colors.blueGrey; // outros
+        return Colors.blueGrey;
     }
   }
 
@@ -63,11 +65,12 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
 
-    final itens = await _repo.listar(); // se tiver filtro no repo, aplica aqui
+    final itens = await _repo.listar();
     if (!mounted) return;
 
     setState(() {
-      _itens = _somenteAtivos ? itens.where((e) => e.ativoFlag).toList() : itens;
+      _itens =
+          _somenteAtivos ? itens.where((e) => e.ativoFlag).toList() : itens;
       _loading = false;
     });
   }
@@ -77,26 +80,27 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _InvestimentoModal(
-        titulo: 'Novo investimento',
-        onSave: (r) async {
-          await _repo.inserir(
-            tipo: r.tipo,
-            instituicao: r.instituicao,
-            ativo: r.ativo,
-            categoria: r.categoria,
-            valorAplicado: r.valorAplicado,
-            quantidade: r.quantidade,
-            precoMedio: r.precoMedio,
-            dataAporte: r.dataAporte,
-            vencimento: r.vencimento,
-            rentabilidadeTipo: r.rentabilidadeTipo,
-            rentabilidadeValor: r.rentabilidadeValor,
-            observacoes: r.observacoes,
-            ativoFlag: r.ativoFlag,
-          );
-        },
-      ),
+      builder:
+          (_) => _InvestimentoModal(
+            titulo: 'Novo investimento',
+            onSave: (r) async {
+              await _repo.inserir(
+                tipo: r.tipo,
+                instituicao: r.instituicao,
+                ativo: r.ativo,
+                categoria: r.categoria,
+                valorAplicado: r.valorAplicado,
+                quantidade: r.quantidade,
+                precoMedio: r.precoMedio,
+                dataAporte: r.dataAporte,
+                vencimento: r.vencimento,
+                rentabilidadeTipo: r.rentabilidadeTipo,
+                rentabilidadeValor: r.rentabilidadeValor,
+                observacoes: r.observacoes,
+                ativoFlag: r.ativoFlag,
+              );
+            },
+          ),
     );
 
     if (ok == true) {
@@ -110,42 +114,43 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _InvestimentoModal(
-        titulo: 'Editar investimento',
-        initial: _InvestimentoEditResult(
-          tipo: item.tipo,
-          instituicao: item.instituicao,
-          ativo: item.ativo,
-          categoria: item.categoria,
-          valorAplicado: item.valorAplicado,
-          quantidade: item.quantidade,
-          precoMedio: item.precoMedio,
-          dataAporte: item.dataAporte,
-          vencimento: item.vencimento,
-          rentabilidadeTipo: item.rentabilidadeTipo,
-          rentabilidadeValor: item.rentabilidadeValor,
-          observacoes: item.observacoes,
-          ativoFlag: item.ativoFlag,
-        ),
-        onSave: (r) async {
-          await _repo.atualizar(
-            id: item.id,
-            tipo: r.tipo,
-            instituicao: r.instituicao,
-            ativo: r.ativo,
-            categoria: r.categoria,
-            valorAplicado: r.valorAplicado,
-            quantidade: r.quantidade,
-            precoMedio: r.precoMedio,
-            dataAporte: r.dataAporte,
-            vencimento: r.vencimento,
-            rentabilidadeTipo: r.rentabilidadeTipo,
-            rentabilidadeValor: r.rentabilidadeValor,
-            observacoes: r.observacoes,
-            ativoFlag: r.ativoFlag,
-          );
-        },
-      ),
+      builder:
+          (_) => _InvestimentoModal(
+            titulo: 'Editar investimento',
+            initial: _InvestimentoEditResult(
+              tipo: item.tipo,
+              instituicao: item.instituicao,
+              ativo: item.ativo,
+              categoria: item.categoria,
+              valorAplicado: item.valorAplicado,
+              quantidade: item.quantidade,
+              precoMedio: item.precoMedio,
+              dataAporte: item.dataAporte,
+              vencimento: item.vencimento,
+              rentabilidadeTipo: item.rentabilidadeTipo,
+              rentabilidadeValor: item.rentabilidadeValor,
+              observacoes: item.observacoes,
+              ativoFlag: item.ativoFlag,
+            ),
+            onSave: (r) async {
+              await _repo.atualizar(
+                id: item.id,
+                tipo: r.tipo,
+                instituicao: r.instituicao,
+                ativo: r.ativo,
+                categoria: r.categoria,
+                valorAplicado: r.valorAplicado,
+                quantidade: r.quantidade,
+                precoMedio: r.precoMedio,
+                dataAporte: r.dataAporte,
+                vencimento: r.vencimento,
+                rentabilidadeTipo: r.rentabilidadeTipo,
+                rentabilidadeValor: r.rentabilidadeValor,
+                observacoes: r.observacoes,
+                ativoFlag: r.ativoFlag,
+              );
+            },
+          ),
     );
 
     if (ok == true) {
@@ -157,20 +162,21 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
   Future<void> _remove(InvestimentoRow item) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Remover'),
-        content: Text('Remover "${item.ativo}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Remover'),
+            content: Text('Remover "${item.ativo}"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Remover'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Remover'),
-          ),
-        ],
-      ),
     );
 
     if (ok == true) {
@@ -178,6 +184,53 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
       await _load();
       _snack('Investimento removido.');
     }
+  }
+
+  String _buildSubtitle(InvestimentoRow item) {
+    final linhas = <String>[];
+
+    final inst = (item.instituicao ?? '').trim();
+    if (inst.isNotEmpty) linhas.add('Instituição: $inst');
+
+    linhas.add(
+      'Aplicado: ${_brl(item.valorAplicado)}  •  '
+      'Qtd: ${_num(item.quantidade)}  •  '
+      'PM: ${_brl(item.precoMedio)}',
+    );
+
+    final venc = (item.vencimento ?? '').trim();
+    if (venc.isNotEmpty) linhas.add('Vencimento: $venc');
+
+    return linhas.join('\n');
+  }
+
+  Widget _buildTrailing(InvestimentoRow item) {
+    final tipoColor = _tipoColor(item.tipo);
+    final statusColor = _statusColor(item.ativoFlag);
+
+    return SizedBox(
+      width: 110,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          direction: Axis.vertical,
+          spacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          children: [
+            _ChipTag(
+              text: _tipoLabel(item.tipo),
+              color: tipoColor,
+              dense: true,
+            ),
+            _ChipTag(
+              text: _statusLabel(item.ativoFlag),
+              color: statusColor,
+              dense: true,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -205,87 +258,68 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
             ),
           ),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _itens.isEmpty
-                    ? const Center(child: Text('Nenhum investimento cadastrado'))
-                    : ListView(
-                        padding: const EdgeInsets.all(12),
-                        children: _itens.map((item) {
-                          final tipoColor = _tipoColor(item.tipo);
-                          final statusColor = _statusColor(item.ativoFlag);
+            child:
+                _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _itens.isEmpty
+                    ? const Center(
+                      child: Text('Nenhum investimento cadastrado'),
+                    )
+                    : ListView.builder(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _itens.length,
+                      itemBuilder: (context, index) {
+                        final item = _itens[index];
 
-                          final sub1 = (item.instituicao ?? '').trim().isNotEmpty
-                              ? 'Instituição: ${item.instituicao}'
-                              : null;
-
-                          final sub2 = 'Aplicado: ${_brl(item.valorAplicado)}'
-                              '  •  Qtd: ${_num(item.quantidade)}'
-                              '  •  PM: ${_brl(item.precoMedio)}';
-
-                          final sub3 = (item.vencimento ?? '').trim().isNotEmpty
-                              ? 'Vencimento: ${item.vencimento}'
-                              : null;
-
-                          return Card(
+                        return Slidable(
+                          key: ValueKey(item.id),
+                          endActionPane: ActionPane(
+                            motion: const DrawerMotion(),
+                            extentRatio: 0.58,
+                            children: [
+                              SlidableAction(
+                                onPressed: (_) => _edit(item),
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                icon: Icons.edit,
+                                label: 'Editar',
+                              ),
+                              SlidableAction(
+                                onPressed: (_) => _remove(item),
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                icon: Icons.delete,
+                                label: 'Apagar',
+                              ),
+                            ],
+                          ),
+                          child: Card(
                             child: ListTile(
-                              isThreeLine: true,
+                              dense: true,
+                              visualDensity: const VisualDensity(vertical: -1),
                               title: Text(
                                 item.ativo,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(_tipoLabel(item.tipo)),
-                                  if (sub1 != null)
-                                    Text(sub1,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
-                                  Text(sub2,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis),
-                                  if (sub3 != null)
-                                    Text(sub3,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
-                                ],
+                              subtitle: Text(
+                                _buildSubtitle(item),
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              trailing: SizedBox(
-                                width: 120,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    _ChipTag(
-                                      text: _tipoLabel(item.tipo),
-                                      color: tipoColor,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    _ChipTag(
-                                      text: _statusLabel(item.ativoFlag),
-                                      color: statusColor,
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              trailing: _buildTrailing(item),
                               onTap: () => _edit(item),
-                              onLongPress: () => _remove(item),
                             ),
-                          );
-                        }).toList(),
-                      ),
+                          ),
+                        );
+                      },
+                    ),
           ),
         ],
       ),
     );
   }
 }
-
-/// =========================
-/// Modal (BottomSheet)
-/// =========================
 
 class _InvestimentoEditResult {
   final int tipo;
@@ -297,10 +331,10 @@ class _InvestimentoEditResult {
   final double quantidade;
   final double precoMedio;
 
-  final String? dataAporte; // yyyy-mm-dd
+  final String? dataAporte;
   final String? vencimento;
 
-  final int rentabilidadeTipo; // 0 nenhum / 1 % / 2 valor
+  final int rentabilidadeTipo;
   final double rentabilidadeValor;
 
   final String? observacoes;
@@ -326,13 +360,17 @@ class _InvestimentoEditResult {
 class _ChipTag extends StatelessWidget {
   final String text;
   final Color color;
+  final bool dense;
 
-  const _ChipTag({required this.text, required this.color});
+  const _ChipTag({required this.text, required this.color, this.dense = false});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? 9 : 10,
+        vertical: dense ? 3 : 5,
+      ),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
@@ -346,6 +384,7 @@ class _ChipTag extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w700,
           fontSize: 11,
+          height: 1.1, // ajuda a caber melhor
         ),
       ),
     );
@@ -472,7 +511,7 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
       child: Padding(
         padding: EdgeInsets.only(bottom: inset),
         child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.90,
+          height: MediaQuery.of(context).size.height * 0.90, // ✅ modal alto
           child: Column(
             children: [
               Expanded(
@@ -498,7 +537,10 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
                         ),
                         items: const [
                           DropdownMenuItem(value: 1, child: Text('Renda Fixa')),
-                          DropdownMenuItem(value: 2, child: Text('Renda Variável')),
+                          DropdownMenuItem(
+                            value: 2,
+                            child: Text('Renda Variável'),
+                          ),
                           DropdownMenuItem(value: 3, child: Text('Cripto')),
                           DropdownMenuItem(value: 4, child: Text('Outros')),
                         ],
@@ -538,7 +580,9 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
 
                       TextField(
                         controller: valorCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Valor aplicado',
                           hintText: 'Ex: 1500,00',
@@ -553,7 +597,9 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
                             child: TextField(
                               controller: qtdCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Quantidade',
                                 border: OutlineInputBorder(),
@@ -565,7 +611,9 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
                             child: TextField(
                               controller: pmCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Preço médio',
                                 border: OutlineInputBorder(),
@@ -611,16 +659,25 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
                         ),
                         items: const [
                           DropdownMenuItem(value: 0, child: Text('Nenhuma')),
-                          DropdownMenuItem(value: 1, child: Text('% (percentual)')),
-                          DropdownMenuItem(value: 2, child: Text('R\$ (valor)')),
+                          DropdownMenuItem(
+                            value: 1,
+                            child: Text('% (percentual)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 2,
+                            child: Text('R\$ (valor)'),
+                          ),
                         ],
-                        onChanged: (v) => setState(() => rentTipoLocal = v ?? 0),
+                        onChanged:
+                            (v) => setState(() => rentTipoLocal = v ?? 0),
                       ),
                       const SizedBox(height: 10),
 
                       TextField(
                         controller: rentCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Rentabilidade (valor)',
                           border: OutlineInputBorder(),
@@ -659,13 +716,14 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
                   height: 48,
                   child: FilledButton.icon(
                     onPressed: _saving ? null : _save,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save),
+                    icon:
+                        _saving
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.save),
                     label: Text(_saving ? 'Salvando...' : 'Salvar'),
                   ),
                 ),

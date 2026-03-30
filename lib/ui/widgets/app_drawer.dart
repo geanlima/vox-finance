@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_null_comparison
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_null_comparison, unused_element
 
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
+import 'package:vox_finance/ui/core/service/db_reset_service.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -65,9 +66,10 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   void _go(String route) {
-    if (Navigator.canPop(context)) Navigator.pop(context);
-    if (ModalRoute.of(context)?.settings.name == route) return;
-    Navigator.pushNamed(context, route);
+    final current = ModalRoute.of(context)?.settings.name;
+    if (Navigator.canPop(context)) Navigator.pop(context); // fecha drawer
+    if (current == route) return;
+    Navigator.pushReplacementNamed(context, route);
   }
 
   Future<void> _trocarVersao() async {
@@ -78,6 +80,34 @@ class _AppDrawerState extends State<AppDrawer> {
 
     // volta pro Gate pelo ROOT navigator
     await AppNavigator.goToGateClearingStack();
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<bool> _confirmReset(String label) async {
+    return (await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Confirmar reset do banco'),
+            content: Text(
+              'Isso vai apagar os dados do banco local ($label). Deseja continuar?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Zerar'),
+              ),
+            ],
+          ),
+        )) ??
+        false;
   }
 
   Future<void> _logout() async {
@@ -264,7 +294,12 @@ class _AppDrawerState extends State<AppDrawer> {
               ),
             ),
 
-            _menuItem(icon: Icons.table_rows, label: 'Lançamentos', route: '/'),
+            _menuItem(icon: Icons.home_outlined, label: 'Home', route: '/'),
+            _menuItem(
+              icon: Icons.table_rows,
+              label: 'Lançamentos',
+              route: '/lancamentos',
+            ),
             _menuItem(
               icon: Icons.calendar_month,
               label: 'Resumo do mês (Gastos)',
@@ -284,6 +319,11 @@ class _AppDrawerState extends State<AppDrawer> {
               icon: Icons.receipt_long,
               label: 'Contas a pagar',
               route: '/contas-pagar',
+            ),
+            _menuItem(
+              icon: Icons.home_work_outlined,
+              label: 'Despesas fixas',
+              route: '/despesas-fixas',
             ),
             _menuItem(
               icon: Icons.account_balance,
@@ -314,6 +354,44 @@ class _AppDrawerState extends State<AppDrawer> {
               leading: const Icon(Icons.swap_horiz_outlined),
               title: const Text('Trocar versão (V1/V2)'),
               onTap: _trocarVersao,
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.delete_forever),
+              title: const Text('Zerar banco V1'),
+              onTap: () async {
+                final ok = await _confirmReset('V1');
+                if (ok != true) return;
+                if (Navigator.canPop(context)) Navigator.pop(context);
+                try {
+                  await DbResetService.resetV1(reopen: true);
+                  if (!mounted) return;
+                  _snack('Banco V1 zerado.');
+                  await AppNavigator.goToGateClearingStack();
+                } catch (e) {
+                  if (!mounted) return;
+                  _snack('Erro ao zerar V1: $e');
+                }
+              },
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.delete_forever_outlined),
+              title: const Text('Zerar banco V2'),
+              onTap: () async {
+                final ok = await _confirmReset('V2');
+                if (ok != true) return;
+                if (Navigator.canPop(context)) Navigator.pop(context);
+                try {
+                  await DbResetService.resetV2(reinitInjector: false);
+                  if (!mounted) return;
+                  _snack('Banco V2 zerado.');
+                  await AppNavigator.goToGateClearingStack();
+                } catch (e) {
+                  if (!mounted) return;
+                  _snack('Erro ao zerar V2: $e');
+                }
+              },
             ),
 
             ListTile(
