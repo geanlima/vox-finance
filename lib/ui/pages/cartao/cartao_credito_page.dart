@@ -189,11 +189,14 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
 
             final mq = MediaQuery.of(modalContext);
             final viewInsets = mq.viewInsets; // teclado
+            final sysPadding = mq.padding; // barra/gestos
 
             return SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                padding: EdgeInsets.only(
+                  bottom: viewInsets.bottom + sysPadding.bottom,
+                ),
                 child: DraggableScrollableSheet(
                   initialChildSize: 0.9,
                   minChildSize: 0.5,

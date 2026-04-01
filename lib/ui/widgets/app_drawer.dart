@@ -13,7 +13,6 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
-import 'package:vox_finance/ui/core/service/db_reset_service.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -295,10 +294,26 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
 
             _menuItem(icon: Icons.home_outlined, label: 'Home', route: '/'),
-            _menuItem(
-              icon: Icons.table_rows,
-              label: 'Lançamentos',
-              route: '/lancamentos',
+            _treeGroup(
+              icon: Icons.swap_vert_circle_outlined,
+              title: 'Movimentação',
+              children: [
+                _subItem(
+                  icon: Icons.table_rows,
+                  title: 'Lançamentos',
+                  route: '/lancamentos',
+                ),
+                _subItem(
+                  icon: Icons.home_work_outlined,
+                  title: 'Despesas fixas',
+                  route: '/despesas-fixas',
+                ),
+                _subItem(
+                  icon: Icons.receipt_long,
+                  title: 'Contas a pagar',
+                  route: '/contas-pagar',
+                ),
+              ],
             ),
             _menuItem(
               icon: Icons.calendar_month,
@@ -310,88 +325,49 @@ class _AppDrawerState extends State<AppDrawer> {
               label: 'Comparativo de meses',
               route: '/comparativo-mes',
             ),
-            _menuItem(
-              icon: Icons.credit_card,
-              label: 'Cartão',
-              route: '/cartoes-credito',
+            _treeGroup(
+              icon: Icons.trending_up,
+              title: 'Investimento',
+              children: [
+                _subItem(
+                  icon: Icons.auto_graph,
+                  title: 'Bluminers',
+                  route: '/investimentos/bluminers',
+                ),
+              ],
             ),
-            _menuItem(
-              icon: Icons.receipt_long,
-              label: 'Contas a pagar',
-              route: '/contas-pagar',
-            ),
-            _menuItem(
-              icon: Icons.home_work_outlined,
-              label: 'Despesas fixas',
-              route: '/despesas-fixas',
-            ),
-            _menuItem(
-              icon: Icons.account_balance,
-              label: 'Contas bancárias',
-              route: '/contas-bancarias',
-            ),
-            _menuItem(
-              icon: Icons.savings,
-              label: 'Minha renda',
-              route: '/minha-renda',
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.category),
-              title: const Text('Minhas categorias'),
-              onTap: () {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                Navigator.pushNamed(
-                  context,
-                  CategoriasPersonalizadasPage.routeName,
-                );
-              },
-            ),
-
-            const Divider(height: 24),
-
-            ListTile(
-              leading: const Icon(Icons.swap_horiz_outlined),
-              title: const Text('Trocar versão (V1/V2)'),
-              onTap: _trocarVersao,
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.delete_forever),
-              title: const Text('Zerar banco V1'),
-              onTap: () async {
-                final ok = await _confirmReset('V1');
-                if (ok != true) return;
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                try {
-                  await DbResetService.resetV1(reopen: true);
-                  if (!mounted) return;
-                  _snack('Banco V1 zerado.');
-                  await AppNavigator.goToGateClearingStack();
-                } catch (e) {
-                  if (!mounted) return;
-                  _snack('Erro ao zerar V1: $e');
-                }
-              },
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.delete_forever_outlined),
-              title: const Text('Zerar banco V2'),
-              onTap: () async {
-                final ok = await _confirmReset('V2');
-                if (ok != true) return;
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                try {
-                  await DbResetService.resetV2(reinitInjector: false);
-                  if (!mounted) return;
-                  _snack('Banco V2 zerado.');
-                  await AppNavigator.goToGateClearingStack();
-                } catch (e) {
-                  if (!mounted) return;
-                  _snack('Erro ao zerar V2: $e');
-                }
-              },
+            _treeGroup(
+              icon: Icons.how_to_reg,
+              title: 'Cadastro',
+              children: [
+                _subItem(
+                  icon: Icons.account_balance,
+                  title: 'Contas bancárias',
+                  route: '/contas-bancarias',
+                ),
+                _subItem(
+                  icon: Icons.credit_card,
+                  title: 'Cartão',
+                  route: '/cartoes-credito',
+                ),
+                _subItem(
+                  icon: Icons.savings,
+                  title: 'Minha renda',
+                  route: '/minha-renda',
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.category, size: 20),
+                  title: const Text('Minhas categorias'),
+                  onTap: () {
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                    Navigator.pushNamed(
+                      context,
+                      CategoriasPersonalizadasPage.routeName,
+                    );
+                  },
+                ),
+              ],
             ),
 
             ListTile(

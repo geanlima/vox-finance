@@ -1,3 +1,5 @@
+// ignore_for_file: control_flow_in_finally
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -26,6 +28,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
 
   bool _speechDisponivel = false;
   bool _loading = true;
+  String? _error;
   List<ContaPagar> _vencimentosHoje = const [];
   List<ContaPagar> _vencidos = const [];
 
@@ -36,47 +39,72 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   }
 
   Future<void> _init() async {
-    _speechDisponivel = await _speech.initialize();
+    try {
+      _speechDisponivel = await _speech
+          .initialize()
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      _speechDisponivel = false;
+    }
+
+    if (!mounted) return;
+    setState(() {});
+
     await _load();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-
-    // Garante que as despesas fixas automáticas do mês foram geradas
-    // antes de montar as notificações de vencimento.
-    await _despesasFixasService.gerarNoMesAtualSeNecessario();
-
-    final agora = DateTime.now();
-    final inicioHoje = DateTime(agora.year, agora.month, agora.day);
-    final fimHoje = DateTime(
-      agora.year,
-      agora.month,
-      agora.day,
-      23,
-      59,
-      59,
-      999,
-    );
-
-    final pendentes = await _contaRepo.getPendentes();
-    final deHoje =
-        pendentes
-            .where(
-              (c) =>
-                  !c.dataVencimento.isBefore(inicioHoje) &&
-                  !c.dataVencimento.isAfter(fimHoje),
-            )
-            .toList();
-    final vencidos =
-        pendentes.where((c) => c.dataVencimento.isBefore(inicioHoje)).toList();
-
     if (!mounted) return;
     setState(() {
-      _vencimentosHoje = deHoje;
-      _vencidos = vencidos;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      // Garante que as despesas fixas automáticas do mês foram geradas
+      // antes de montar as notificações de vencimento.
+      await _despesasFixasService.gerarNoMesAtualSeNecessario();
+
+      final agora = DateTime.now();
+      final inicioHoje = DateTime(agora.year, agora.month, agora.day);
+      final fimHoje = DateTime(
+        agora.year,
+        agora.month,
+        agora.day,
+        23,
+        59,
+        59,
+        999,
+      );
+
+      final pendentes = await _contaRepo.getPendentes();
+      final deHoje =
+          pendentes
+              .where(
+                (c) =>
+                    !c.dataVencimento.isBefore(inicioHoje) &&
+                    !c.dataVencimento.isAfter(fimHoje),
+              )
+              .toList();
+      final vencidos =
+          pendentes.where((c) => c.dataVencimento.isBefore(inicioHoje)).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _vencimentosHoje = deHoje;
+        _vencidos = vencidos;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _vencimentosHoje = const [];
+        _vencidos = const [];
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _onMicPressed() async {
@@ -162,6 +190,33 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       body:
           _loading
               ? const Center(child: CircularProgressIndicator())
+              : (_error != null)
+              ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Não consegui carregar a Home.',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Tentar novamente'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
               : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [

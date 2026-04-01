@@ -9,7 +9,6 @@ import 'package:vox_finance/main_v1.dart' show VoxFinanceApp;
 
 import 'package:vox_finance/v2/app/di/injector.dart' as v2;
 import 'package:vox_finance/v2/app/vox_finance_v2_app.dart';
-import 'package:vox_finance/v2/presentation/pages/gate/escolher_versao_page.dart';
 import 'package:vox_finance/ui/core/service/app_version_service.dart';
 
 class AppGatePage extends StatefulWidget {
@@ -47,8 +46,13 @@ class _AppGatePageState extends State<AppGatePage> {
     setState(() => _loading = true);
 
     final logged = await _checkLogged();
-    final version =
-        logged ? await AppVersionService.getSelectedVersion() : null;
+    var version = logged ? await AppVersionService.getSelectedVersion() : null;
+
+    // ✅ padrão: entra direto na V1 (Home) sem pedir escolha
+    if (logged && version == null) {
+      version = 'v1';
+      await AppVersionService.setSelectedVersion('v1');
+    }
 
     if (!mounted) return;
     setState(() {
@@ -77,12 +81,6 @@ class _AppGatePageState extends State<AppGatePage> {
     await _boot();
   }
 
-  Future<void> _onEscolheuVersao(String v) async {
-    await AppVersionService.setSelectedVersion(v);
-    if (!mounted) return;
-    setState(() => _version = v);
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -94,10 +92,8 @@ class _AppGatePageState extends State<AppGatePage> {
       return LoginUnificadoPage(onLoginOk: _onLoginOk);
     }
 
-    // 2) logado e sem versão => escolher
-    if (_version == null) {
-      return EscolherVersaoPage(onEscolheu: _onEscolheuVersao);
-    }
+    // 2) logado e sem versão => por segurança, entra na V1
+    if (_version == null) return const _V1Entry();
 
     // 3) abre app escolhido
     if (_version == 'v2') return const _V2Entry();

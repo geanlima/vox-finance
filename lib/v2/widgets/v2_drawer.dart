@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vox_finance/v2/app/router/app_router.dart';
 import 'package:vox_finance/ui/core/nav/app_navigator.dart';
 import 'package:vox_finance/ui/core/service/app_version_service.dart';
-import 'package:vox_finance/ui/core/service/db_reset_service.dart';
 
 class V2Drawer extends StatefulWidget {
   const V2Drawer({super.key});
@@ -19,36 +18,6 @@ class V2Drawer extends StatefulWidget {
 class _V2DrawerState extends State<V2Drawer> {
   String _nome = 'VoxFinance V2';
   String _email = '';
-
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  Future<bool> _confirmReset(String label) async {
-    return (await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Confirmar reset do banco'),
-            content: Text(
-              'Isso vai apagar os dados do banco local ($label). Deseja continuar?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    Navigator.of(dialogContext).pop(false),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () =>
-                    Navigator.of(dialogContext).pop(true),
-                child: const Text('Zerar'),
-              ),
-            ],
-          ),
-        )) ??
-        false;
-  }
 
   @override
   void initState() {
@@ -91,12 +60,6 @@ class _V2DrawerState extends State<V2Drawer> {
     if (Navigator.canPop(context)) Navigator.pop(context); // fecha drawer
     if (current == route) return;
     Navigator.pushReplacementNamed(context, route);
-  }
-
-  Future<void> _trocarVersao(BuildContext context) async {
-    if (Navigator.canPop(context)) Navigator.pop(context);
-    await AppVersionService.clearSelectedVersion();
-    await AppNavigator.goToGateClearingStack();
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -350,61 +313,6 @@ class _V2DrawerState extends State<V2Drawer> {
                     icon: Icons.settings_outlined,
                     title: '⚙️ Configurações',
                     children: [
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.swap_horiz_outlined,
-                          size: 20,
-                        ),
-                        title: const Text('🔁 Trocar versão (V1/V2)'),
-                        onTap: () => _trocarVersao(context),
-                      ),
-
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.delete_forever,
-                          size: 20,
-                        ),
-                        title: const Text('Zerar banco V1'),
-                        onTap: () async {
-                          final ok = await _confirmReset('V1');
-                          if (ok != true) return;
-                          if (Navigator.canPop(context)) Navigator.pop(context);
-                          try {
-                            await DbResetService.resetV1(reopen: true);
-                            if (!mounted) return;
-                            _snack('Banco V1 zerado.');
-                            await AppNavigator.goToGateClearingStack();
-                          } catch (e) {
-                            if (!mounted) return;
-                            _snack('Erro ao zerar V1: $e');
-                          }
-                        },
-                      ),
-
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.delete_forever_outlined,
-                          size: 20,
-                        ),
-                        title: const Text('Zerar banco V2'),
-                        onTap: () async {
-                          final ok = await _confirmReset('V2');
-                          if (ok != true) return;
-                          if (Navigator.canPop(context)) Navigator.pop(context);
-                          try {
-                            await DbResetService.resetV2(reinitInjector: true);
-                            if (!mounted) return;
-                            _snack('Banco V2 zerado.');
-                            await AppNavigator.goToGateClearingStack();
-                          } catch (e) {
-                            if (!mounted) return;
-                            _snack('Erro ao zerar V2: $e');
-                          }
-                        },
-                      ),
                     ],
                   ),
 

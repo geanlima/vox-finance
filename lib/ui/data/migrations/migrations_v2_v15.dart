@@ -364,6 +364,78 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V29: investimentos (Bluminers)
+    // =========================
+    if (oldVersion < 29) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_bluminers_config (
+          id INTEGER PRIMARY KEY,
+          saldo_inicial REAL NOT NULL DEFAULT 0,
+          saldo_inicial_disponivel REAL NOT NULL DEFAULT 0,
+          aporte_mensal REAL NOT NULL DEFAULT 0,
+          meta REAL,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_bluminers_movimentos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          data INTEGER NOT NULL,
+          tipo INTEGER NOT NULL,
+          carteira INTEGER NOT NULL DEFAULT 0,
+          valor REAL NOT NULL,
+          observacao TEXT,
+          origem TEXT,
+          id_origem INTEGER,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_bluminers_rentabilidade (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          data INTEGER NOT NULL,
+          percentual REAL NOT NULL,
+          rendimento_valor REAL NOT NULL DEFAULT 0,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+
+      await db.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_data
+        ON investimento_bluminers_rentabilidade (data);
+      ''');
+    }
+
+    // =========================
+    // V30: Bluminers (2 saldos: investido x disponível)
+    // =========================
+    if (oldVersion < 30) {
+      await _addColumnSafe(
+        db,
+        'investimento_bluminers_config',
+        'saldo_inicial_disponivel',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_bluminers_movimentos',
+        'carteira',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+
+      // carteira=1 para movimentos antigos de saque (tipo=1) e rendimento (tipo=2)
+      try {
+        await db.execute('''
+          UPDATE investimento_bluminers_movimentos
+          SET carteira = 1
+          WHERE tipo IN (1, 2);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -396,6 +468,59 @@ class MigrationV2toV15 {
         criado_em INTEGER NOT NULL
       );
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_bluminers_config (
+        id INTEGER PRIMARY KEY,
+        saldo_inicial REAL NOT NULL DEFAULT 0,
+        saldo_inicial_disponivel REAL NOT NULL DEFAULT 0,
+        aporte_mensal REAL NOT NULL DEFAULT 0,
+        meta REAL,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_bluminers_movimentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data INTEGER NOT NULL,
+        tipo INTEGER NOT NULL,
+        carteira INTEGER NOT NULL DEFAULT 0,
+        valor REAL NOT NULL,
+        observacao TEXT,
+        origem TEXT,
+        id_origem INTEGER,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_bluminers_rentabilidade (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data INTEGER NOT NULL,
+        percentual REAL NOT NULL,
+        rendimento_valor REAL NOT NULL DEFAULT 0,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_data
+      ON investimento_bluminers_rentabilidade (data);
+    ''');
+
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_config',
+      'saldo_inicial_disponivel',
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_movimentos',
+      'carteira',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).
@@ -521,6 +646,61 @@ class MigrationV2toV15 {
 
     // 🔹 POPULA CATEGORIAS PADRÃO (apenas se tabela estiver vazia)
     await _seedCategoriasPadrao(db);
+
+    // INVESTIMENTOS - BLUMINERS
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_bluminers_config (
+        id INTEGER PRIMARY KEY,
+        saldo_inicial REAL NOT NULL DEFAULT 0,
+        saldo_inicial_disponivel REAL NOT NULL DEFAULT 0,
+        aporte_mensal REAL NOT NULL DEFAULT 0,
+        meta REAL,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_config',
+      'saldo_inicial_disponivel',
+      'REAL NOT NULL DEFAULT 0',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_bluminers_movimentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data INTEGER NOT NULL,
+        tipo INTEGER NOT NULL,
+        carteira INTEGER NOT NULL DEFAULT 0,
+        valor REAL NOT NULL,
+        observacao TEXT,
+        origem TEXT,
+        id_origem INTEGER,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_movimentos',
+      'carteira',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_bluminers_rentabilidade (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data INTEGER NOT NULL,
+        percentual REAL NOT NULL,
+        rendimento_valor REAL NOT NULL DEFAULT 0,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_data
+      ON investimento_bluminers_rentabilidade (data);
+    ''');
   }
 
   /// Helper genérico para "ALTER TABLE ADD COLUMN" com segurança.

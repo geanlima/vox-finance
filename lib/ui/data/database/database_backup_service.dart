@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 import 'database_config.dart';
 import '../service/db_service.dart';
@@ -30,8 +31,22 @@ class DatabaseBackupService {
         .replaceAll('.', '-');
 
     final backupPath = p.join(dir.path, 'vox_finance_backup_$ts.db');
+    File backupFile;
+    try {
+      // ✅ Garante que tudo (inclusive WAL) vá para um único arquivo.
+      final db = await openDatabase(dbFile.path);
+      try {
+        await db.execute('PRAGMA wal_checkpoint(FULL);');
+      } catch (_) {}
 
-    final backupFile = await dbFile.copy(backupPath);
+      // `VACUUM INTO` cria um backup consistente em um arquivo novo.
+      await db.execute("VACUUM INTO '$backupPath';");
+      await db.close();
+      backupFile = File(backupPath);
+    } catch (_) {
+      // fallback: cópia simples (pode perder alterações se estiver em WAL)
+      backupFile = await dbFile.copy(backupPath);
+    }
 
     await DbService.instance.reopen();
     return backupFile;
