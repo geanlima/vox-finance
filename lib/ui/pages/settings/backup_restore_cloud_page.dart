@@ -7,6 +7,7 @@ import 'package:vox_finance/ui/core/nav/app_navigator.dart';
 import 'package:vox_finance/ui/core/service/app_version_service.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 // ✅ ajuste o path conforme seu projeto
 import 'package:vox_finance/ui/data/service/backup/backup_manager.dart';
@@ -255,6 +256,7 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
           ),
         ],
       ),
+      drawer: const AppDrawer(currentRoute: '/backup-cloud'),
       body: AbsorbPointer(
         absorbing: _loading,
         child: ListView(

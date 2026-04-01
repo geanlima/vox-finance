@@ -53,12 +53,13 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
+            final mq = MediaQuery.of(ctx);
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 16,
                 8,
                 16,
-                16 + MediaQuery.of(ctx).viewInsets.bottom,
+                28 + mq.viewInsets.bottom + mq.viewPadding.bottom,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
