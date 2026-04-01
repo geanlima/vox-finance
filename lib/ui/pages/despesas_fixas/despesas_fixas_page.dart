@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/conta_pagar_pagamento_service.dart';
 import 'package:vox_finance/ui/data/models/despesa_fixa.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/despesas_fixas/despesa_fixa_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
@@ -15,7 +17,10 @@ class DespesasFixasPage extends StatefulWidget {
 
 class _DespesasFixasPageState extends State<DespesasFixasPage> {
   final _repo = DespesaFixaRepository();
+  final _pagamentoService = ContaPagarPagamentoService();
+  final _contaPagarRepo = ContaPagarRepository();
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
+  final _date = DateFormat('dd/MM/yyyy');
 
   bool _loading = true;
   List<DespesaFixa> _itens = const [];
@@ -54,16 +59,18 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
         return StatefulBuilder(
           builder: (ctx, setModal) {
             final mq = MediaQuery.of(ctx);
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                8,
-                16,
-                28 + mq.viewInsets.bottom + mq.viewPadding.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  28 + mq.viewInsets.bottom + mq.viewPadding.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   TextField(
                     controller: descCtrl,
                     decoration: const InputDecoration(
@@ -129,7 +136,12 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                           valorCtrl.text.trim().replaceAll('.', '').replaceAll(',', '.'),
                         );
                         final dia = int.tryParse(diaCtrl.text.trim());
-                        if (desc.isEmpty || valor == null || valor <= 0 || dia == null || dia < 1 || dia > 31) {
+                        if (desc.isEmpty ||
+                            valor == null ||
+                            valor < 0 ||
+                            dia == null ||
+                            dia < 1 ||
+                            dia > 31) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             const SnackBar(content: Text('Preencha descrição, valor e dia válidos.')),
                           );
@@ -153,7 +165,8 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                       child: const Text('Salvar'),
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -188,6 +201,125 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
     await _load();
   }
 
+  Future<void> _pagarMes(DespesaFixa fixa) async {
+    if (fixa.id == null) return;
+    final now = DateTime.now();
+    final ref = DateTime(now.year, now.month, 1);
+
+    final vencDia = fixa.diaVencimento.clamp(
+      1,
+      DateTime(now.year, now.month + 1, 0).day,
+    );
+    final venc = DateTime(now.year, now.month, vencDia);
+
+    final bool valorVariavel = fixa.valor == 0;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Marcar como pago?'),
+          content: Text(
+            '${fixa.descricao}\n'
+            'Venc: ${_date.format(venc)}\n'
+            'Valor: ${valorVariavel ? 'Variável' : _money.format(fixa.valor)}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Pagar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true) return;
+
+    // garantir que a conta do mês exista (auto mensal)
+    await _repo.gerarPendenciasDoMes(ref);
+    final conta = await _repo.getContaDoMesParaFixa(
+      idDespesaFixa: fixa.id!,
+      referencia: ref,
+    );
+
+    if (!mounted) return;
+    if (conta == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não encontrei a conta deste mês.')),
+      );
+      return;
+    }
+
+    if (conta.pago == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Este mês já está como pago.')),
+      );
+      return;
+    }
+
+    double valorPago = conta.valor;
+    if (valorVariavel) {
+      final ctrl = TextEditingController();
+      final v = await showDialog<double?>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Informe o valor pago'),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Valor pago',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final parsed = double.tryParse(
+                    ctrl.text.trim().replaceAll('.', '').replaceAll(',', '.'),
+                  );
+                  if (parsed == null || parsed <= 0) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Informe um valor válido.')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx, parsed);
+                },
+                child: const Text('Confirmar'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (v == null) return;
+      valorPago = v;
+    }
+
+    if (conta.id != null && valorPago != conta.valor) {
+      await _contaPagarRepo.atualizarValorParcela(conta.id!, valorPago);
+      conta.valor = valorPago;
+    }
+
+    await _pagamentoService.registrarPagamento(conta);
+    await _load();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pago com sucesso. Lançamento gerado.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,6 +348,22 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                 final danger = Colors.red.shade400;
                 return Slidable(
                   key: ValueKey(d.id ?? i),
+                  startActionPane: ActionPane(
+                    motion: const DrawerMotion(),
+                    extentRatio: 0.22,
+                    children: [
+                      CustomSlidableAction(
+                        onPressed: (_) => _pagarMes(d),
+                        backgroundColor: Colors.green.shade600,
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Icon(
+                          Icons.check_circle,
+                          size: 28,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                   endActionPane: ActionPane(
                     motion: const DrawerMotion(),
                     extentRatio: 0.35,

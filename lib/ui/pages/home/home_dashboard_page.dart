@@ -8,6 +8,8 @@ import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+import 'package:vox_finance/ui/data/models/lembrete.dart';
+import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
@@ -22,6 +24,7 @@ class HomeDashboardPage extends StatefulWidget {
 class _HomeDashboardPageState extends State<HomeDashboardPage> {
   final _contaRepo = ContaPagarRepository();
   final _lancRepo = LancamentoRepository();
+  final _lembreteRepo = LembreteRepository();
   final _despesasFixasService = DespesasFixasService();
   final _speech = stt.SpeechToText();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
@@ -31,6 +34,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   String? _error;
   List<ContaPagar> _vencimentosHoje = const [];
   List<ContaPagar> _vencidos = const [];
+  List<Lembrete> _lembretesHoje = const [];
+  List<Lembrete> _lembretesAtrasados = const [];
 
   @override
   void initState() {
@@ -89,10 +94,20 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       final vencidos =
           pendentes.where((c) => c.dataVencimento.isBefore(inicioHoje)).toList();
 
+      final lembretesHoje = await _lembreteRepo.pendentesNoIntervalo(
+        inicioHoje,
+        fimHoje,
+      );
+      final lembretesAtrasados = await _lembreteRepo.pendentesAte(
+        inicioHoje.subtract(const Duration(milliseconds: 1)),
+      );
+
       if (!mounted) return;
       setState(() {
         _vencimentosHoje = deHoje;
         _vencidos = vencidos;
+        _lembretesHoje = lembretesHoje;
+        _lembretesAtrasados = lembretesAtrasados;
       });
     } catch (e) {
       if (!mounted) return;
@@ -100,6 +115,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _error = e.toString();
         _vencimentosHoje = const [];
         _vencidos = const [];
+        _lembretesHoje = const [];
+        _lembretesAtrasados = const [];
       });
     } finally {
       if (!mounted) return;
@@ -248,6 +265,38 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                         onPressed: () => _goMain('/contas-pagar'),
                         child: const Text('Ver'),
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.alarm),
+                      title: Text(
+                        (_lembretesHoje.isEmpty && _lembretesAtrasados.isEmpty)
+                            ? 'Nenhum lembrete pendente'
+                            : (_lembretesAtrasados.isNotEmpty
+                                ? '${_lembretesAtrasados.length} atrasado(s) • ${_lembretesHoje.length} para hoje'
+                                : '${_lembretesHoje.length} lembrete(s) para hoje'),
+                      ),
+                      subtitle:
+                          (_lembretesHoje.isEmpty && _lembretesAtrasados.isEmpty)
+                              ? const Text('Tudo certo por enquanto.')
+                              : Text(
+                                [..._lembretesAtrasados, ..._lembretesHoje]
+                                    .take(3)
+                                    .map(
+                                      (e) =>
+                                          '${e.titulo} (${DateFormat('dd/MM HH:mm').format(e.dataHora)})',
+                                    )
+                                    .join(' • '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                      trailing: TextButton(
+                        onPressed: () => _goMain('/lembretes'),
+                        child: const Text('Ver'),
+                      ),
+                      onTap: () => _goMain('/lembretes'),
                     ),
                   ),
                   const SizedBox(height: 12),

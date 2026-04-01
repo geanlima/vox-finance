@@ -436,6 +436,22 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V31: lembretes (Home)
+    // =========================
+    if (oldVersion < 31) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS lembretes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          titulo TEXT NOT NULL,
+          descricao TEXT,
+          data_hora INTEGER NOT NULL,
+          concluido INTEGER NOT NULL DEFAULT 0,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -521,6 +537,17 @@ class MigrationV2toV15 {
       'carteira',
       'INTEGER NOT NULL DEFAULT 0',
     );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS lembretes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        titulo TEXT NOT NULL,
+        descricao TEXT,
+        data_hora INTEGER NOT NULL,
+        concluido INTEGER NOT NULL DEFAULT 0,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
   }
 
   /// Ajustes que você fazia no `onOpen` (garantir tabelas/colunas).
@@ -571,6 +598,18 @@ class MigrationV2toV15 {
       'incluir_na_renda_diaria',
       'INTEGER NOT NULL DEFAULT 0',
     );
+
+    // LEMBRETES
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS lembretes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        titulo TEXT NOT NULL,
+        descricao TEXT,
+        data_hora INTEGER NOT NULL,
+        concluido INTEGER NOT NULL DEFAULT 0,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
 
     // DESTINOS_RENDA
     await db.execute('''

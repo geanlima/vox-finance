@@ -78,5 +78,24 @@ class DespesaFixaRepository {
 
     return criadas;
   }
+
+  Future<ContaPagar?> getContaDoMesParaFixa({
+    required int idDespesaFixa,
+    required DateTime referencia,
+  }) async {
+    final db = await _db;
+    final anoMes =
+        '${referencia.year.toString().padLeft(4, '0')}${referencia.month.toString().padLeft(2, '0')}';
+    final grupo = 'FIXA_${idDespesaFixa}_$anoMes';
+
+    final rows = await db.query(
+      'conta_pagar',
+      where: 'grupo_parcelas = ?',
+      whereArgs: [grupo],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return ContaPagar.fromMap(rows.first);
+  }
 }
 
