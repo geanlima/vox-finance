@@ -797,6 +797,25 @@ class _BluminersPageState extends State<BluminersPage> {
       }
     }
 
+    // Total lançado no mês (net): aporte + ajuste + rendimento - saque
+    double totalLancadoMes = 0;
+    for (final m in movsMes) {
+      switch (m.tipo) {
+        case BluminersMovimentoTipo.aporte:
+          totalLancadoMes += m.valor;
+          break;
+        case BluminersMovimentoTipo.ajuste:
+          totalLancadoMes += m.valor;
+          break;
+        case BluminersMovimentoTipo.rendimento:
+          totalLancadoMes += m.valor;
+          break;
+        case BluminersMovimentoTipo.saque:
+          totalLancadoMes -= m.valor;
+          break;
+      }
+    }
+
     // % / melhor / pior: usa tabela de rentabilidade (importada) e, se não existir,
     // tenta extrair % de rendimentos manuais pela observação.
     double? parsePercentFromObs(String? obs) {
@@ -924,6 +943,11 @@ class _BluminersPageState extends State<BluminersPage> {
                     'Rendimento no mês',
                     _money.format(somaRendimento),
                     Colors.green,
+                  ),
+                  _metric(
+                    'Total lançado no mês',
+                    _money.format(totalLancadoMes),
+                    cs.onSurface.withOpacity(0.75),
                   ),
                   if (melhor != null)
                     _metric(
@@ -1398,15 +1422,37 @@ class _BluminersPageState extends State<BluminersPage> {
       final text = _monthFmt.format(DateTime(d.year, d.month, 1));
       final label =
           text.isNotEmpty ? (text[0].toUpperCase() + text.substring(1)) : text;
+
+      // Total do mês (somente rendimentos) para exibir no cabeçalho.
+      final totalMes = _movs
+          .where((m) => m.data.year == d.year && m.data.month == d.month)
+          .where((m) => m.tipo == BluminersMovimentoTipo.rendimento)
+          .fold<double>(0, (sum, m) => sum + m.valor);
+
       return Padding(
         padding: const EdgeInsets.only(top: 10, bottom: 6),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            color: cs.onSurface.withOpacity(0.75),
-          ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface.withOpacity(0.75),
+                ),
+              ),
+            ),
+            if (totalMes > 0)
+              Text(
+                'Total: ${_money.format(totalMes)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.green.shade700,
+                ),
+              ),
+          ],
         ),
       );
     }
