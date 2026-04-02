@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
+import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
+import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
@@ -71,13 +74,15 @@ class _HomePageState extends State<HomePage> {
   // 👇 NOVO: valor diário vindo das fontes de renda
   final RendaRepository _rendaRepository = RendaRepository();
   double _rendaDiaria = 0.0;
+  final DespesasFixasService _despesasFixasService = DespesasFixasService();
+  List<ContaPagar> _vencimentosHoje = const [];
 
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
     _initSpeech();
-    _carregarDoBanco();
+    _bootstrap();
     _carregarCartoes();
     _carregarContas();
 
@@ -90,6 +95,61 @@ class _HomePageState extends State<HomePage> {
     _regraCartaoParcelado = RegraCartaoParceladoService(
       lancRepo: _repositoryLancamento,
     );
+  }
+
+  Future<void> _bootstrap() async {
+    await _despesasFixasService.gerarNoMesAtualSeNecessario();
+    await _carregarDoBanco();
+    await _carregarVencimentosHoje();
+    await _mostrarAlertaVencimentosHojeSeNecessario();
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Future<void> _carregarVencimentosHoje() async {
+    final hoje = DateTime.now();
+    final pendentes = await _repositoryContaPagar.getPendentes();
+    final deHoje = pendentes.where((c) => _isSameDay(c.dataVencimento, hoje)).toList();
+    if (!mounted) return;
+    setState(() => _vencimentosHoje = deHoje);
+  }
+
+  Future<void> _mostrarAlertaVencimentosHojeSeNecessario() async {
+    if (!mounted || _vencimentosHoje.isEmpty) return;
+    final sp = await SharedPreferences.getInstance();
+    final hoje = DateTime.now();
+    final hojeKey =
+        '${hoje.year.toString().padLeft(4, '0')}-${hoje.month.toString().padLeft(2, '0')}-${hoje.day.toString().padLeft(2, '0')}';
+    final jaMostrou = sp.getString('alerta_vencimentos_hoje') == hojeKey;
+    if (jaMostrou) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Vencimentos de hoje'),
+        content: Text(
+          _vencimentosHoje.length == 1
+              ? 'Você tem 1 conta vencendo hoje.'
+              : 'Você tem ${_vencimentosHoje.length} contas vencendo hoje.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Depois'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushNamed(context, '/contas-pagar');
+            },
+            child: const Text('Ver contas'),
+          ),
+        ],
+      ),
+    );
+
+    await sp.setString('alerta_vencimentos_hoje', hojeKey);
   }
 
   Future<void> _carregarContas() async {
@@ -321,6 +381,40 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       );
+      return;
+    }
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lançamento por voz'),
+        content: Text(
+          'Descrição: ${lancInterpretado.descricao}\n'
+          'Valor: ${_currency.format(lancInterpretado.valor)}\n'
+          'Forma: ${lancInterpretado.formaPagamento.label}\n\n'
+          'Deseja lançar agora?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Revisar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Lançar agora'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      await _repositoryLancamento.salvar(lancInterpretado);
+      await _carregarDoBanco();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lançamento salvo com sucesso.')),
+        );
+      }
       return;
     }
 
@@ -565,7 +659,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      drawer: const AppDrawer(currentRoute: '/'),
+      drawer: const AppDrawer(currentRoute: '/lancamentos'),
       floatingActionButton: FloatingActionButton(
         onPressed: _onAddLancamento,
         child: const Icon(Icons.add),
@@ -574,6 +668,33 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (_vencimentosHoje.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  color: Colors.amber.withOpacity(0.15),
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_active_outlined),
+                    title: Text(
+                      _vencimentosHoje.length == 1
+                          ? '1 vencimento para hoje'
+                          : '${_vencimentosHoje.length} vencimentos para hoje',
+                    ),
+                    subtitle: Text(
+                      _vencimentosHoje
+                          .take(2)
+                          .map((e) => e.descricao)
+                          .join(' • '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => Navigator.pushNamed(context, '/contas-pagar'),
+                      child: const Text('Ver'),
+                    ),
+                  ),
+                ),
+              ),
             if (fechamentoNoDiaSelecionado)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),

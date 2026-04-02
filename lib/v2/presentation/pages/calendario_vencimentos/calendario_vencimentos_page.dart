@@ -53,7 +53,6 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
     final novo = DateTime(_mes.year, _mes.month + delta, 1);
     setState(() => _mes = novo);
 
-    // ajusta dia selecionado para dentro do mês
     final last = DateTime(novo.year, novo.month + 1, 0).day;
     final day = _diaSelecionado.day.clamp(1, last);
     final sel = DateTime(novo.year, novo.month, day);
@@ -62,9 +61,8 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
     await _load();
   }
 
-  int _countNoDia(DateTime d) {
-    return _itensMes.where((x) => _isSameDay(x.data, d)).length;
-  }
+  int _countNoDia(DateTime d) =>
+      _itensMes.where((x) => _isSameDay(x.data, d)).length;
 
   @override
   Widget build(BuildContext context) {
@@ -86,27 +84,20 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
               await _load();
             },
           ),
+          IconButton(
+            tooltip: 'Atualizar',
+            icon: const Icon(Icons.refresh),
+            onPressed: _load,
+          ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final created = await showModalBottomSheet<bool>(
-            context: context,
-            isScrollControlled: true,
-            showDragHandle: true,
-            builder: (_) => _NovoVencimentoSheet(dataInicial: _diaSelecionado),
-          );
-          if (created == true) _load();
-        },
-        child: const Icon(Icons.add),
-      ),
+      // ✅ sem FAB (não cria manual)
       body:
           _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 children: [
-                  // Header mês
                   Row(
                     children: [
                       IconButton(
@@ -128,10 +119,7 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 10),
-
-                  // Calendário (grid)
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -148,10 +136,7 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 16),
-
-                  // Lista do dia selecionado
                   Row(
                     children: [
                       Text(
@@ -169,7 +154,6 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
-
                   if (_itensDia.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 18),
@@ -181,21 +165,7 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
                       ),
                     )
                   else
-                    ..._itensDia.map(
-                      (v) => _VencimentoTile(
-                        item: v,
-                        onTogglePago: (p) async {
-                          await _repo.setPago(v.id, p);
-                          await _selecionarDia(_diaSelecionado);
-                          await _load();
-                        },
-                        onDelete: () async {
-                          await _repo.remover(v.id);
-                          await _selecionarDia(_diaSelecionado);
-                          await _load();
-                        },
-                      ),
-                    ),
+                    ..._itensDia.map((v) => _VencimentoTileReadOnly(item: v)),
                 ],
               ),
     );
@@ -223,6 +193,53 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
   }
 }
 
+class _VencimentoTileReadOnly extends StatelessWidget {
+  final VencimentoItem item;
+  const _VencimentoTileReadOnly({required this.item});
+
+  String _fmtMoney(int cents) {
+    final v = cents / 100.0;
+    return 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant),
+        ),
+        child: ListTile(
+          leading: Icon(
+            item.origemTipo == 'fixa'
+                ? Icons.push_pin_outlined
+                : Icons.shopping_cart_outlined,
+          ),
+          title: Text(
+            item.titulo,
+            style: TextStyle(
+              decoration: item.pago ? TextDecoration.lineThrough : null,
+              color: item.pago ? cs.outline : null,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            [
+              if (item.valorCentavos != null) _fmtMoney(item.valorCentavos!),
+              item.origemTipo == 'fixa' ? 'Despesa fixa' : 'Despesa variável',
+            ].join(' • '),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CalendarGrid extends StatelessWidget {
   final DateTime mes;
   final DateTime selecionado;
@@ -236,27 +253,21 @@ class _CalendarGrid extends StatelessWidget {
     required this.onTapDay,
   });
 
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     final first = DateTime(mes.year, mes.month, 1);
     final lastDay = DateTime(mes.year, mes.month + 1, 0).day;
-    final firstWeekday = first.weekday; // 1=Mon..7=Sun
 
-    // vamos começar no domingo
-    int startOffset = (firstWeekday % 7); // Mon=1 =>1, Sun=0
+    // weekday: Mon=1..Sun=7. Queremos começar no Domingo.
+    final startOffset = first.weekday % 7; // Sun->0, Mon->1, ...
     final totalCells = ((startOffset + lastDay) <= 35) ? 35 : 42;
 
-    final labels = const [
-      'dom.',
-      'seg.',
-      'ter.',
-      'qua.',
-      'qui.',
-      'sex.',
-      'sáb.',
-    ];
+    const labels = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.'];
 
     return Column(
       children: [
@@ -278,6 +289,7 @@ class _CalendarGrid extends StatelessWidget {
                   .toList(),
         ),
         const SizedBox(height: 8),
+
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -292,11 +304,9 @@ class _CalendarGrid extends StatelessWidget {
             if (dayNum < 1 || dayNum > lastDay) {
               return const SizedBox.shrink();
             }
+
             final d = DateTime(mes.year, mes.month, dayNum);
-            final selected =
-                d.year == selecionado.year &&
-                d.month == selecionado.month &&
-                d.day == selecionado.day;
+            final selected = _isSameDay(d, selecionado);
             final count = countForDay(d);
 
             return InkWell(
@@ -362,227 +372,6 @@ class _CalendarGrid extends StatelessWidget {
           },
         ),
       ],
-    );
-  }
-}
-
-class _VencimentoTile extends StatelessWidget {
-  final VencimentoItem item;
-  final ValueChanged<bool> onTogglePago;
-  final VoidCallback onDelete;
-
-  const _VencimentoTile({
-    required this.item,
-    required this.onTogglePago,
-    required this.onDelete,
-  });
-
-  String _fmtMoney(int cents) {
-    final v = cents / 100.0;
-    return 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Dismissible(
-        key: ValueKey('venc_${item.id}'),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 16),
-          decoration: BoxDecoration(
-            color: cs.errorContainer,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(Icons.delete_outline, color: cs.onErrorContainer),
-        ),
-        onDismissed: (_) => onDelete(),
-        child: Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: cs.outlineVariant),
-          ),
-          child: ListTile(
-            leading: Checkbox(
-              value: item.pago,
-              onChanged: (v) => onTogglePago(v == true),
-            ),
-            title: Text(
-              item.titulo,
-              style: TextStyle(
-                decoration: item.pago ? TextDecoration.lineThrough : null,
-                color: item.pago ? cs.outline : null,
-              ),
-            ),
-            subtitle:
-                item.valorCentavos != null ||
-                        (item.observacao?.isNotEmpty ?? false)
-                    ? Text(
-                      [
-                        if (item.valorCentavos != null)
-                          _fmtMoney(item.valorCentavos!),
-                        if (item.observacao?.isNotEmpty ?? false)
-                          item.observacao!,
-                      ].join(' • '),
-                    )
-                    : null,
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: onDelete,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NovoVencimentoSheet extends StatefulWidget {
-  final DateTime dataInicial;
-  const _NovoVencimentoSheet({required this.dataInicial});
-
-  @override
-  State<_NovoVencimentoSheet> createState() => _NovoVencimentoSheetState();
-}
-
-class _NovoVencimentoSheetState extends State<_NovoVencimentoSheet> {
-  final _titulo = TextEditingController();
-  final _valor = TextEditingController();
-  final _obs = TextEditingController();
-
-  DateTime _data = DateTime.now();
-  bool _mensal = true;
-
-  final _repo = InjectorV2.vencimentosRepo;
-
-  @override
-  void initState() {
-    super.initState();
-    _data = widget.dataInicial;
-  }
-
-  int? _parseCentavos(String s) {
-    final raw = s.trim().replaceAll('.', '').replaceAll(',', '.');
-    final v = double.tryParse(raw);
-    if (v == null) return null;
-    return (v * 100).round();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: bottom + 16,
-        top: 6,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Novo vencimento',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 12),
-
-          TextField(
-            controller: _titulo,
-            decoration: const InputDecoration(
-              labelText: 'Título',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _valor,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Valor (opcional)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2035),
-                      initialDate: _data,
-                    );
-                    if (picked != null) setState(() => _data = picked);
-                  },
-                  icon: const Icon(Icons.calendar_month_outlined),
-                  label: Text(
-                    '${_data.day.toString().padLeft(2, '0')}/${_data.month.toString().padLeft(2, '0')}/${_data.year}',
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-
-          TextField(
-            controller: _obs,
-            decoration: const InputDecoration(
-              labelText: 'Observação (opcional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          SwitchListTile(
-            value: _mensal,
-            onChanged: (v) => setState(() => _mensal = v),
-            title: const Text('Repetir mensalmente'),
-          ),
-
-          const SizedBox(height: 10),
-
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () async {
-                    final titulo = _titulo.text.trim();
-                    if (titulo.isEmpty) return;
-
-                    await _repo.adicionar(
-                      titulo: titulo,
-                      data: _data,
-                      valorCentavos: _parseCentavos(_valor.text),
-                      observacao:
-                          _obs.text.trim().isEmpty ? null : _obs.text.trim(),
-                      recorrencia: _mensal ? 'mensal' : 'nenhuma',
-                    );
-
-                    if (context.mounted) Navigator.pop(context, true);
-                  },
-                  child: const Text('Salvar'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

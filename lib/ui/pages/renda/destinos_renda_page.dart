@@ -55,9 +55,10 @@ class _DestinosRendaPageState extends State<DestinosRendaPage> {
       isScrollControlled: true,
       builder: (ctx) {
         final viewInsets = MediaQuery.of(ctx).viewInsets;
+        final sysPadding = MediaQuery.of(ctx).padding;
 
         return Padding(
-          padding: EdgeInsets.only(bottom: viewInsets.bottom),
+          padding: EdgeInsets.only(bottom: viewInsets.bottom + sysPadding.bottom),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(

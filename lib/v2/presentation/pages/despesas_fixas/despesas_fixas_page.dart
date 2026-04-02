@@ -336,8 +336,12 @@ class _DespesaFixaModalState extends State<_DespesaFixaModal> {
     }
 
     final diaRenovacao = int.tryParse(diaRenovacaoCtrl.text.trim());
-    if (diaRenovacao != null && (diaRenovacao < 1 || diaRenovacao > 31)) {
-      _snack('Dia de renovação deve estar entre 1 e 31.');
+    if (diaRenovacao == null) {
+      _snack('Informe o dia do vencimento (1..31).');
+      return;
+    }
+    if (diaRenovacao < 1 || diaRenovacao > 31) {
+      _snack('Dia do vencimento deve estar entre 1 e 31.');
       return;
     }
 
@@ -356,7 +360,8 @@ class _DespesaFixaModalState extends State<_DespesaFixaModal> {
         formaPagamentoId: formaPagamentoId,
         repetir1Mes: repetir1Mes ? 1 : 0,
         ajustarDataPagamento: ajustarDataPagamento ? 1 : 0,
-        diaRenovacao: diaRenovacao,
+        diaRenovacao:
+            diaRenovacao, // ✅ continua igual, mas agora sempre vem preenchido
         reciboPath:
             reciboCtrl.text.trim().isEmpty ? null : reciboCtrl.text.trim(),
       );

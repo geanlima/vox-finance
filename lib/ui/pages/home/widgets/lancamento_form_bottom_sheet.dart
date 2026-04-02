@@ -256,7 +256,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final viewInsets = mq.viewInsets;
-    final sysPadding = mq.padding;
+    final sysPadding = mq.viewPadding;
 
     // recalcula sempre que builda
     _recalcularCartoes();
@@ -275,25 +275,30 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
       top: false,
       child: Padding(
         // faz o sheet subir junto com o teclado
-        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: viewInsets.bottom + mq.viewPadding.bottom,
+        ),
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
-          child: Column(
-            children: [
-              // =================== CONTEÚDO ROLÁVEL ===================
-              Expanded(
-                // Form envolvendo todo o conteúdo
-                child: Form(
-                  key: _formKey,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+          child: SizedBox(
+            // um pouco mais alto para dar mais espaço no cadastro
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: Column(
+              children: [
+                // =================== CONTEÚDO ROLÁVEL ===================
+                Expanded(
+                  // Form envolvendo todo o conteúdo
+                  child: Form(
+                    key: _formKey,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                         // "pegador"
                         Center(
                           child: Container(
@@ -662,39 +667,41 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-
-              // =================== RODAPÉ FIXO COM BOTÕES ===================
-              const Divider(height: 1),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  8 + sysPadding.bottom, // fica acima da barra do sistema
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _salvar,
-                      child: Text(
-                        _existente != null ? 'Salvar alterações' : 'Salvar',
+                // =================== RODAPÉ FIXO COM BOTÕES ===================
+                const Divider(height: 1),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    34 + sysPadding.bottom, // sobe mais o botão (barra Android)
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancelar'),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: _salvar,
+                        child: Text(
+                          _existente != null
+                              ? 'Salvar alterações'
+                              : 'Salvar',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

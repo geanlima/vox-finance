@@ -3,6 +3,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/core/nav/app_navigator.dart';
+import 'package:vox_finance/ui/core/service/app_version_service.dart';
+import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 // ✅ ajuste o path conforme seu projeto
 import 'package:vox_finance/ui/data/service/backup/backup_manager.dart';
@@ -54,6 +59,33 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
 
   bool get _firebaseIndisponivel =>
       _providerKey == 'firebase_storage'; // hoje pede billing
+
+  Future<void> _sair() async {
+    setState(() => _loading = true);
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final loginType = sp.getString('loginType');
+
+      if (loginType == 'firebase') {
+        try {
+          await FirebaseAuthService.instance.signOut();
+        } catch (_) {}
+      } else {
+        try {
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+      }
+
+      await sp.setBool('isLoggedIn', false);
+      await sp.remove('loginType');
+      await AppVersionService.clearSelectedVersion();
+      await AppNavigator.goToGateClearingStack();
+    } catch (e) {
+      _snack('Falha ao sair: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   void initState() {
@@ -191,6 +223,8 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
 
       if (restored) {
         _snack('Backup restaurado! (banco local atualizado)');
+        // ✅ reinicia o fluxo do app para recarregar o banco restaurado
+        await AppNavigator.goToGateClearingStack();
       } else {
         _snack('Nenhum backup encontrado para este usuário.');
       }
@@ -209,7 +243,20 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
     final email = user?.email ?? 'Não logado';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup & Restauração (Nuvem)')),
+      appBar: AppBar(
+        title: const Text('Backup & Restauração (Nuvem)'),
+        actions: [
+          TextButton.icon(
+            onPressed: _loading ? null : _sair,
+            icon: const Icon(Icons.exit_to_app, color: Colors.white),
+            label: const Text('Sair'),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+      drawer: const AppDrawer(currentRoute: '/backup-cloud'),
       body: AbsorbPointer(
         absorbing: _loading,
         child: ListView(

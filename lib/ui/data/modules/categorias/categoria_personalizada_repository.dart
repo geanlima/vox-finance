@@ -65,4 +65,39 @@ class CategoriaPersonalizadaRepository {
       whereArgs: [id],
     );
   }
+
+  Future<CategoriaPersonalizada> getOrCreate({
+    required String nome,
+    required TipoMovimento tipoMovimento,
+    String? corHex,
+  }) async {
+    final db = await _db;
+    final nomeNorm = nome.trim();
+
+    final rows = await db.query(
+      'categorias_personalizadas',
+      where: 'LOWER(nome) = LOWER(?)',
+      whereArgs: [nomeNorm],
+      limit: 1,
+    );
+
+    if (rows.isNotEmpty) {
+      return CategoriaPersonalizada.fromMap(rows.first);
+    }
+
+    final id = await salvar(
+      CategoriaPersonalizada(
+        nome: nomeNorm,
+        tipoMovimento: tipoMovimento,
+        corHex: corHex,
+      ),
+    );
+
+    return CategoriaPersonalizada(
+      id: id,
+      nome: nomeNorm,
+      tipoMovimento: tipoMovimento,
+      corHex: corHex,
+    );
+  }
 }

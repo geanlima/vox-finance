@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_null_comparison
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_null_comparison, unused_element
 
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
@@ -65,9 +65,10 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   void _go(String route) {
-    if (Navigator.canPop(context)) Navigator.pop(context);
-    if (ModalRoute.of(context)?.settings.name == route) return;
-    Navigator.pushNamed(context, route);
+    final current = ModalRoute.of(context)?.settings.name;
+    if (Navigator.canPop(context)) Navigator.pop(context); // fecha drawer
+    if (current == route) return;
+    Navigator.pushReplacementNamed(context, route);
   }
 
   Future<void> _trocarVersao() async {
@@ -78,6 +79,34 @@ class _AppDrawerState extends State<AppDrawer> {
 
     // volta pro Gate pelo ROOT navigator
     await AppNavigator.goToGateClearingStack();
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<bool> _confirmReset(String label) async {
+    return (await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Confirmar reset do banco'),
+            content: Text(
+              'Isso vai apagar os dados do banco local ($label). Deseja continuar?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Zerar'),
+              ),
+            ],
+          ),
+        )) ??
+        false;
   }
 
   Future<void> _logout() async {
@@ -264,7 +293,28 @@ class _AppDrawerState extends State<AppDrawer> {
               ),
             ),
 
-            _menuItem(icon: Icons.table_rows, label: 'Lançamentos', route: '/'),
+            _menuItem(icon: Icons.home_outlined, label: 'Home', route: '/'),
+            _treeGroup(
+              icon: Icons.swap_vert_circle_outlined,
+              title: 'Movimentação',
+              children: [
+                _subItem(
+                  icon: Icons.table_rows,
+                  title: 'Lançamentos',
+                  route: '/lancamentos',
+                ),
+                _subItem(
+                  icon: Icons.home_work_outlined,
+                  title: 'Despesas fixas',
+                  route: '/despesas-fixas',
+                ),
+                _subItem(
+                  icon: Icons.receipt_long,
+                  title: 'Contas a pagar',
+                  route: '/contas-pagar',
+                ),
+              ],
+            ),
             _menuItem(
               icon: Icons.calendar_month,
               label: 'Resumo do mês (Gastos)',
@@ -275,45 +325,49 @@ class _AppDrawerState extends State<AppDrawer> {
               label: 'Comparativo de meses',
               route: '/comparativo-mes',
             ),
-            _menuItem(
-              icon: Icons.credit_card,
-              label: 'Cartão',
-              route: '/cartoes-credito',
+            _treeGroup(
+              icon: Icons.trending_up,
+              title: 'Investimento',
+              children: [
+                _subItem(
+                  icon: Icons.auto_graph,
+                  title: 'Bluminers',
+                  route: '/investimentos/bluminers',
+                ),
+              ],
             ),
-            _menuItem(
-              icon: Icons.receipt_long,
-              label: 'Contas a pagar',
-              route: '/contas-pagar',
-            ),
-            _menuItem(
-              icon: Icons.account_balance,
-              label: 'Contas bancárias',
-              route: '/contas-bancarias',
-            ),
-            _menuItem(
-              icon: Icons.savings,
-              label: 'Minha renda',
-              route: '/minha-renda',
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.category),
-              title: const Text('Minhas categorias'),
-              onTap: () {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                Navigator.pushNamed(
-                  context,
-                  CategoriasPersonalizadasPage.routeName,
-                );
-              },
-            ),
-
-            const Divider(height: 24),
-
-            ListTile(
-              leading: const Icon(Icons.swap_horiz_outlined),
-              title: const Text('Trocar versão (V1/V2)'),
-              onTap: _trocarVersao,
+            _treeGroup(
+              icon: Icons.how_to_reg,
+              title: 'Cadastro',
+              children: [
+                _subItem(
+                  icon: Icons.account_balance,
+                  title: 'Contas bancárias',
+                  route: '/contas-bancarias',
+                ),
+                _subItem(
+                  icon: Icons.credit_card,
+                  title: 'Cartão',
+                  route: '/cartoes-credito',
+                ),
+                _subItem(
+                  icon: Icons.savings,
+                  title: 'Minha renda',
+                  route: '/minha-renda',
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.category, size: 20),
+                  title: const Text('Minhas categorias'),
+                  onTap: () {
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                    Navigator.pushNamed(
+                      context,
+                      CategoriasPersonalizadasPage.routeName,
+                    );
+                  },
+                ),
+              ],
             ),
 
             ListTile(

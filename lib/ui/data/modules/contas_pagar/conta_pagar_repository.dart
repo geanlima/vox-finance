@@ -150,6 +150,16 @@ class ContaPagarRepository {
     );
   }
 
+  Future<void> atualizarValorParcela(int id, double valor) async {
+    final db = await _db;
+    await db.update(
+      'conta_pagar',
+      {'valor': valor},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Útil para sincronizar com lançamento (grupo + nº parcela)
   Future<void> marcarPorGrupoEParcela({
     required String grupo,

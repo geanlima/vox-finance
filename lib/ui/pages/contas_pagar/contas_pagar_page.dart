@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 
@@ -14,6 +15,7 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
+import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 
 import 'conta_pagar_detalhe.dart';
 
@@ -65,6 +67,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   final LancamentoRepository _repositoryLancamento = LancamentoRepository();
   final CartaoCreditoRepository _cartaoLancamento = CartaoCreditoRepository();
   final ContaPagarRepository _contaPagarLancamento = ContaPagarRepository();
+  final DespesasFixasService _despesasFixasService = DespesasFixasService();
 
   List<ContaPagarResumo> _resumos = [];
   bool _mostrarSomentePendentes = true;
@@ -79,7 +82,12 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   void initState() {
     super.initState();
     _iaService = IAService(_isarService);
-    _carregar();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _despesasFixasService.gerarNoMesAtualSeNecessario();
+    await _carregar();
   }
 
   Future<String?> _obterDescricaoFormaPagamento(String grupoParcelas) async {
@@ -268,7 +276,9 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
             return SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                padding: EdgeInsets.only(
+                  bottom: viewInsets.bottom + sysPadding.bottom,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: Theme.of(context).scaffoldBackgroundColor,
@@ -511,74 +521,98 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
               resumo.ultimoVencimento != null &&
               resumo.ultimoVencimento!.isBefore(DateTime.now());
 
-          return Card(
-            margin: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 6,
+          final theme = Theme.of(context);
+          final primary = theme.colorScheme.primary;
+          final danger = Colors.red.shade400;
+
+          return Slidable(
+            key: ValueKey(resumo.grupoParcelas),
+            endActionPane: ActionPane(
+              motion: const DrawerMotion(),
+              extentRatio: 0.35,
+              children: [
+                CustomSlidableAction(
+                  onPressed: (_) => _abrirForm(existente: resumo),
+                  backgroundColor: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Icon(Icons.edit, size: 28, color: primary),
+                ),
+                CustomSlidableAction(
+                  onPressed: (_) => _excluirGrupo(resumo),
+                  backgroundColor: danger,
+                  borderRadius: BorderRadius.circular(12),
+                  child: const Icon(Icons.delete, size: 28, color: Colors.white),
+                ),
+              ],
             ),
-            color: vencida ? colors.errorContainer.withOpacity(0.15) : null,
-            child: ListTile(
-              leading: Icon(
-                resumo.todasPagas
-                    ? Icons.check_circle
-                    : (resumo.quantidadeParcelas > 1
-                        ? Icons.payments
-                        : Icons.schedule),
-                color: resumo.todasPagas
-                    ? Colors.green
-                    : (vencida ? colors.error : colors.primary),
+            child: Card(
+              margin: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
               ),
-              title: Text(resumo.descricao),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    resumo.quantidadeParcelas > 1
-                        ? '${resumo.quantidadeParcelas} parcelas · '
-                            '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
-                            '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}'
-                        : 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}',
-                  ),
-                  if (resumo.formaDescricao != null) ...[
-                    const SizedBox(height: 2),
+              color: vencida ? colors.errorContainer.withOpacity(0.15) : null,
+              child: ListTile(
+                leading: Icon(
+                  resumo.todasPagas
+                      ? Icons.check_circle
+                      : (resumo.quantidadeParcelas > 1
+                          ? Icons.payments
+                          : Icons.schedule),
+                  color: resumo.todasPagas
+                      ? Colors.green
+                      : (vencida ? colors.error : colors.primary),
+                ),
+                title: Text(resumo.descricao),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      resumo.formaDescricao!,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                      ),
+                      resumo.quantidadeParcelas > 1
+                          ? '${resumo.quantidadeParcelas} parcelas · '
+                              '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
+                              '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}'
+                          : 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}',
                     ),
-                  ],
-                ],
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _currency.format(resumo.valorTotal),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  if (resumo.quantidadeParcelas > 1)
-                    Text(
-                      '(${resumo.quantidadeParcelas}x de '
-                      '${_currency.format(resumo.valorTotal / resumo.quantidadeParcelas)})',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                ],
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder:
-                        (_) => ContaPagarDetalhePage(
-                          grupoParcelas: resumo.grupoParcelas,
+                    if (resumo.formaDescricao != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        resumo.formaDescricao!,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
                         ),
-                  ),
-                ).then((_) => _carregar()); // ao voltar, recarrega totalizador
-              },
-              onLongPress: () => _excluirGrupo(resumo),
+                      ),
+                    ],
+                  ],
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _currency.format(resumo.valorTotal),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    if (resumo.quantidadeParcelas > 1)
+                      Text(
+                        '(${resumo.quantidadeParcelas}x de '
+                        '${_currency.format(resumo.valorTotal / resumo.quantidadeParcelas)})',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => ContaPagarDetalhePage(
+                            grupoParcelas: resumo.grupoParcelas,
+                          ),
+                    ),
+                  ).then((_) => _carregar()); // ao voltar, recarrega totalizador
+                },
+              ),
             ),
           );
         },

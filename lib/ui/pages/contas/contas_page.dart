@@ -64,7 +64,9 @@ class _ContasPageState extends State<ContasPage> {
             return SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                padding: EdgeInsets.only(
+                  bottom: viewInsets.bottom + sysPadding.bottom,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: Theme.of(context).scaffoldBackgroundColor,
