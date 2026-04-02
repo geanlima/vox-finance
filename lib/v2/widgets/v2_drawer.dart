@@ -56,18 +56,10 @@ class _V2DrawerState extends State<V2Drawer> {
   }
 
   void _goTo(BuildContext context, String route) {
-    if (Navigator.canPop(context)) Navigator.pop(context);
-
     final current = ModalRoute.of(context)?.settings.name;
+    if (Navigator.canPop(context)) Navigator.pop(context); // fecha drawer
     if (current == route) return;
-
-    Navigator.pushNamed(context, route);
-  }
-
-  Future<void> _trocarVersao(BuildContext context) async {
-    if (Navigator.canPop(context)) Navigator.pop(context);
-    await AppVersionService.clearSelectedVersion();
-    await AppNavigator.goToGateClearingStack();
+    Navigator.pushReplacementNamed(context, route);
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -321,15 +313,6 @@ class _V2DrawerState extends State<V2Drawer> {
                     icon: Icons.settings_outlined,
                     title: '⚙️ Configurações',
                     children: [
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.swap_horiz_outlined,
-                          size: 20,
-                        ),
-                        title: const Text('🔁 Trocar versão (V1/V2)'),
-                        onTap: () => _trocarVersao(context),
-                      ),
                     ],
                   ),
 

@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
@@ -189,11 +190,14 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
 
             final mq = MediaQuery.of(modalContext);
             final viewInsets = mq.viewInsets; // teclado
+            final sysPadding = mq.padding; // barra/gestos
 
             return SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.only(bottom: viewInsets.bottom),
+                padding: EdgeInsets.only(
+                  bottom: viewInsets.bottom + sysPadding.bottom,
+                ),
                 child: DraggableScrollableSheet(
                   initialChildSize: 0.9,
                   minChildSize: 0.5,
@@ -697,6 +701,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Cartões')),
+      drawer: const AppDrawer(currentRoute: '/cartoes-credito'),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _abrirForm(),
         child: const Icon(Icons.add),

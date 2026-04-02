@@ -25,10 +25,15 @@ import 'migrations/migration_v9_despesas_variaveis.dart';
 
 class DbServiceV2 {
   static const _dbName = 'vox_finance_v2.db';
-  static const _latest = 18;
+  static const _latest = 19;
 
   Database? _db;
   Database get db => _db!;
+
+  static Future<String> getDbPath() async {
+    final basePath = await getDatabasesPath();
+    return p.join(basePath, _dbName);
+  }
 
   Future<void> openAndMigrate() async {
     final basePath = await getDatabasesPath();
@@ -57,6 +62,19 @@ class DbServiceV2 {
     );
     print('✅ user_version=$uv');
     print('✅ tables=$tables');
+  }
+
+  Future<void> close() async {
+    final d = _db;
+    if (d != null && d.isOpen) {
+      await d.close();
+      _db = null;
+    }
+  }
+
+  static Future<void> resetDatabase() async {
+    final dbPath = await getDbPath();
+    await deleteDatabase(dbPath);
   }
 
   Future<bool> _columnExists(

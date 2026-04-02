@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
@@ -631,6 +632,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Comparativo de meses')),
+      drawer: const AppDrawer(currentRoute: '/comparativo-mes'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

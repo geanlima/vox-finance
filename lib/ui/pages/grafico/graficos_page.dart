@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:vox_finance/ui/widgets/graficos/grafico_pizza.dart';
+import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 class GraficosPage extends StatelessWidget {
   const GraficosPage({super.key});
@@ -10,6 +11,7 @@ class GraficosPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Resumo do mês")),
+      drawer: const AppDrawer(currentRoute: '/graficos'),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
