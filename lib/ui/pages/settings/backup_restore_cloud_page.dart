@@ -15,6 +15,8 @@ import 'package:vox_finance/ui/data/service/backup/backup_manager.dart';
 class BackupRestoreCloudPage extends StatefulWidget {
   const BackupRestoreCloudPage({super.key});
 
+  static const routeName = '/backup-cloud';
+
   @override
   State<BackupRestoreCloudPage> createState() => _BackupRestoreCloudPageState();
 }
@@ -256,7 +258,7 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
           ),
         ],
       ),
-      drawer: const AppDrawer(currentRoute: '/backup-cloud'),
+      drawer: const AppDrawer(currentRoute: BackupRestoreCloudPage.routeName),
       body: AbsorbPointer(
         absorbing: _loading,
         child: ListView(
