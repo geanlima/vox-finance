@@ -9,13 +9,23 @@ class BluminersRepository {
   static const _tblMov = 'investimento_bluminers_movimentos';
   static const _tblRent = 'investimento_bluminers_rentabilidade';
 
+  final int idCarteira;
+
+  BluminersRepository({required this.idCarteira});
+
   Future<Database> get _db async => DatabaseInitializer.initialize();
 
   Future<BluminersConfig> getConfig() async {
     final db = await _db;
-    final rows = await db.query(_tblConfig, where: 'id = ?', whereArgs: [1], limit: 1);
+    final rows = await db.query(
+      _tblConfig,
+      where: 'id_carteira = ?',
+      whereArgs: [idCarteira],
+      limit: 1,
+    );
     if (rows.isEmpty) {
       final cfg = BluminersConfig(
+        idCarteira: idCarteira,
         saldoInicialInvestido: 0,
         saldoInicialDisponivel: 0,
         aporteMensal: 0,
@@ -35,48 +45,83 @@ class BluminersRepository {
 
   Future<List<BluminersMovimento>> listarMovimentos() async {
     final db = await _db;
-    final rows = await db.query(_tblMov, orderBy: 'data DESC, id DESC');
+    final rows = await db.query(
+      _tblMov,
+      where: 'id_carteira = ?',
+      whereArgs: [idCarteira],
+      orderBy: 'data DESC, id DESC',
+    );
     return rows.map((e) => BluminersMovimento.fromMap(e)).toList();
   }
 
   Future<int> salvarMovimento(BluminersMovimento mov) async {
     final db = await _db;
+    final map = Map<String, Object?>.from(mov.toMap())
+      ..['id_carteira'] = idCarteira;
     if (mov.id == null) {
-      final dados = mov.toMap()..remove('id');
-      return db.insert(_tblMov, dados);
+      map.remove('id');
+      return db.insert(_tblMov, map);
     }
-    return db.update(_tblMov, mov.toMap(), where: 'id = ?', whereArgs: [mov.id]);
+    map.remove('id');
+    return db.update(
+      _tblMov,
+      map,
+      where: 'id = ? AND id_carteira = ?',
+      whereArgs: [mov.id, idCarteira],
+    );
   }
 
   Future<void> deletarMovimento(int id) async {
     final db = await _db;
-    await db.delete(_tblMov, where: 'id = ?', whereArgs: [id]);
+    await db.delete(
+      _tblMov,
+      where: 'id = ? AND id_carteira = ?',
+      whereArgs: [id, idCarteira],
+    );
   }
 
   Future<List<BluminersRentabilidade>> listarRentabilidade() async {
     final db = await _db;
-    final rows = await db.query(_tblRent, orderBy: 'data DESC, id DESC');
+    final rows = await db.query(
+      _tblRent,
+      where: 'id_carteira = ?',
+      whereArgs: [idCarteira],
+      orderBy: 'data DESC, id DESC',
+    );
     return rows.map((e) => BluminersRentabilidade.fromMap(e)).toList();
   }
 
   Future<void> deletarRentabilidade(BluminersRentabilidade item) async {
     final db = await _db;
+    final diaMs =
+        DateTime(item.data.year, item.data.month, item.data.day).millisecondsSinceEpoch;
     if (item.id != null) {
-      await db.delete(_tblRent, where: 'id = ?', whereArgs: [item.id]);
+      await db.delete(
+        _tblRent,
+        where: 'id = ? AND id_carteira = ?',
+        whereArgs: [item.id, idCarteira],
+      );
     } else {
       await db.delete(
         _tblRent,
-        where: 'data = ?',
-        whereArgs: [DateTime(item.data.year, item.data.month, item.data.day).millisecondsSinceEpoch],
+        where: 'data = ? AND id_carteira = ?',
+        whereArgs: [diaMs, idCarteira],
       );
     }
 
-    // remove movimento auto correspondente
-    await db.delete(
-      _tblMov,
-      where: 'origem = ? AND id_origem = ?',
-      whereArgs: ['rentabilidade', item.id],
-    );
+    if (item.id != null) {
+      await db.delete(
+        _tblMov,
+        where: 'origem = ? AND id_origem = ? AND id_carteira = ?',
+        whereArgs: ['rentabilidade', item.id, idCarteira],
+      );
+    } else {
+      await db.delete(
+        _tblMov,
+        where: 'origem = ? AND data = ? AND id_carteira = ?',
+        whereArgs: ['rentabilidade', diaMs, idCarteira],
+      );
+    }
   }
 
   Future<double> saldoAte(DateTime data, {bool inclusive = true}) async {
@@ -101,13 +146,14 @@ class BluminersRepository {
         COALESCE(SUM(CASE WHEN tipo = ? THEN valor ELSE 0 END), 0) AS rendimentos,
         COALESCE(SUM(CASE WHEN tipo = ? THEN valor ELSE 0 END), 0) AS ajustes
       FROM $_tblMov
-      WHERE data $op ?
+      WHERE id_carteira = ? AND data $op ?
       GROUP BY carteira
     ''', [
       BluminersMovimentoTipo.aporte.index,
       BluminersMovimentoTipo.saque.index,
       BluminersMovimentoTipo.rendimento.index,
       BluminersMovimentoTipo.ajuste.index,
+      idCarteira,
       ts,
     ]);
 
@@ -139,9 +185,6 @@ class BluminersRepository {
     final db = await _db;
     final dia = DateTime(data.year, data.month, data.day);
 
-    // Base do rendimento do dia:
-    // - inclui aportes/resgates/ajustes lançados NO DIA
-    // - não inclui o rendimento do próprio dia (que será criado aqui)
     final tsDia = dia.millisecondsSinceEpoch;
     final rowsDia = await db.rawQuery('''
       SELECT
@@ -150,7 +193,7 @@ class BluminersRepository {
         COALESCE(SUM(CASE WHEN tipo = ? AND carteira = ? THEN valor ELSE 0 END), 0) AS saques_disp,
         COALESCE(SUM(CASE WHEN tipo = ? AND carteira = ? THEN valor ELSE 0 END), 0) AS ajustes_disp
       FROM $_tblMov
-      WHERE data = ?
+      WHERE id_carteira = ? AND data = ?
     ''', [
       BluminersMovimentoTipo.aporte.index,
       BluminersCarteira.investido.index,
@@ -160,6 +203,7 @@ class BluminersRepository {
       BluminersCarteira.disponivel.index,
       BluminersMovimentoTipo.ajuste.index,
       BluminersCarteira.disponivel.index,
+      idCarteira,
       tsDia,
     ]);
 
@@ -174,7 +218,6 @@ class BluminersRepository {
         saldoAteOntem.totalGeral + aportesInvDia + ajustesInvDia + ajustesDispDia - saquesDispDia;
     final rendimentoValor = baseRendimento * (percentual / 100.0);
 
-    // upsert rentabilidade por data (unique index)
     int rentId;
     if (id != null) {
       await db.update(
@@ -184,14 +227,15 @@ class BluminersRepository {
           'percentual': percentual,
           'rendimento_valor': rendimentoValor,
         },
-        where: 'id = ?',
-        whereArgs: [id],
+        where: 'id = ? AND id_carteira = ?',
+        whereArgs: [id, idCarteira],
       );
       rentId = id;
     } else {
       rentId = await db.insert(
         _tblRent,
         {
+          'id_carteira': idCarteira,
           'data': dia.millisecondsSinceEpoch,
           'percentual': percentual,
           'rendimento_valor': rendimentoValor,
@@ -201,15 +245,14 @@ class BluminersRepository {
       );
     }
 
-    // remove qualquer movimento auto anterior para a data
     await db.delete(
       _tblMov,
-      where: 'origem = ? AND data = ?',
-      whereArgs: ['rentabilidade', dia.millisecondsSinceEpoch],
+      where: 'origem = ? AND data = ? AND id_carteira = ?',
+      whereArgs: ['rentabilidade', dia.millisecondsSinceEpoch, idCarteira],
     );
 
-    // cria movimento auto do rendimento
     await db.insert(_tblMov, {
+      'id_carteira': idCarteira,
       'data': dia.millisecondsSinceEpoch,
       'tipo': BluminersMovimentoTipo.rendimento.index,
       'carteira': BluminersCarteira.disponivel.index,
@@ -220,8 +263,12 @@ class BluminersRepository {
       'criado_em': DateTime.now().millisecondsSinceEpoch,
     });
 
-    final row = await db.query(_tblRent, where: 'id = ?', whereArgs: [rentId], limit: 1);
+    final row = await db.query(
+      _tblRent,
+      where: 'id = ? AND id_carteira = ?',
+      whereArgs: [rentId, idCarteira],
+      limit: 1,
+    );
     return BluminersRentabilidade.fromMap(row.first);
   }
 }
-

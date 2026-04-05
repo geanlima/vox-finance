@@ -17,7 +17,7 @@ import 'package:vox_finance/ui/pages/contas_pagar/contas_pagar_page.dart';
 import 'package:vox_finance/ui/pages/despesas_fixas/despesas_fixas_page.dart';
 import 'package:vox_finance/ui/pages/grafico/graficos_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
-import 'package:vox_finance/ui/pages/investimentos/bluminers/bluminers_page.dart';
+import 'package:vox_finance/ui/pages/investimentos/carteiras_investimento_page.dart';
 import 'package:vox_finance/ui/pages/lembretes/lembretes_page.dart';
 
 class VoxFinanceApp extends StatelessWidget {
@@ -76,7 +76,9 @@ class VoxFinanceApp extends StatelessWidget {
       '/backup-cloud': (_) => const BackupRestoreCloudPage(),
 
       '/despesas-fixas': (_) => const DespesasFixasPage(),
-      '/investimentos/bluminers': (_) => const BluminersPage(),
+      '/investimentos/carteiras': (_) => const CarteirasInvestimentoPage(),
+      // compat: antigo atalho "Bluminers" abre a lista de carteiras
+      '/investimentos/bluminers': (_) => const CarteirasInvestimentoPage(),
       '/lembretes': (_) => const LembretesPage(),
     };
   }
