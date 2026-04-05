@@ -11,14 +11,22 @@ import 'package:vox_finance/ui/data/modules/investimentos/bluminers/bluminers_re
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 class BluminersPage extends StatefulWidget {
-  const BluminersPage({super.key});
+  final int idCarteira;
+  final String nomeCarteira;
+
+  const BluminersPage({
+    super.key,
+    required this.idCarteira,
+    required this.nomeCarteira,
+  });
 
   @override
   State<BluminersPage> createState() => _BluminersPageState();
 }
 
 class _BluminersPageState extends State<BluminersPage> {
-  final _repo = BluminersRepository();
+  late final BluminersRepository _repo =
+      BluminersRepository(idCarteira: widget.idCarteira);
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _date = DateFormat('dd/MM/yyyy', 'pt_BR');
   final _monthFmt = DateFormat('MMMM yyyy', 'pt_BR');
@@ -169,7 +177,7 @@ class _BluminersPageState extends State<BluminersPage> {
                         }
 
                         final novo = BluminersConfig(
-                          id: 1,
+                          idCarteira: widget.idCarteira,
                           saldoInicialInvestido: parseMoney(saldoCtrl.text),
                           saldoInicialDisponivel: parseMoney(
                             saldoDispCtrl.text,
@@ -447,6 +455,7 @@ class _BluminersPageState extends State<BluminersPage> {
 
                         final mov = BluminersMovimento(
                           id: item?.id,
+                          idCarteira: widget.idCarteira,
                           data: data,
                           tipo: tipo,
                           carteira: carteira,
@@ -845,6 +854,7 @@ class _BluminersPageState extends State<BluminersPage> {
         // usa um "fake" só para carregar data/percentual
         melhor = BluminersRentabilidade(
           id: null,
+          idCarteira: widget.idCarteira,
           data: e.key,
           percentual: p,
           rendimentoValor: 0,
@@ -854,6 +864,7 @@ class _BluminersPageState extends State<BluminersPage> {
       if (pior == null || p < pior.percentual) {
         pior = BluminersRentabilidade(
           id: null,
+          idCarteira: widget.idCarteira,
           data: e.key,
           percentual: p,
           rendimentoValor: 0,
@@ -1669,7 +1680,7 @@ class _BluminersPageState extends State<BluminersPage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Investimento • Bluminers'),
+          title: Text('Investimento • ${widget.nomeCarteira}'),
           actions: [
             IconButton(
               tooltip: 'Rentabilidades',
@@ -1692,7 +1703,7 @@ class _BluminersPageState extends State<BluminersPage> {
             tabs: const [Tab(text: 'Movimentações'), Tab(text: 'Dashboard')],
           ),
         ),
-        drawer: const AppDrawer(currentRoute: '/investimentos/bluminers'),
+        drawer: const AppDrawer(currentRoute: '/investimentos/carteiras'),
         floatingActionButton:
             _loading
                 ? null

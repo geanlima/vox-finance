@@ -1,5 +1,5 @@
 class BluminersConfig {
-  final int id;
+  final int idCarteira;
   final double saldoInicialInvestido;
   final double saldoInicialDisponivel;
   final double aporteMensal;
@@ -7,7 +7,7 @@ class BluminersConfig {
   final DateTime criadoEm;
 
   const BluminersConfig({
-    this.id = 1,
+    required this.idCarteira,
     required this.saldoInicialInvestido,
     required this.saldoInicialDisponivel,
     required this.aporteMensal,
@@ -17,7 +17,7 @@ class BluminersConfig {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      'id_carteira': idCarteira,
       'saldo_inicial': saldoInicialInvestido,
       'saldo_inicial_disponivel': saldoInicialDisponivel,
       'aporte_mensal': aporteMensal,
@@ -27,8 +27,10 @@ class BluminersConfig {
   }
 
   static BluminersConfig fromMap(Map<String, dynamic> map) {
+    final idCarteira =
+        (map['id_carteira'] as int?) ?? (map['id'] as int?) ?? 1;
     return BluminersConfig(
-      id: (map['id'] as int?) ?? 1,
+      idCarteira: idCarteira,
       saldoInicialInvestido: (map['saldo_inicial'] as num?)?.toDouble() ?? 0,
       saldoInicialDisponivel:
           (map['saldo_inicial_disponivel'] as num?)?.toDouble() ?? 0,
@@ -40,4 +42,3 @@ class BluminersConfig {
     );
   }
 }
-
