@@ -13,6 +13,9 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
+import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
+import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
+import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -370,21 +373,31 @@ class _AppDrawerState extends State<AppDrawer> {
               ],
             ),
 
-            ListTile(
-              leading: const Icon(Icons.backup),
-              title: const Text('Backup na nuvem'),
-              onTap: () => _go('/backup-cloud'),
+            _treeGroup(
+              icon: Icons.settings_outlined,
+              title: 'Configuração',
+              children: [
+                _subItem(
+                  icon: Icons.color_lens_outlined,
+                  title: 'Tema do aplicativo',
+                  route: ConfigTemaPage.routeName,
+                ),
+                _subItem(
+                  icon: Icons.tune_outlined,
+                  title: 'Parâmetros',
+                  route: ParametrosPage.routeName,
+                ),
+                _subItem(
+                  icon: Icons.backup_outlined,
+                  title: 'Backup na nuvem',
+                  route: BackupRestoreCloudPage.routeName,
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.color_lens),
-              title: const Text('Tema do aplicativo'),
-              onTap: () {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ConfigTemaPage()),
-                );
-              },
+            _menuItem(
+              icon: Icons.info_outline,
+              label: 'Sobre',
+              route: SobrePage.routeName,
             ),
 
             const Divider(height: 24),
@@ -399,17 +412,6 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
 
             const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(
-                'v1',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onBackground.withOpacity(0.4),
-                  fontSize: 12,
-                ),
-              ),
-            ),
           ],
         ),
       ),

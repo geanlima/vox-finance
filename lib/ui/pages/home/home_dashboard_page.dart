@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 import 'package:vox_finance/ui/data/models/lembrete.dart';
 import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
+import 'package:vox_finance/ui/core/service/despesas_fixas_aviso_service.dart';
 import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
@@ -108,6 +109,12 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _vencidos = vencidos;
         _lembretesHoje = lembretesHoje;
         _lembretesAtrasados = lembretesAtrasados;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        DespesasFixasAvisoService.tentarMostrarAvisoMesAnteriorSeNecessario(
+          context,
+        );
       });
     } catch (e) {
       if (!mounted) return;
