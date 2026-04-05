@@ -452,6 +452,55 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V32: carteiras de investimento + Bluminers por carteira
+    // =========================
+    if (oldVersion < 32) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_carteiras (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nome TEXT NOT NULL,
+          layout TEXT NOT NULL DEFAULT 'bluminers',
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+
+      final cnt = await db.rawQuery('SELECT COUNT(*) AS c FROM investimento_carteiras');
+      final n = (cnt.first['c'] as int?) ?? 0;
+      if (n == 0) {
+        await db.insert('investimento_carteiras', {
+          'id': 1,
+          'nome': 'Carteira principal',
+          'layout': 'bluminers',
+          'criado_em': DateTime.now().millisecondsSinceEpoch,
+        });
+      }
+
+      await _addColumnSafe(
+        db,
+        'investimento_bluminers_movimentos',
+        'id_carteira',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_bluminers_rentabilidade',
+        'id_carteira',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+
+      try {
+        await db.execute('DROP INDEX IF EXISTS idx_bluminers_rent_data');
+      } catch (_) {}
+
+      await db.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_carteira_data
+        ON investimento_bluminers_rentabilidade (id_carteira, data);
+      ''');
+
+      await _migrateBluminersConfigV32(db);
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -520,10 +569,47 @@ class MigrationV2toV15 {
       );
     ''');
 
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_movimentos',
+      'id_carteira',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_rentabilidade',
+      'id_carteira',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    try {
+      await db.execute('DROP INDEX IF EXISTS idx_bluminers_rent_data');
+    } catch (_) {}
     await db.execute('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_data
-      ON investimento_bluminers_rentabilidade (data);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_carteira_data
+      ON investimento_bluminers_rentabilidade (id_carteira, data);
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_carteiras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        layout TEXT NOT NULL DEFAULT 'bluminers',
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+    try {
+      final cc = await db.rawQuery('SELECT COUNT(*) AS n FROM investimento_carteiras');
+      if (((cc.first['n'] as int?) ?? 0) == 0) {
+        await db.insert('investimento_carteiras', {
+          'id': 1,
+          'nome': 'Carteira principal',
+          'layout': 'bluminers',
+          'criado_em': DateTime.now().millisecondsSinceEpoch,
+        });
+      }
+    } catch (_) {}
+
+    await _migrateBluminersConfigV32(db);
 
     await _addColumnSafe(
       db,
@@ -610,6 +696,27 @@ class MigrationV2toV15 {
         criado_em INTEGER NOT NULL
       );
     ''');
+
+    // INVESTIMENTO — CARTEIRAS (layout Bluminers, etc.)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_carteiras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        layout TEXT NOT NULL DEFAULT 'bluminers',
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+    try {
+      final c = await db.rawQuery('SELECT COUNT(*) AS n FROM investimento_carteiras');
+      if (((c.first['n'] as int?) ?? 0) == 0) {
+        await db.insert('investimento_carteiras', {
+          'id': 1,
+          'nome': 'Carteira principal',
+          'layout': 'bluminers',
+          'criado_em': DateTime.now().millisecondsSinceEpoch,
+        });
+      }
+    } catch (_) {}
 
     // DESTINOS_RENDA
     await db.execute('''
@@ -736,10 +843,76 @@ class MigrationV2toV15 {
       );
     ''');
 
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_movimentos',
+      'id_carteira',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnSafe(
+      db,
+      'investimento_bluminers_rentabilidade',
+      'id_carteira',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    try {
+      await db.execute('DROP INDEX IF EXISTS idx_bluminers_rent_data');
+    } catch (_) {}
     await db.execute('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_data
-      ON investimento_bluminers_rentabilidade (data);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bluminers_rent_carteira_data
+      ON investimento_bluminers_rentabilidade (id_carteira, data);
     ''');
+    await _migrateBluminersConfigV32(db);
+  }
+
+  static Future<void> _migrateBluminersConfigV32(Database db) async {
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(investimento_bluminers_config);');
+      if (info.isEmpty) return;
+      final names = info.map((c) => c['name'] as String).toSet();
+      if (names.contains('id_carteira')) return;
+
+      final oldRows = await db.query('investimento_bluminers_config');
+      await db.execute('''
+        CREATE TABLE investimento_bluminers_config_v32 (
+          id_carteira INTEGER PRIMARY KEY NOT NULL,
+          saldo_inicial REAL NOT NULL DEFAULT 0,
+          saldo_inicial_disponivel REAL NOT NULL DEFAULT 0,
+          aporte_mensal REAL NOT NULL DEFAULT 0,
+          meta REAL,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+
+      if (oldRows.isEmpty) {
+        await db.insert('investimento_bluminers_config_v32', {
+          'id_carteira': 1,
+          'saldo_inicial': 0,
+          'saldo_inicial_disponivel': 0,
+          'aporte_mensal': 0,
+          'meta': null,
+          'criado_em': DateTime.now().millisecondsSinceEpoch,
+        });
+      } else {
+        final m = oldRows.first;
+        final oldId = (m['id'] as int?) ?? 1;
+        await db.insert('investimento_bluminers_config_v32', {
+          'id_carteira': oldId,
+          'saldo_inicial': m['saldo_inicial'],
+          'saldo_inicial_disponivel': m['saldo_inicial_disponivel'] ?? 0,
+          'aporte_mensal': m['aporte_mensal'] ?? 0,
+          'meta': m['meta'],
+          'criado_em': m['criado_em'] ?? DateTime.now().millisecondsSinceEpoch,
+        });
+      }
+      await db.execute('DROP TABLE investimento_bluminers_config');
+      await db.execute(
+        'ALTER TABLE investimento_bluminers_config_v32 RENAME TO investimento_bluminers_config',
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('migrate bluminers config v32: $e');
+    }
   }
 
   /// Helper genérico para "ALTER TABLE ADD COLUMN" com segurança.

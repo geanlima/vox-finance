@@ -330,9 +330,9 @@ class _AppDrawerState extends State<AppDrawer> {
               title: 'Investimento',
               children: [
                 _subItem(
-                  icon: Icons.auto_graph,
-                  title: 'Bluminers',
-                  route: '/investimentos/bluminers',
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Carteiras',
+                  route: '/investimentos/carteiras',
                 ),
               ],
             ),
