@@ -19,6 +19,9 @@ import 'package:vox_finance/ui/pages/grafico/graficos_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 import 'package:vox_finance/ui/pages/investimentos/carteiras_investimento_page.dart';
 import 'package:vox_finance/ui/pages/lembretes/lembretes_page.dart';
+import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
+import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
+import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
 
 class VoxFinanceApp extends StatelessWidget {
   const VoxFinanceApp({super.key});
@@ -73,13 +76,16 @@ class VoxFinanceApp extends StatelessWidget {
       '/graficos': (_) => const GraficosPage(),
       '/comparativo-mes': (_) => const ComparativoMesPage(),
       '/minha-renda': (_) => const MinhaRendaPage(),
-      '/backup-cloud': (_) => const BackupRestoreCloudPage(),
+      BackupRestoreCloudPage.routeName: (_) => const BackupRestoreCloudPage(),
 
       '/despesas-fixas': (_) => const DespesasFixasPage(),
       '/investimentos/carteiras': (_) => const CarteirasInvestimentoPage(),
       // compat: antigo atalho "Bluminers" abre a lista de carteiras
       '/investimentos/bluminers': (_) => const CarteirasInvestimentoPage(),
       '/lembretes': (_) => const LembretesPage(),
+      ConfigTemaPage.routeName: (_) => const ConfigTemaPage(),
+      ParametrosPage.routeName: (_) => const ParametrosPage(),
+      SobrePage.routeName: (_) => const SobrePage(),
     };
   }
 }
