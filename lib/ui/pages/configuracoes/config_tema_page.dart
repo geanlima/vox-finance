@@ -17,7 +17,9 @@ class ConfigTemaPage extends StatelessWidget {
         final ThemeMode atual = themeController.themeMode;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('Tema do aplicativo')),
+          appBar: AppBar(
+            title: const Text('Tema do aplicativo'),
+          ),
           drawer: const AppDrawer(currentRoute: ConfigTemaPage.routeName),
           body: Column(
             children: [

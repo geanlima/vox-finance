@@ -16,6 +16,7 @@ import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
+import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 
 import 'conta_pagar_detalhe.dart';
 
@@ -623,6 +624,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       appBar: AppBar(
         title: const Text('Contas a pagar'),
         actions: [
+          const SyncIconButton(),
           IconButton(
             icon: Icon(
               _mostrarSomentePendentes

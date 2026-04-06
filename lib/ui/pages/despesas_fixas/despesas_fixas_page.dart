@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repo
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/despesas_fixas/despesa_fixa_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 
 class DespesasFixasPage extends StatefulWidget {
   const DespesasFixasPage({super.key});
@@ -584,6 +585,7 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
       appBar: AppBar(
         title: const Text('Despesas Fixas'),
         actions: [
+          const SyncIconButton(),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
