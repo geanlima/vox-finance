@@ -10,7 +10,9 @@ class GraficosPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Resumo do mês")),
+      appBar: AppBar(
+        title: const Text('Resumo do mês'),
+      ),
       drawer: const AppDrawer(currentRoute: '/graficos'),
       body: Padding(
         padding: const EdgeInsets.all(16),

@@ -631,7 +631,9 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final double chartHeight = isLandscape ? 220 : 280;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Comparativo de meses')),
+      appBar: AppBar(
+        title: const Text('Comparativo de meses'),
+      ),
       drawer: const AppDrawer(currentRoute: '/comparativo-mes'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

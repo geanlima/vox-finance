@@ -10,6 +10,7 @@ class AppParametrosService {
   static final AppParametrosService instance = AppParametrosService._();
 
   static const _kDataInicioUsoMs = 'app_data_inicio_uso_ms';
+  static const _kApiBaseUrl = 'app_api_base_url';
 
   /// Primeiro dia em que o uso “oficial” começa (hora zerada, data local).
   Future<DateTime?> getDataInicioUso() async {
@@ -28,6 +29,26 @@ class AppParametrosService {
   Future<void> limparDataInicioUso() async {
     final p = await SharedPreferences.getInstance();
     await p.remove(_kDataInicioUsoMs);
+  }
+
+  /// URL base da API para integração (ex.: https://api.meudominio.com).
+  Future<String?> getApiBaseUrl() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getString(_kApiBaseUrl);
+    if (raw == null) return null;
+    final v = raw.trim();
+    return v.isEmpty ? null : v;
+  }
+
+  Future<void> setApiBaseUrl(String url) async {
+    final p = await SharedPreferences.getInstance();
+    final v = url.trim();
+    await p.setString(_kApiBaseUrl, v);
+  }
+
+  Future<void> limparApiBaseUrl() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kApiBaseUrl);
   }
 
   /// O mês de [referencia] (esperado dia 1) termina antes da data de início.
