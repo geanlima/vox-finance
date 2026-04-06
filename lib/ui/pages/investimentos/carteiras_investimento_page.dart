@@ -221,7 +221,9 @@ class _CarteirasInvestimentoPageState extends State<CarteirasInvestimentoPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Carteiras de investimento'),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
       ),
       drawer: const AppDrawer(currentRoute: '/investimentos/carteiras'),
       floatingActionButton: FloatingActionButton(

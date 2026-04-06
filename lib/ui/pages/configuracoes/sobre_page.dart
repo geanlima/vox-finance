@@ -11,7 +11,9 @@ class SobrePage extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sobre')),
+      appBar: AppBar(
+        title: const Text('Sobre'),
+      ),
       drawer: const AppDrawer(currentRoute: SobrePage.routeName),
       body: ListView(
         padding: const EdgeInsets.all(20),

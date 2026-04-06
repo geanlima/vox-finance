@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 
 class ContasPage extends StatefulWidget {
@@ -317,7 +318,10 @@ class _ContasPageState extends State<ContasPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Contas bancárias')),
+      appBar: AppBar(
+        title: const Text('Contas bancárias'),
+        actions: const [SyncIconButton()],
+      ),
       drawer: const AppDrawer(currentRoute: '/contas'),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _abrirForm(),

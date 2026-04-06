@@ -16,6 +16,8 @@ class _ParametrosPageState extends State<ParametrosPage> {
   final _fmt = DateFormat('dd/MM/yyyy');
   bool _loading = true;
   DateTime? _dataInicio;
+  String? _apiBaseUrl;
+  final _apiCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -25,11 +27,20 @@ class _ParametrosPageState extends State<ParametrosPage> {
 
   Future<void> _load() async {
     final d = await AppParametrosService.instance.getDataInicioUso();
+    final api = await AppParametrosService.instance.getApiBaseUrl();
     if (!mounted) return;
     setState(() {
       _dataInicio = d;
+      _apiBaseUrl = api;
+      _apiCtrl.text = api ?? '';
       _loading = false;
     });
+  }
+
+  @override
+  void dispose() {
+    _apiCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _escolherData() async {
@@ -83,10 +94,50 @@ class _ParametrosPageState extends State<ParametrosPage> {
     );
   }
 
+  bool _apiUrlValida(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return true;
+    final uri = Uri.tryParse(v);
+    if (uri == null) return false;
+    return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
+  Future<void> _salvarApiUrl() async {
+    final raw = _apiCtrl.text;
+    if (!_apiUrlValida(raw)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe uma URL válida (http/https).'),
+        ),
+      );
+      return;
+    }
+
+    final v = raw.trim();
+    if (v.isEmpty) {
+      await AppParametrosService.instance.limparApiBaseUrl();
+      if (!mounted) return;
+      setState(() => _apiBaseUrl = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('URL da API removida.')),
+      );
+      return;
+    }
+
+    await AppParametrosService.instance.setApiBaseUrl(v);
+    if (!mounted) return;
+    setState(() => _apiBaseUrl = v);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('URL da API salva.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parâmetros')),
+      appBar: AppBar(
+        title: const Text('Parâmetros'),
+      ),
       drawer: const AppDrawer(currentRoute: ParametrosPage.routeName),
       body:
           _loading
@@ -152,6 +203,69 @@ class _ParametrosPageState extends State<ParametrosPage> {
                                   child: const Text('Remover'),
                                 ),
                             ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Acesso à API',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Informe a URL base da API (ex.: https://api.seudominio.com). '
+                            'Se ficar em branco, o app não usa integração.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _apiCtrl,
+                            keyboardType: TextInputType.url,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'URL da API',
+                              hintText: 'https://...',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _apiBaseUrl == null
+                                      ? 'Não configurada'
+                                      : 'Atual: $_apiBaseUrl',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _salvarApiUrl,
+                              icon: const Icon(Icons.save, size: 20),
+                              label: const Text('Salvar URL da API'),
+                            ),
                           ),
                         ],
                       ),
