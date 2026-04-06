@@ -90,24 +90,28 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
             final mq = MediaQuery.of(ctx);
-            return SafeArea(
-              top: false,
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom:
+                    mq.viewInsets.bottom + mq.viewPadding.bottom + 28,
+              ),
               child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  28 + mq.viewInsets.bottom + mq.viewPadding.bottom,
-                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                  TextField(
+                    TextField(
                     controller: descCtrl,
                     decoration: const InputDecoration(
                       labelText: 'Descrição',
@@ -184,7 +188,7 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                           return;
                         }
 
-                        await _repo.salvar(
+                        final retId = await _repo.salvar(
                           DespesaFixa(
                             id: item?.id,
                             descricao: desc,
@@ -195,6 +199,13 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                             gerarAutomatico: auto,
                             criadoEm: item?.criadoEm ?? DateTime.now(),
                           ),
+                        );
+                        final idFixa = item?.id ?? retId;
+                        await _contaPagarRepo.atualizarContasAbertasDaDespesaFixa(
+                          idDespesaFixa: idFixa,
+                          valor: valor,
+                          descricao: desc,
+                          formaPagamentoIndex: forma?.index,
                         );
                         if (ctx.mounted) Navigator.pop(ctx, true);
                       },
@@ -565,6 +576,10 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomSafe = MediaQuery.of(context).viewPadding.bottom;
+    // Espaço extra para não ficar atrás da barra de navegação e do FAB.
+    final listBottomPadding = bottomSafe + 88;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Despesas Fixas'),
@@ -636,7 +651,7 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                 ),
                 Expanded(
                   child: ListView.builder(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.fromLTRB(12, 12, 12, listBottomPadding),
               itemCount: _resumo!.linhas.length,
               itemBuilder: (_, i) {
                 final linha = _resumo!.linhas[i];
