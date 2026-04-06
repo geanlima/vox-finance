@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.d
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
+import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 
 class AppDrawer extends StatefulWidget {
@@ -307,48 +308,6 @@ class _AppDrawerState extends State<AppDrawer> {
 
             _menuItem(icon: Icons.home_outlined, label: 'Home', route: '/'),
             _treeGroup(
-              icon: Icons.swap_vert_circle_outlined,
-              title: 'Movimentação',
-              children: [
-                _subItem(
-                  icon: Icons.table_rows,
-                  title: 'Lançamentos',
-                  route: '/lancamentos',
-                ),
-                _subItem(
-                  icon: Icons.home_work_outlined,
-                  title: 'Despesas fixas',
-                  route: '/despesas-fixas',
-                ),
-                _subItem(
-                  icon: Icons.receipt_long,
-                  title: 'Contas a pagar',
-                  route: '/contas-pagar',
-                ),
-              ],
-            ),
-            _menuItem(
-              icon: Icons.calendar_month,
-              label: 'Resumo do mês (Gastos)',
-              route: '/graficos',
-            ),
-            _menuItem(
-              icon: Icons.compare_arrows,
-              label: 'Comparativo de meses',
-              route: '/comparativo-mes',
-            ),
-            _treeGroup(
-              icon: Icons.trending_up,
-              title: 'Investimento',
-              children: [
-                _subItem(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'Carteiras',
-                  route: '/investimentos/carteiras',
-                ),
-              ],
-            ),
-            _treeGroup(
               icon: Icons.how_to_reg,
               title: 'Cadastro',
               children: [
@@ -381,7 +340,59 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
               ],
             ),
-
+            _treeGroup(
+              icon: Icons.swap_vert_circle_outlined,
+              title: 'Movimentação',
+              children: [
+                _subItem(
+                  icon: Icons.table_rows,
+                  title: 'Lançamentos',
+                  route: '/lancamentos',
+                ),
+                _subItem(
+                  icon: Icons.home_work_outlined,
+                  title: 'Despesas fixas',
+                  route: '/despesas-fixas',
+                ),
+                _subItem(
+                  icon: Icons.receipt_long,
+                  title: 'Contas a pagar',
+                  route: '/contas-pagar',
+                ),
+              ],
+            ),
+            _treeGroup(
+              icon: Icons.trending_up,
+              title: 'Investimento',
+              children: [
+                _subItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Carteiras',
+                  route: '/investimentos/carteiras',
+                ),
+              ],
+            ),
+            _menuItem(
+              icon: Icons.calendar_month,
+              label: 'Resumo do mês (Gastos)',
+              route: '/graficos',
+            ),
+            _menuItem(
+              icon: Icons.compare_arrows,
+              label: 'Comparativo de meses',
+              route: '/comparativo-mes',
+            ),
+            _treeGroup(
+              icon: Icons.integration_instructions_outlined,
+              title: 'Integração',
+              children: [
+                _subItem(
+                  icon: Icons.link,
+                  title: 'Associação',
+                  route: AssociacaoPage.routeName,
+                ),
+              ],
+            ),
             _treeGroup(
               icon: Icons.settings_outlined,
               title: 'Configuração',

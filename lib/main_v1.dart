@@ -22,6 +22,8 @@ import 'package:vox_finance/ui/pages/lembretes/lembretes_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
+import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
+import 'package:vox_finance/ui/pages/integracao/associar_cartao_credito_page.dart';
 
 class VoxFinanceApp extends StatelessWidget {
   const VoxFinanceApp({super.key});
@@ -86,6 +88,9 @@ class VoxFinanceApp extends StatelessWidget {
       ConfigTemaPage.routeName: (_) => const ConfigTemaPage(),
       ParametrosPage.routeName: (_) => const ParametrosPage(),
       SobrePage.routeName: (_) => const SobrePage(),
+      AssociacaoPage.routeName: (_) => const AssociacaoPage(),
+      AssociarCartaoCreditoPage.routeName: (_) =>
+          const AssociarCartaoCreditoPage(),
     };
   }
 }
