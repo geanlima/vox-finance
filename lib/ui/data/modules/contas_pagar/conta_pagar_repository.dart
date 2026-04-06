@@ -160,6 +160,28 @@ class ContaPagarRepository {
     );
   }
 
+  /// Atualiza valor, descrição e forma nas parcelas **ainda não pagas** geradas pela
+  /// despesa fixa (`grupo_parcelas` = `FIXA_{id}_YYYYMM`), para refletir o cadastro.
+  Future<void> atualizarContasAbertasDaDespesaFixa({
+    required int idDespesaFixa,
+    required double valor,
+    required String descricao,
+    int? formaPagamentoIndex,
+  }) async {
+    final db = await _db;
+    final dados = <String, Object?>{
+      'valor': valor,
+      'descricao': descricao,
+      'forma_pagamento': formaPagamentoIndex,
+    };
+    await db.update(
+      'conta_pagar',
+      dados,
+      where: 'grupo_parcelas LIKE ? AND pago = 0',
+      whereArgs: ['FIXA_${idDespesaFixa}_%'],
+    );
+  }
+
   /// Útil para sincronizar com lançamento (grupo + nº parcela)
   Future<void> marcarPorGrupoEParcela({
     required String grupo,

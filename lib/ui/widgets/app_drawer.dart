@@ -71,6 +71,15 @@ class _AppDrawerState extends State<AppDrawer> {
     final current = ModalRoute.of(context)?.settings.name;
     if (Navigator.canPop(context)) Navigator.pop(context); // fecha drawer
     if (current == route) return;
+    // Evita "duplicar" a Home no stack:
+    // Ex.: Home -> Despesas fixas -> (Drawer) Home.
+    // Se usarmos pushReplacement aqui, fica uma Home antiga embaixo e o voltar
+    // aparenta ter "duas homes". Para a Home, limpamos o stack.
+    if (route == '/') {
+      Navigator.pushNamedAndRemoveUntil(context, route, (r) => false);
+      return;
+    }
+
     Navigator.pushReplacementNamed(context, route);
   }
 
