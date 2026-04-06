@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/core/service/api_access_test_service.dart';
 import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
@@ -18,6 +19,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
   DateTime? _dataInicio;
   String? _apiBaseUrl;
   final _apiCtrl = TextEditingController();
+  bool _testandoApi = false;
 
   @override
   void initState() {
@@ -129,6 +131,45 @@ class _ParametrosPageState extends State<ParametrosPage> {
     setState(() => _apiBaseUrl = v);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('URL da API salva.')),
+    );
+  }
+
+  Future<void> _testarApi() async {
+    final raw = _apiCtrl.text;
+    if (!_apiUrlValida(raw) || raw.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe uma URL válida (http/https) antes de testar.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _testandoApi = true);
+    final res = await ApiAccessTestService.instance.testarUrlBase(raw);
+    if (!mounted) return;
+    setState(() => _testandoApi = false);
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            res.sucesso
+                ? 'Conexão estabelecida com sucesso'
+                : 'Não foi possível conectar',
+          ),
+          content: SingleChildScrollView(
+            child: Text(res.mensagem),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Fechar'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -259,6 +300,28 @@ class _ParametrosPageState extends State<ParametrosPage> {
                             ],
                           ),
                           const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _testandoApi ? null : _testarApi,
+                                  icon: _testandoApi
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.wifi_tethering, size: 20),
+                                  label: Text(
+                                    _testandoApi ? 'Testando...' : 'Testar conexão',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
