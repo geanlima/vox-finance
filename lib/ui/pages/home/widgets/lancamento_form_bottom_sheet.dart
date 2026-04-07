@@ -14,6 +14,8 @@ import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 // 🔹 modelo + repositório de categorias personalizadas
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
@@ -73,6 +75,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
   final LancamentoRepository _repositoryLancamento = LancamentoRepository();
   final _catPersRepo = CategoriaPersonalizadaRepository();
+  final _subcatRepo = SubcategoriaPersonalizadaRepository();
 
   // 👇 service para criar parcelas + contas a pagar
   final RegraOutraCompraParceladaService _regraOutraCompra =
@@ -85,6 +88,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
   /// Agora a categoria selecionada SEMPRE vem da tabela categorias_personalizadas
   CategoriaPersonalizada? _categoriaSelecionada;
+  SubcategoriaPersonalizada? _subcategoriaSelecionada;
 
   bool _parcelado = false;
 
@@ -93,6 +97,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
   late List<CartaoCredito> _cartoesFiltrados;
   List<CategoriaPersonalizada> _categoriasPersonalizadas = [];
+  List<SubcategoriaPersonalizada> _subcategorias = [];
 
   Lancamento? get _existente => widget.existente;
   List<CartaoCredito> get _cartoes => widget.cartoes;
@@ -183,6 +188,44 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
           );
         } catch (_) {
           _categoriaSelecionada = null;
+        }
+      }
+    });
+
+    // após carregar categorias, carrega subcategorias da categoria atual (se houver)
+    await _carregarSubcategoriasDaCategoriaSelecionada();
+  }
+
+  Future<void> _carregarSubcategoriasDaCategoriaSelecionada() async {
+    final cat = _categoriaSelecionada;
+    if (cat?.id == null) {
+      if (!mounted) return;
+      setState(() {
+        _subcategorias = [];
+        _subcategoriaSelecionada = null;
+      });
+      return;
+    }
+
+    final lista = await _subcatRepo.listarPorCategoria(cat!.id!);
+
+    if (!mounted) return;
+
+    setState(() {
+      _subcategorias = lista;
+
+      final existingId = _existente?.idSubcategoriaPersonalizada;
+      if (existingId != null) {
+        try {
+          _subcategoriaSelecionada = _subcategorias.firstWhere(
+            (s) => s.id == existingId,
+          );
+        } catch (_) {
+          _subcategoriaSelecionada = null;
+        }
+      } else {
+        if (_subcategoriaSelecionada?.idCategoriaPersonalizada != cat.id) {
+          _subcategoriaSelecionada = null;
         }
       }
     });
@@ -442,6 +485,59 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                                   : (CategoriaPersonalizada? nova) {
                                     setState(() {
                                       _categoriaSelecionada = nova;
+                                      _subcategoriaSelecionada = null;
+                                      _subcategorias = [];
+                                    });
+                                    _carregarSubcategoriasDaCategoriaSelecionada();
+                                  },
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        DropdownButtonFormField<SubcategoriaPersonalizada>(
+                          value: _subcategoriaSelecionada,
+                          decoration: InputDecoration(
+                            labelText: 'Subcategoria',
+                            border: const OutlineInputBorder(),
+                            helperText:
+                                _categoriaSelecionada == null
+                                    ? 'Selecione uma categoria para ver as subcategorias.'
+                                    : _subcategorias.isEmpty
+                                    ? 'Sem subcategorias para esta categoria.'
+                                    : null,
+                          ),
+                          validator: (SubcategoriaPersonalizada? value) {
+                            if (_subcategorias.isNotEmpty && value == null) {
+                              return 'Selecione a subcategoria.';
+                            }
+                            return null;
+                          },
+                          items:
+                              _subcategorias
+                                  .map(
+                                    (s) => DropdownMenuItem<
+                                      SubcategoriaPersonalizada
+                                    >(
+                                      value: s,
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.account_tree_outlined,
+                                            size: 16,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(s.nome),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              _subcategorias.isEmpty
+                                  ? null
+                                  : (SubcategoriaPersonalizada? nova) {
+                                    setState(() {
+                                      _subcategoriaSelecionada = nova;
                                     });
                                   },
                         ),
@@ -802,6 +898,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
     // Código da categoria na tabela
     final int? idCategoriaPersonalizada = catSel.id;
+    final int? idSubcategoriaPersonalizada = _subcategoriaSelecionada?.id;
 
     // 6) Monta o objeto Lancamento
     final Lancamento lanc;
@@ -820,6 +917,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         idConta: _contaSelecionada?.id,
         tipoMovimento: _tipoMovimento,
         idCategoriaPersonalizada: idCategoriaPersonalizada,
+        idSubcategoriaPersonalizada: idSubcategoriaPersonalizada,
       );
     } else {
       lanc = Lancamento(
@@ -835,6 +933,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         idConta: _contaSelecionada?.id,
         tipoMovimento: _tipoMovimento,
         idCategoriaPersonalizada: idCategoriaPersonalizada,
+        idSubcategoriaPersonalizada: idSubcategoriaPersonalizada,
       );
     }
 

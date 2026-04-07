@@ -17,6 +17,8 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 // ⭐ NOVO: categorias personalizadas
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
@@ -40,6 +42,18 @@ class _GrupoCategoria {
   Color? corDefinida; // cor vinda do banco (pode ser null)
 
   _GrupoCategoria({required this.label, required this.total, this.corDefinida});
+}
+
+class _GrupoSubcategoria {
+  final int? subcategoriaId; // null = sem subcategoria
+  final String label;
+  double total;
+
+  _GrupoSubcategoria({
+    required this.subcategoriaId,
+    required this.label,
+    required this.total,
+  });
 }
 
 class GraficoPizzaComponent extends StatefulWidget {
@@ -80,6 +94,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   // 🔹 Categorias personalizadas carregadas do banco
   final _categoriaRepo = CategoriaPersonalizadaRepository();
   List<CategoriaPersonalizada> _categoriasPersonalizadas = [];
+
+  // 🔹 Subcategorias personalizadas carregadas do banco
+  final _subcategoriaRepo = SubcategoriaPersonalizadaRepository();
+  List<SubcategoriaPersonalizada> _subcategorias = [];
 
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
@@ -189,11 +207,20 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       }
     }
 
+    // ⭐ Subcategorias (para drill-down no resumo por categoria)
+    List<SubcategoriaPersonalizada> subs = const [];
+    try {
+      subs = await _subcategoriaRepo.listarTodasComCategoriaTipo();
+    } catch (_) {
+      subs = const [];
+    }
+
     setState(() {
       _lancamentos = lancsFiltrados;
       _cartoes = cards;
       _contas = contas;
       _categoriasPersonalizadas = cats;
+      _subcategorias = subs;
       _carregando = false;
     });
   }
@@ -204,6 +231,23 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     if (id == null) return null;
     try {
       return _categoriasPersonalizadas.firstWhere((c) => c.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _categoriaPersonalizadaIdByLabel(String label) {
+    try {
+      return _categoriasPersonalizadas.firstWhere((c) => c.nome == label).id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  SubcategoriaPersonalizada? _subcategoriaPorId(int? id) {
+    if (id == null) return null;
+    try {
+      return _subcategorias.firstWhere((s) => s.id == id);
     } catch (_) {
       return null;
     }
@@ -1439,18 +1483,35 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         final percent = total == 0 ? 0 : (valor / total) * 100;
         final color = _colorForGrupoCategoria(index, grupo.corDefinida);
         final lancs = dataLancs[grupo.label] ?? const <Lancamento>[];
+        final categoriaId = _categoriaPersonalizadaIdByLabel(grupo.label);
+        final temSubcategoriasNoBanco =
+            categoriaId != null &&
+            _subcategorias.any((s) => s.idCategoriaPersonalizada == categoriaId);
+        final temSubcategoriaNoLancamento =
+            lancs.any((l) => l.idSubcategoriaPersonalizada != null);
+        final podeDetalharPorSubcategoria =
+            (temSubcategoriasNoBanco || temSubcategoriaNoLancamento) &&
+            categoriaId != null;
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () {
-              _mostrarDetalheLancamentos(
-                titulo: 'Detalhe por categoria',
-                subtitulo:
-                    '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
-                lancamentos: lancs,
-              );
+              if (podeDetalharPorSubcategoria) {
+                _mostrarSubcategoriasDaCategoria(
+                  tituloCategoria: grupo.label,
+                  categoriaId: categoriaId,
+                  lancamentosDaCategoria: lancs,
+                );
+              } else {
+                _mostrarDetalheLancamentos(
+                  titulo: 'Detalhe por categoria',
+                  subtitulo:
+                      '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                  lancamentos: lancs,
+                );
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1493,10 +1554,192 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                     _currency.format(valor),
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
+                  if (podeDetalharPorSubcategoria) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chevron_right, size: 18),
+                  ],
                 ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _mostrarSubcategoriasDaCategoria({
+    required String tituloCategoria,
+    required int categoriaId,
+    required List<Lancamento> lancamentosDaCategoria,
+  }) {
+    final Map<String, _GrupoSubcategoria> mapa = {};
+
+    for (final l in lancamentosDaCategoria) {
+      final subId = l.idSubcategoriaPersonalizada;
+      final sub = _subcategoriaPorId(subId);
+
+      final label = sub?.nome ?? 'Sem subcategoria';
+      final key = '${subId ?? 0}|$label';
+
+      if (mapa.containsKey(key)) {
+        mapa[key]!.total += l.valor;
+      } else {
+        mapa[key] = _GrupoSubcategoria(
+          subcategoriaId: subId,
+          label: label,
+          total: l.valor,
+        );
+      }
+    }
+
+    final entries = mapa.values.toList()
+      ..sort((a, b) => b.total.compareTo(a.total));
+    final total = entries.fold<double>(0.0, (acc, g) => acc + g.total);
+
+    final mesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final tema = Theme.of(context);
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.72,
+          minChildSize: 0.45,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: tema.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Subcategorias',
+                          style: tema.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$tituloCategoria • $mesAno',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: entries.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final g = entries[index];
+                        final percent = total == 0 ? 0 : (g.total / total) * 100;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            final filtrados =
+                                lancamentosDaCategoria.where((l) {
+                                  if (g.subcategoriaId == null) {
+                                    return l.idSubcategoriaPersonalizada == null;
+                                  }
+                                  return l.idSubcategoriaPersonalizada ==
+                                      g.subcategoriaId;
+                                }).toList();
+
+                            _mostrarDetalheLancamentos(
+                              titulo: 'Detalhe por subcategoria',
+                              subtitulo: '${g.label} • $tituloCategoria • $mesAno',
+                              lancamentos: filtrados,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: tema.colorScheme.surfaceVariant.withOpacity(
+                                0.3,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.account_tree_outlined,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        g.label,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${percent.toStringAsFixed(1)}%',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  _currency.format(g.total),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.chevron_right, size: 18),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );

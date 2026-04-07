@@ -37,13 +37,10 @@ class CategoriaPersonalizadaRepository {
   Future<List<CategoriaPersonalizada>> listarPorTipo(TipoMovimento tipo) async {
     final db = await _db;
 
-    // gravamos como texto: 'receita' ou 'despesa'
-    final tipoStr = tipo == TipoMovimento.receita ? 'receita' : 'despesa';
-
     final result = await db.query(
       'categorias_personalizadas',
-      //where: 'tipo_movimento = ?',
-      //whereArgs: [tipoStr],
+      where: 'tipo_movimento = ?',
+      whereArgs: [tipo.index],
       orderBy: 'nome',
     );
 
