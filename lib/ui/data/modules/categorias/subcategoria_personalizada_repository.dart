@@ -50,7 +50,6 @@ class SubcategoriaPersonalizadaRepository {
 
   Future<List<SubcategoriaPersonalizada>> listarTodasComCategoriaTipo() async {
     final db = await _db;
-
     final result = await db.rawQuery('''
       SELECT
         s.id,
@@ -62,9 +61,7 @@ class SubcategoriaPersonalizadaRepository {
       ORDER BY c.nome, s.nome;
     ''');
 
-    return result
-        .map((m) => SubcategoriaPersonalizada.fromMap(m))
-        .toList();
+    return result.map((m) => SubcategoriaPersonalizada.fromMap(m)).toList();
   }
 }
 
