@@ -1,12 +1,10 @@
-import 'package:vox_finance/ui/data/models/lancamento.dart';
-
 class SubcategoriaPersonalizada {
   final int? id;
   final int idCategoriaPersonalizada;
   final String nome;
 
   /// Mantém compatibilidade com a lista de categorias por tipo (despesa/receita)
-  final TipoMovimento? tipoMovimentoCategoria;
+  final int? tipoMovimentoCategoria;
 
   SubcategoriaPersonalizada({
     this.id,
@@ -18,12 +16,10 @@ class SubcategoriaPersonalizada {
   factory SubcategoriaPersonalizada.fromMap(Map<String, dynamic> map) {
     return SubcategoriaPersonalizada(
       id: map['id'] as int?,
-      idCategoriaPersonalizada: (map['id_categoria_personalizada'] as num).toInt(),
+      idCategoriaPersonalizada:
+          (map['id_categoria_personalizada'] as num).toInt(),
       nome: (map['nome'] ?? '') as String,
-      tipoMovimentoCategoria:
-          map['tipo_movimento_categoria'] == null
-              ? null
-              : TipoMovimento.values[(map['tipo_movimento_categoria'] as num).toInt()],
+      tipoMovimentoCategoria: (map['tipo_movimento_categoria'] as num?)?.toInt(),
     );
   }
 

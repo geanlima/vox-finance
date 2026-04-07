@@ -61,108 +61,142 @@ class _SubcategoriasPersonalizadasPageState
     final formKey = GlobalKey<FormState>();
     final nomeCtrl = TextEditingController(text: existente?.nome ?? '');
 
-    CategoriaPersonalizada? catSel =
-        existente != null ? _catById(existente.idCategoriaPersonalizada) : null;
+    // Sempre recarrega do banco (evita lista vazia / estado defasado).
+    final cats = await _catRepo.listarTodas();
+    if (!mounted) return;
+    setState(() => _cats = cats);
+
+    // Dropdown por ID: CategoriaPersonalizada não implementa ==; value por objeto quebra o combo.
+    int? categoriaIdSel = existente?.idCategoriaPersonalizada;
+    final idsValidos = cats.where((c) => c.id != null).map((c) => c.id!).toSet();
+    if (categoriaIdSel != null && !idsValidos.contains(categoriaIdSel)) {
+      categoriaIdSel = null;
+    }
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
-        final tema = Theme.of(context);
-        final bottom = MediaQuery.of(context).viewInsets.bottom;
+      builder: (sheetContext) {
+        final tema = Theme.of(sheetContext);
+        final mq = MediaQuery.of(sheetContext);
+        final bottomInset = mq.viewInsets.bottom;
+        final safeBottom = mq.padding.bottom;
 
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottom),
-          child: Container(
-            decoration: BoxDecoration(
-              color: tema.colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        existente == null
-                            ? 'Nova subcategoria'
-                            : 'Editar subcategoria',
-                        style: tema.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<CategoriaPersonalizada>(
-                    value: catSel,
-                    decoration: const InputDecoration(
-                      labelText: 'Categoria',
-                      border: OutlineInputBorder(),
+        final comId = cats.where((c) => c.id != null).toList();
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: StatefulBuilder(
+              builder: (context, modalSetState) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: tema.colorScheme.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
                     ),
-                    items:
-                        _cats
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(c.nome),
+                  ),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(16, 14, 16, 16 + safeBottom),
+                    child: Form(
+                      key: formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                existente == null
+                                    ? 'Nova subcategoria'
+                                    : 'Editar subcategoria',
+                                style: tema.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            )
-                            .toList(),
-                    validator:
-                        (v) => v == null ? 'Selecione a categoria.' : null,
-                    onChanged: (v) => catSel = v,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: nomeCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Subcategoria',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) {
-                      final t = (v ?? '').trim();
-                      if (t.isEmpty) return 'Informe o nome da subcategoria.';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () async {
-                        if (!formKey.currentState!.validate()) return;
-                        final cat = catSel!;
-                        final nome = nomeCtrl.text.trim();
-
-                        await _subRepo.salvar(
-                          SubcategoriaPersonalizada(
-                            id: existente?.id,
-                            idCategoriaPersonalizada: cat.id!,
-                            nome: nome,
+                              const Spacer(),
+                              IconButton(
+                                onPressed: () => Navigator.pop(sheetContext),
+                                icon: const Icon(Icons.close),
+                              ),
+                            ],
                           ),
-                        );
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int>(
+                            value: categoriaIdSel,
+                            decoration: const InputDecoration(
+                              labelText: 'Categoria',
+                              border: OutlineInputBorder(),
+                            ),
+                            hint: const Text('Selecione a categoria'),
+                            isExpanded: true,
+                            items: comId
+                                .map(
+                                  (c) => DropdownMenuItem<int>(
+                                    value: c.id!,
+                                    child: Text(c.nome),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: comId.isEmpty
+                                ? null
+                                : (v) => modalSetState(() => categoriaIdSel = v),
+                            validator: (v) {
+                              if (comId.isEmpty) {
+                                return 'Cadastre categorias em Minhas categorias primeiro.';
+                              }
+                              if (v == null) return 'Selecione a categoria.';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: nomeCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Subcategoria',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (v) {
+                              final t = (v ?? '').trim();
+                              if (t.isEmpty) {
+                                return 'Informe o nome da subcategoria.';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: comId.isEmpty
+                                ? null
+                                : () async {
+                                    if (!formKey.currentState!.validate()) {
+                                      return;
+                                    }
+                                    final nome = nomeCtrl.text.trim();
+                                    final idCat = categoriaIdSel!;
 
-                        if (!mounted) return;
-                        Navigator.pop(context);
-                        await _carregar();
-                      },
-                      child: const Text('Salvar'),
+                                    await _subRepo.salvar(
+                                      SubcategoriaPersonalizada(
+                                        id: existente?.id,
+                                        idCategoriaPersonalizada: idCat,
+                                        nome: nome,
+                                      ),
+                                    );
+
+                                    if (!mounted) return;
+                                    Navigator.pop(sheetContext);
+                                    await _carregar();
+                                  },
+                            child: const Text('Salvar'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         );
@@ -206,12 +240,12 @@ class _SubcategoriasPersonalizadasPageState
       groups.putIfAbsent(s.idCategoriaPersonalizada, () => []).add(s);
     }
 
-    final catIds =
-        groups.keys.toList()..sort((a, b) {
-          final ca = _catById(a)?.nome ?? '';
-          final cb = _catById(b)?.nome ?? '';
-          return ca.compareTo(cb);
-        });
+    final catIds = groups.keys.toList()
+      ..sort((a, b) {
+        final ca = _catById(a)?.nome ?? '';
+        final cb = _catById(b)?.nome ?? '';
+        return ca.compareTo(cb);
+      });
 
     return Scaffold(
       appBar: AppBar(title: const Text('Subcategorias')),
@@ -219,56 +253,54 @@ class _SubcategoriasPersonalizadasPageState
         onPressed: () => _abrirForm(),
         child: const Icon(Icons.add),
       ),
-      body:
-          _carregando
-              ? const Center(child: CircularProgressIndicator())
-              : _subs.isEmpty
+      body: _carregando
+          ? const Center(child: CircularProgressIndicator())
+          : _subs.isEmpty
               ? Center(
-                child: Text(
-                  'Nenhuma subcategoria cadastrada.',
-                  style: tema.textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[700],
-                  ),
-                ),
-              )
-              : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                itemCount: catIds.length,
-                itemBuilder: (context, idx) {
-                  final catId = catIds[idx];
-                  final cat = _catById(catId);
-                  final subs = groups[catId] ?? const [];
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: ExpansionTile(
-                      title: Text(cat?.nome ?? 'Categoria id $catId'),
-                      subtitle: Text('${subs.length} subcategoria(s)'),
-                      children:
-                          subs.map((s) {
-                            return ListTile(
-                              title: Text(s.nome),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Editar',
-                                    onPressed: () => _abrirForm(existente: s),
-                                    icon: const Icon(Icons.edit_outlined),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Excluir',
-                                    onPressed: () => _confirmarExcluir(s),
-                                    icon: const Icon(Icons.delete_outline),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                  child: Text(
+                    'Nenhuma subcategoria cadastrada.',
+                    style: tema.textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[700],
                     ),
-                  );
-                },
-              ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                  itemCount: catIds.length,
+                  itemBuilder: (context, idx) {
+                    final catId = catIds[idx];
+                    final cat = _catById(catId);
+                    final subs = groups[catId] ?? const [];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: ExpansionTile(
+                        title: Text(cat?.nome ?? 'Categoria id $catId'),
+                        subtitle: Text('${subs.length} subcategoria(s)'),
+                        children: subs.map((s) {
+                          return ListTile(
+                            title: Text(s.nome),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Editar',
+                                  onPressed: () => _abrirForm(existente: s),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: 'Excluir',
+                                  onPressed: () => _confirmarExcluir(s),
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
