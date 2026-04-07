@@ -12,6 +12,7 @@ import 'package:vox_finance/ui/data/models/usuario.dart';
 import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
+import 'package:vox_finance/ui/pages/categorias/subcategorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
@@ -336,6 +337,18 @@ class _AppDrawerState extends State<AppDrawer> {
                     Navigator.pushNamed(
                       context,
                       CategoriasPersonalizadasPage.routeName,
+                    );
+                  },
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.account_tree_outlined, size: 20),
+                  title: const Text('Subcategorias'),
+                  onTap: () {
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                    Navigator.pushNamed(
+                      context,
+                      SubcategoriasPersonalizadasPage.routeName,
                     );
                   },
                 ),

@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, control_flow_in_finally
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +6,10 @@ import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
+import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
 
 class LancamentoFormPage extends StatefulWidget {
@@ -35,7 +39,14 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
   bool _parcelado = false;
 
   late FormaPagamento _formaPagamento;
-  late Categoria _categoria;
+  CategoriaPersonalizada? _categoriaSel;
+  SubcategoriaPersonalizada? _subcategoriaSel;
+  List<CategoriaPersonalizada> _categorias = [];
+  List<SubcategoriaPersonalizada> _subcategorias = [];
+  bool _carregandoCategorias = false;
+
+  final _catRepo = CategoriaPersonalizadaRepository();
+  final _subRepo = SubcategoriaPersonalizadaRepository();
 
   final _dateFormat = DateFormat('dd/MM/yyyy');
 
@@ -50,16 +61,71 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
       _data = l.dataHora;
       _pago = l.pago;
       _formaPagamento = l.formaPagamento;
-      _categoria = l.categoria;
       _parcelado = (l.parcelaTotal ?? 1) > 1;
       _qtdParcelasController.text = (l.parcelaTotal ?? 1).toString();
     } else {
       _data = widget.dataInicial ?? DateTime.now();
       _pago = false;
       _formaPagamento = FormaPagamento.values.first;
-      _categoria = Categoria.values.first;
       _parcelado = false;
       _qtdParcelasController.text = '1';
+    }
+
+    _carregarCategorias();
+  }
+
+  Future<void> _carregarCategorias() async {
+    setState(() => _carregandoCategorias = true);
+    try {
+      // nesta tela, usamos o cadastro de categorias personalizadas (despesa)
+      final cats = await _catRepo.listarPorTipo(TipoMovimento.despesa);
+      if (!mounted) return;
+      setState(() => _categorias = cats);
+
+      final existente = widget.lancamento;
+      final idCat = existente?.idCategoriaPersonalizada;
+      if (idCat != null) {
+        try {
+          _categoriaSel = _categorias.firstWhere((c) => c.id == idCat);
+        } catch (_) {
+          _categoriaSel = null;
+        }
+      } else if (_categoriaSel == null && _categorias.isNotEmpty) {
+        _categoriaSel = _categorias.first;
+      }
+
+      await _carregarSubcategorias();
+    } finally {
+      if (!mounted) return;
+      setState(() => _carregandoCategorias = false);
+    }
+  }
+
+  Future<void> _carregarSubcategorias() async {
+    final cat = _categoriaSel;
+    if (cat?.id == null) {
+      if (!mounted) return;
+      setState(() {
+        _subcategorias = [];
+        _subcategoriaSel = null;
+      });
+      return;
+    }
+
+    final subs = await _subRepo.listarPorCategoria(cat!.id!);
+    if (!mounted) return;
+    setState(() => _subcategorias = subs);
+
+    final existente = widget.lancamento;
+    final idSub = existente?.idSubcategoriaPersonalizada;
+    if (idSub != null) {
+      try {
+        _subcategoriaSel = _subcategorias.firstWhere((s) => s.id == idSub);
+      } catch (_) {
+        _subcategoriaSel = null;
+      }
+    } else {
+      _subcategoriaSel = null;
     }
   }
 
@@ -89,6 +155,40 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
     return idx >= 0 ? s.substring(idx + 1) : s;
   }
 
+  Categoria _categoriaEnumFromNome(String nome) {
+    switch (nome) {
+      case 'Alimentação':
+        return Categoria.alimentacao;
+      case 'Educação':
+        return Categoria.educacao;
+      case 'Família':
+        return Categoria.familia;
+      case 'Finanças Pessoais':
+        return Categoria.financasPessoais;
+      case 'Impostos e Taxas':
+        return Categoria.impostosETaxas;
+      case 'Lazer e Entretenimento':
+        return Categoria.lazerEEntretenimento;
+      case 'Moradia':
+        return Categoria.moradia;
+      case 'Presentes e Doações':
+        return Categoria.presentesEDoacoes;
+      case 'Saúde':
+        return Categoria.saude;
+      case 'Seguros':
+        return Categoria.seguros;
+      case 'Tecnologia':
+        return Categoria.tecnologia;
+      case 'Transporte':
+        return Categoria.transporte;
+      case 'Vestuário':
+        return Categoria.vestuario;
+      case 'Outros':
+      default:
+        return Categoria.outros;
+    }
+  }
+
   void _salvar() {
     if (!_formKey.currentState!.validate()) return;
 
@@ -103,6 +203,9 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
 
     final agora = DateTime.now();
 
+    final catSel = _categoriaSel;
+    if (catSel == null) return;
+
     final base = Lancamento(
       id: widget.lancamento?.id,
       valor: valor,
@@ -112,7 +215,9 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
       pagamentoFatura: widget.lancamento?.pagamentoFatura ?? false,
       pago: _pago,
       dataPagamento: _pago ? (widget.lancamento?.dataPagamento ?? agora) : null,
-      categoria: _categoria,
+      categoria: _categoriaEnumFromNome(catSel.nome),
+      idCategoriaPersonalizada: catSel.id,
+      idSubcategoriaPersonalizada: _subcategoriaSel?.id,
       grupoParcelas: widget.lancamento?.grupoParcelas,
       parcelaNumero: widget.lancamento?.parcelaNumero,
       parcelaTotal: _parcelado ? qtdParcelas : 1,
@@ -191,27 +296,73 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
 
               const SizedBox(height: 16),
 
-              DropdownButtonFormField<Categoria>(
-                value: _categoria,
-                decoration: const InputDecoration(
+              DropdownButtonFormField<CategoriaPersonalizada>(
+                value: _categoriaSel,
+                decoration: InputDecoration(
                   labelText: 'Categoria',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  helperText:
+                      _carregandoCategorias
+                          ? 'Carregando categorias...'
+                          : _categorias.isEmpty
+                          ? 'Nenhuma categoria cadastrada.'
+                          : null,
                 ),
                 items:
-                    Categoria.values
+                    _categorias
                         .map(
                           (c) => DropdownMenuItem(
                             value: c,
-                            child: Text(_labelEnum(c)),
+                            child: Text(c.nome),
                           ),
                         )
                         .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _categoria = v);
-                },
+                validator: (v) => v == null ? 'Selecione a categoria.' : null,
+                onChanged: _categorias.isEmpty
+                    ? null
+                    : (v) async {
+                        setState(() {
+                          _categoriaSel = v;
+                          _subcategoriaSel = null;
+                          _subcategorias = [];
+                        });
+                        await _carregarSubcategorias();
+                      },
               ),
 
               const SizedBox(height: 16),
+
+              DropdownButtonFormField<SubcategoriaPersonalizada>(
+                value: _subcategoriaSel,
+                decoration: InputDecoration(
+                  labelText: 'Subcategoria',
+                  border: const OutlineInputBorder(),
+                  helperText:
+                      _categoriaSel == null
+                          ? 'Selecione uma categoria para ver as subcategorias.'
+                          : _subcategorias.isEmpty
+                          ? 'Sem subcategorias para esta categoria.'
+                          : null,
+                ),
+                items:
+                    _subcategorias
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(s.nome),
+                          ),
+                        )
+                        .toList(),
+                validator: (v) {
+                  if (_subcategorias.isNotEmpty && v == null) {
+                    return 'Selecione a subcategoria.';
+                  }
+                  return null;
+                },
+                onChanged: _subcategorias.isEmpty
+                    ? null
+                    : (v) => setState(() => _subcategoriaSel = v),
+              ),
               InkWell(
                 onTap: _selecionarData,
                 child: InputDecorator(
