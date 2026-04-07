@@ -14,6 +14,9 @@ class CartaoCredito {
   bool controlaFatura;
   double? limite;
 
+  /// Id do cartão na API (query `cartao_id` em `/api/faturas`). Opcional.
+  String? codigoCartaoApi;
+
   CartaoCredito({
     this.id,
     required this.descricao,
@@ -25,6 +28,7 @@ class CartaoCredito {
     this.tipo = TipoCartao.credito,
     this.controlaFatura = true,
     this.limite,
+    this.codigoCartaoApi,
   });
 
   String get label => '$descricao • **** $ultimos4Digitos';
@@ -41,6 +45,7 @@ class CartaoCredito {
       tipo: TipoCartao.values[(map['tipo'] as int?) ?? 0],
       controlaFatura: (map['controla_fatura'] as int?) == 1,
       limite: (map['limite'] as num?)?.toDouble(),
+      codigoCartaoApi: map['codigo_cartao_api'] as String?,
     );
   }
 
@@ -57,6 +62,7 @@ class CartaoCredito {
       'tipo': tipo.index,
       'controla_fatura': controlaFatura ? 1 : 0,
       'limite': limite,
+      'codigo_cartao_api': codigoCartaoApi,
     };
   }
 
@@ -72,6 +78,7 @@ class CartaoCredito {
       'tipo': tipo.index,
       'controla_fatura': controlaFatura ? 1 : 0,
       'limite': limite,
+      'codigo_cartao_api': codigoCartaoApi,
     };
   }
 }

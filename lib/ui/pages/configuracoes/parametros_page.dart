@@ -121,7 +121,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
       if (!mounted) return;
       setState(() => _apiBaseUrl = null);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('URL da API removida.')),
+        const SnackBar(content: Text('URL de integração removida.')),
       );
       return;
     }
@@ -130,7 +130,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
     if (!mounted) return;
     setState(() => _apiBaseUrl = v);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('URL da API salva.')),
+      const SnackBar(content: Text('URL de integração salva.')),
     );
   }
 
@@ -257,13 +257,13 @@ class _ParametrosPageState extends State<ParametrosPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Acesso à API',
+                            'Acesso à integração',
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Informe a URL base da API (ex.: https://api.seudominio.com). '
+                            'Informe a URL base do servidor (ex.: https://servidor.seudominio.com). '
                             'Se ficar em branco, o app não usa integração.',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: Theme.of(context)
@@ -277,7 +277,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
                             keyboardType: TextInputType.url,
                             textInputAction: TextInputAction.done,
                             decoration: const InputDecoration(
-                              labelText: 'URL da API',
+                              labelText: 'URL de integração',
                               hintText: 'https://...',
                               border: OutlineInputBorder(),
                             ),
@@ -327,7 +327,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
                             child: FilledButton.icon(
                               onPressed: _salvarApiUrl,
                               icon: const Icon(Icons.save, size: 20),
-                              label: const Text('Salvar URL da API'),
+                              label: const Text('Salvar URL'),
                             ),
                           ),
                         ],

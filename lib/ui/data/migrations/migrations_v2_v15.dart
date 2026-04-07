@@ -501,6 +501,13 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V33: código do cartão na API (GET /api/faturas?cartao_id=)
+    // =========================
+    if (oldVersion < 33) {
+      await _addColumnSafe(db, 'cartao_credito', 'codigo_cartao_api', 'TEXT');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -517,6 +524,7 @@ class MigrationV2toV15 {
       'id_categoria_personalizada',
       'INTEGER',
     );
+    await _addColumnSafe(db, 'cartao_credito', 'codigo_cartao_api', 'TEXT');
     await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
@@ -779,6 +787,7 @@ class MigrationV2toV15 {
     );
     await _addColumnSafe(db, 'lancamentos', 'id_conta', 'INTEGER');
     await _addColumnSafe(db, 'lancamentos', 'id_cartao', 'INTEGER');
+    await _addColumnSafe(db, 'cartao_credito', 'codigo_cartao_api', 'TEXT');
     await _addColumnSafe(db, 'conta_pagar', 'id_lancamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
