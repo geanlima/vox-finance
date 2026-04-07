@@ -16,6 +16,7 @@ import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
 import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
+import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 
 class AppDrawer extends StatefulWidget {
@@ -390,6 +391,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.link,
                   title: 'Associação',
                   route: AssociacaoPage.routeName,
+                ),
+                _subItem(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Faturas de cartão',
+                  route: FaturasCartaoPage.routeName,
                 ),
               ],
             ),

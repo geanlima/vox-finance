@@ -44,7 +44,7 @@ class ApiAccessTestService {
     if (trimmed.isEmpty) {
       return ApiAccessTestResult(
         sucesso: false,
-        mensagem: 'Informe a URL da API.',
+        mensagem: 'Informe a URL em Parâmetros.',
       );
     }
     final base = Uri.tryParse(trimmed);

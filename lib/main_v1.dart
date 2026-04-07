@@ -24,6 +24,7 @@ import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
 import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
 import 'package:vox_finance/ui/pages/integracao/associar_cartao_credito_page.dart';
+import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
 
 class VoxFinanceApp extends StatelessWidget {
   const VoxFinanceApp({super.key});
@@ -89,6 +90,7 @@ class VoxFinanceApp extends StatelessWidget {
       ParametrosPage.routeName: (_) => const ParametrosPage(),
       SobrePage.routeName: (_) => const SobrePage(),
       AssociacaoPage.routeName: (_) => const AssociacaoPage(),
+      FaturasCartaoPage.routeName: (_) => const FaturasCartaoPage(),
       AssociarCartaoCreditoPage.routeName: (_) =>
           const AssociarCartaoCreditoPage(),
     };

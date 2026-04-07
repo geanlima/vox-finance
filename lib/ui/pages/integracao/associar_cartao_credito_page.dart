@@ -58,15 +58,76 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
     }
   }
 
-  Future<void> _associar(String idApi, int? idLocal) async {
-    await _deParaRepo.definir(idApi, idLocal);
-    final m = await _deParaRepo.obter();
-    if (!mounted) return;
-    setState(() => _mapa = m);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Associação salva.')),
+  /// Id do cartão local já vinculado a este [idApi] (mapa legado ou coluna `codigo_cartao_api`).
+  int? _localIdParaApi(CartaoApiDto c) {
+    final fromMap = _mapa[c.id];
+    if (fromMap != null) return fromMap;
+    for (final l in _locais) {
+      if (l.id != null && l.codigoCartaoApi?.trim() == c.id) {
+        return l.id;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _salvarCartaoComCodigo(CartaoCredito c, String? codigoApi) async {
+    await _cartaoRepo.salvarCartaoCredito(
+      CartaoCredito(
+        id: c.id,
+        descricao: c.descricao,
+        bandeira: c.bandeira,
+        ultimos4Digitos: c.ultimos4Digitos,
+        fotoPath: c.fotoPath,
+        diaVencimento: c.diaVencimento,
+        diaFechamento: c.diaFechamento,
+        tipo: c.tipo,
+        controlaFatura: c.controlaFatura,
+        limite: c.limite,
+        codigoCartaoApi: codigoApi,
+      ),
     );
+  }
+
+  Future<void> _associar(String idApi, int? idLocal) async {
+    try {
+      // Remove este código da API de outros cartões locais (evita duplicidade).
+      for (final l in _locais) {
+        if (l.id == null) continue;
+        if (l.codigoCartaoApi?.trim() != idApi) continue;
+        if (idLocal != null && l.id == idLocal) continue;
+        await _salvarCartaoComCodigo(l, null);
+      }
+
+      if (idLocal != null) {
+        final loc = await _cartaoRepo.getCartaoCreditoById(idLocal);
+        if (loc != null) {
+          await _salvarCartaoComCodigo(loc, idApi);
+        }
+      }
+
+      await _deParaRepo.definir(idApi, idLocal);
+
+      final locais = await _cartaoRepo.getCartoesCredito();
+      final m = await _deParaRepo.obter();
+      if (!mounted) return;
+      setState(() {
+        _locais = locais;
+        _mapa = m;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Associação salva. Código gravado no cartão cadastrado.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao salvar: $e')),
+      );
+    }
   }
 
   @override
@@ -112,8 +173,8 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     child: Text(
-                      'Associe cada cartão vindo da API ao cartão correspondente '
-                      'cadastrado neste aparelho. Isso será usado na sincronização.',
+                      'Associe cada cartão da integração ao cadastro local. '
+                      'O código é gravado no cartão do app (usado em Faturas).',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -125,8 +186,8 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                         child: Padding(
                           padding: EdgeInsets.all(24),
                           child: Text(
-                            'Nenhum cartão retornado pela API.\n'
-                            'Confira o endpoint GET /api/cartoes e a URL em Parâmetros.',
+                            'Nenhum cartão encontrado na integração.\n'
+                            'Confira a URL em Parâmetros e tente novamente.',
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -140,7 +201,7 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final c = _api[i];
-                          final sel = _mapa[c.id];
+                          final sel = _localIdParaApi(c);
                           return Card(
                             child: Padding(
                               padding: const EdgeInsets.all(12),
@@ -148,7 +209,7 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'API',
+                                    'Integração',
                                     style: Theme.of(context).textTheme.labelSmall,
                                   ),
                                   Text(
@@ -156,6 +217,19 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w700,
                                     ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  SelectableText(
+                                    'Código: ${c.id}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          fontFamily: 'monospace',
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
@@ -233,7 +307,7 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Aguardando resposta da API e carregando os cartões…',
+                    'Carregando cartões da integração…',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),
