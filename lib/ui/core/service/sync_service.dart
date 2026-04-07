@@ -13,7 +13,7 @@ class SyncService {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'URL da API não configurada. Configure em: Configuração → Parâmetros.',
+            'URL de integração não configurada. Configure em: Configuração → Parâmetros.',
           ),
         ),
       );

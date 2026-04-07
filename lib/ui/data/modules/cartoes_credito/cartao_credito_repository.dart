@@ -3,6 +3,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
+import 'package:vox_finance/ui/data/models/fatura_cartao.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
@@ -234,6 +235,45 @@ class CartaoCreditoRepository {
     await database.delete('cartao_credito', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Faturas salvas para o cartão (referência ano/mês), mais recentes primeiro.
+  Future<List<FaturaCartao>> listarFaturasPorCartao(int idCartao) async {
+    final db = await _dbService.db;
+    final rows = await db.query(
+      'fatura_cartao',
+      where: 'id_cartao = ?',
+      whereArgs: [idCartao],
+      orderBy: 'ano DESC, mes DESC',
+    );
+    return rows.map(FaturaCartao.fromMap).toList();
+  }
+
+  /// Lançamentos (compras) vinculados à fatura pelo id em `fatura_cartao`.
+  Future<List<Lancamento>> getLancamentosPorIdFatura(int idFatura) async {
+    final db = await _dbService.db;
+
+    final vinculos = await db.query(
+      'fatura_cartao_lancamento',
+      where: 'id_fatura = ?',
+      whereArgs: [idFatura],
+    );
+
+    if (vinculos.isEmpty) return [];
+
+    final idsLanc =
+        vinculos.map<int>((row) => row['id_lancamento'] as int).toList();
+
+    final placeholders = List.filled(idsLanc.length, '?').join(',');
+
+    final lancRows = await db.query(
+      'lancamentos',
+      where: 'id IN ($placeholders)',
+      whereArgs: idsLanc,
+      orderBy: 'data_hora ASC',
+    );
+
+    return lancRows.map((e) => Lancamento.fromMap(e)).toList();
+  }
+
   /// Salva/atualiza a fatura do cartão na tabela `fatura_cartao`
   /// (1 registro por cartão/mês).
   ///
@@ -362,29 +402,6 @@ class CartaoCreditoRepository {
     }
 
     final int idFatura = faturaRows.first['id'] as int;
-
-    // 2) Buscar vínculos na fatura_cartao_lancamento
-    final vinculos = await db.query(
-      'fatura_cartao_lancamento',
-      where: 'id_fatura = ?',
-      whereArgs: [idFatura],
-    );
-
-    if (vinculos.isEmpty) return [];
-
-    final idsLanc =
-        vinculos.map<int>((row) => row['id_lancamento'] as int).toList();
-
-    // 3) Buscar os lançamentos correspondentes na tabela lancamentos
-    final placeholders = List.filled(idsLanc.length, '?').join(',');
-
-    final lancRows = await db.query(
-      'lancamentos',
-      where: 'id IN ($placeholders)',
-      whereArgs: idsLanc,
-      orderBy: 'data_hora ASC',
-    );
-
-    return lancRows.map((e) => Lancamento.fromMap(e)).toList();
+    return getLancamentosPorIdFatura(idFatura);
   }
 }

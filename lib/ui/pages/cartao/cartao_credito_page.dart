@@ -98,6 +98,9 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
     final ultimos4Ctrl = TextEditingController(
       text: existente?.ultimos4Digitos ?? '',
     );
+    final codigoApiCtrl = TextEditingController(
+      text: existente?.codigoCartaoApi ?? '',
+    );
 
     // novos campos
     String? fotoPath = existente?.fotoPath;
@@ -349,6 +352,19 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                               border: OutlineInputBorder(),
                                             ),
                                             maxLength: 4,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          TextField(
+                                            controller: codigoApiCtrl,
+                                            decoration: const InputDecoration(
+                                              labelText:
+                                                  'Código do cartão na integração (opcional)',
+                                              hintText:
+                                                  'Identificador do cartão no servidor',
+                                              border: OutlineInputBorder(),
+                                              helperText:
+                                                  'Usado para buscar faturas em Integração.',
+                                            ),
                                           ),
                                           const SizedBox(height: 12),
                                           DropdownButtonFormField<TipoCartao>(
@@ -626,6 +642,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                       limiteValor = double.tryParse(txt);
                                     }
 
+                                    final codigoApi = codigoApiCtrl.text.trim();
                                     final cartao = CartaoCredito(
                                       id: existente?.id,
                                       descricao: desc,
@@ -638,6 +655,8 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                       controlaFatura:
                                           ehCreditoLike && controlaFatura,
                                       limite: limiteValor,
+                                      codigoCartaoApi:
+                                          codigoApi.isEmpty ? null : codigoApi,
                                     );
 
                                     await _repository.salvarCartaoCredito(
@@ -891,6 +910,21 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                                           Colors.grey.shade700,
                                                     ),
                                                   ),
+                                                  if (c.codigoCartaoApi !=
+                                                          null &&
+                                                      c.codigoCartaoApi!
+                                                          .trim()
+                                                          .isNotEmpty)
+                                                    Text(
+                                                      'Integração: ${c.codigoCartaoApi}',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color:
+                                                            Colors.teal.shade700,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
                                                   if (c.limite != null)
                                                     Text(
                                                       'Limite: R\$ ${c.limite!.toStringAsFixed(2)}',
