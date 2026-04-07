@@ -508,6 +508,43 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V34: Subcategorias personalizadas (FK para categorias_personalizadas)
+    // =========================
+    if (oldVersion < 34) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS subcategorias_personalizadas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_categoria_personalizada INTEGER NOT NULL,
+          nome TEXT NOT NULL,
+          criado_em INTEGER NOT NULL,
+          UNIQUE(id_categoria_personalizada, nome)
+        );
+      ''');
+
+      // FK (melhor esforço): não quebra se o SQLite estiver com foreign_keys off
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_subcat_cat
+          ON subcategorias_personalizadas (id_categoria_personalizada);
+        ''');
+      } catch (_) {}
+
+      await _addColumnSafe(
+        db,
+        'lancamentos',
+        'id_subcategoria_personalizada',
+        'INTEGER',
+      );
+
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_lanc_subcat
+          ON lancamentos (id_subcategoria_personalizada);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -522,6 +559,12 @@ class MigrationV2toV15 {
       db,
       'lancamentos',
       'id_categoria_personalizada',
+      'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'lancamentos',
+      'id_subcategoria_personalizada',
       'INTEGER',
     );
     await _addColumnSafe(db, 'cartao_credito', 'codigo_cartao_api', 'TEXT');

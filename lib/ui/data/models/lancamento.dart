@@ -68,6 +68,9 @@ class Lancamento {
   /// ⭐ referência à categoria_personalizada (se houver)
   int? idCategoriaPersonalizada;
 
+  /// ⭐ referência à subcategoria_personalizada (se houver)
+  int? idSubcategoriaPersonalizada;
+
   /// ⭐ NOVO: fixa/variável
   /// por padrão, tudo que já existe vira "variável"
   TipoDespesa tipoDespesa;
@@ -94,6 +97,9 @@ class Lancamento {
     /// se não tiver categoria personalizada, fica null
     this.idCategoriaPersonalizada,
 
+    /// se não tiver subcategoria personalizada, fica null
+    this.idSubcategoriaPersonalizada,
+
     /// ⭐ NOVO: por padrão "variável" (melhor fallback para bases antigas)
     this.tipoDespesa = TipoDespesa.variavel,
   });
@@ -118,6 +124,7 @@ class Lancamento {
     int? parcelaTotal,
     TipoMovimento? tipoMovimento,
     int? idCategoriaPersonalizada,
+    int? idSubcategoriaPersonalizada,
     TipoDespesa? tipoDespesa, // ⭐ NOVO
   }) {
     return Lancamento(
@@ -138,6 +145,8 @@ class Lancamento {
       tipoMovimento: tipoMovimento ?? this.tipoMovimento,
       idCategoriaPersonalizada:
           idCategoriaPersonalizada ?? this.idCategoriaPersonalizada,
+      idSubcategoriaPersonalizada:
+          idSubcategoriaPersonalizada ?? this.idSubcategoriaPersonalizada,
       tipoDespesa: tipoDespesa ?? this.tipoDespesa, // ⭐ NOVO
     );
   }
@@ -168,6 +177,9 @@ class Lancamento {
 
       // ⭐ FK para categorias_personalizadas
       'id_categoria_personalizada': idCategoriaPersonalizada,
+
+      // ⭐ FK para subcategorias_personalizadas
+      'id_subcategoria_personalizada': idSubcategoriaPersonalizada,
 
       // ⭐ NOVO: 0 = fixa, 1 = variavel
       'tipo_despesa': tipoDespesa.index,
@@ -243,6 +255,10 @@ class Lancamento {
 
       // ⭐ lê do banco (pode ser null)
       idCategoriaPersonalizada: map['id_categoria_personalizada'] as int?,
+
+      // ⭐ lê do banco (pode ser null)
+      idSubcategoriaPersonalizada:
+          map['id_subcategoria_personalizada'] as int?,
 
       // ⭐ NOVO
       tipoDespesa: tipoDesp,
