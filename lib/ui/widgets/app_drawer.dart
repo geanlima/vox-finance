@@ -13,6 +13,7 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/categorias/subcategorias_personalizadas_page.dart';
+import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
@@ -350,6 +351,15 @@ class _AppDrawerState extends State<AppDrawer> {
                       context,
                       SubcategoriasPersonalizadasPage.routeName,
                     );
+                  },
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.insights_outlined, size: 20),
+                  title: const Text('Métricas (limites)'),
+                  onTap: () {
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                    Navigator.pushNamed(context, MetricasPage.routeName);
                   },
                 ),
               ],

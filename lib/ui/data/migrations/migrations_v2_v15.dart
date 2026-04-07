@@ -636,6 +636,73 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V37: Métricas (limites por categoria/subcategoria) + avisos
+    // =========================
+    if (oldVersion < 37) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS metricas_limites (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ativo INTEGER NOT NULL DEFAULT 1,
+
+          -- período: 'mensal' ou 'semanal'
+          periodo_tipo TEXT NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER,
+          semana INTEGER,
+
+          id_categoria_personalizada INTEGER NOT NULL,
+          id_subcategoria_personalizada INTEGER,
+
+          limite_valor REAL NOT NULL,
+
+          -- parâmetros de cálculo
+          considerar_somente_pagos INTEGER NOT NULL DEFAULT 1,
+          incluir_futuros INTEGER NOT NULL DEFAULT 0,
+          ignorar_pagamento_fatura INTEGER NOT NULL DEFAULT 1,
+
+          -- alertas (percentual de consumo do limite)
+          alerta_pct1 INTEGER NOT NULL DEFAULT 80,
+          alerta_pct2 INTEGER NOT NULL DEFAULT 100,
+
+          criado_em INTEGER NOT NULL,
+          atualizado_em INTEGER NOT NULL
+        );
+      ''');
+
+      await db.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_metricas_periodo_cat_sub
+        ON metricas_limites (
+          periodo_tipo,
+          ano,
+          COALESCE(mes, -1),
+          COALESCE(semana, -1),
+          id_categoria_personalizada,
+          COALESCE(id_subcategoria_personalizada, -1)
+        );
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_metricas_cat
+        ON metricas_limites (id_categoria_personalizada);
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_metricas_subcat
+        ON metricas_limites (id_subcategoria_personalizada);
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS metricas_alertas_disparados (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          metrica_id INTEGER NOT NULL,
+          periodo_chave TEXT NOT NULL,
+          nivel INTEGER NOT NULL, -- 1 ou 2
+          disparado_em INTEGER NOT NULL,
+          UNIQUE(metrica_id, periodo_chave, nivel)
+        );
+      ''');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
