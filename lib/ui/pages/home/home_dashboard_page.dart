@@ -12,6 +12,8 @@ import 'package:vox_finance/ui/data/models/lembrete.dart';
 import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_aviso_service.dart';
+import 'package:vox_finance/ui/core/service/metrica_alerta_service.dart';
+import 'package:vox_finance/ui/data/modules/metricas/metrica_limite_repository.dart';
 import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
@@ -27,6 +29,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   final _lancRepo = LancamentoRepository();
   final _lembreteRepo = LembreteRepository();
   final _despesasFixasService = DespesasFixasService();
+  final _metricaRepo = MetricaLimiteRepository();
+  late final MetricaAlertaService _metricaAlertaService =
+      MetricaAlertaService(_metricaRepo);
   final _speech = stt.SpeechToText();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
@@ -37,6 +42,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   List<ContaPagar> _vencidos = const [];
   List<Lembrete> _lembretesHoje = const [];
   List<Lembrete> _lembretesAtrasados = const [];
+  List<AlertaMetricaItem> _alertasMetricas = const [];
+  String? _msgMetrica;
 
   @override
   void initState() {
@@ -103,18 +110,35 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         inicioHoje.subtract(const Duration(milliseconds: 1)),
       );
 
+      // ✅ Alertas de métricas (Home + notificação Android)
+      String? msg;
+      final alertas = await _metricaAlertaService.verificarEAlertar(
+        agora: agora,
+        onHomeMessage: (m) => msg ??= m,
+      );
+
       if (!mounted) return;
       setState(() {
         _vencimentosHoje = deHoje;
         _vencidos = vencidos;
         _lembretesHoje = lembretesHoje;
         _lembretesAtrasados = lembretesAtrasados;
+        _alertasMetricas = alertas;
+        _msgMetrica = msg;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         DespesasFixasAvisoService.tentarMostrarAvisoMesAnteriorSeNecessario(
           context,
         );
+
+        final m = _msgMetrica;
+        if (m != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(m)),
+          );
+          setState(() => _msgMetrica = null);
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -244,6 +268,35 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
               : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (_alertasMetricas.isNotEmpty) ...[
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.insights_outlined),
+                        title: Text(
+                          _alertasMetricas.length == 1
+                              ? '1 métrica em atenção'
+                              : '${_alertasMetricas.length} métricas em atenção',
+                        ),
+                        subtitle: Text(
+                          _alertasMetricas
+                              .take(3)
+                              .map(
+                                (a) =>
+                                    '${a.consumo.percentual.toStringAsFixed(0)}% do limite',
+                              )
+                              .join(' • '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _goMain('/metricas'),
+                          child: const Text('Ver'),
+                        ),
+                        onTap: () => _goMain('/metricas'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.notifications_active_outlined),
