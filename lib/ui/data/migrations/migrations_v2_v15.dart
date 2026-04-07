@@ -545,6 +545,97 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V36: REPARO - se a tabela subcategorias_personalizadas estiver "global"
+    // (sem id_categoria_personalizada), reconstrói para o schema 1:N.
+    // =========================
+    if (oldVersion < 36) {
+      try {
+        final info = await db.rawQuery(
+          'PRAGMA table_info(subcategorias_personalizadas);',
+        );
+        if (info.isNotEmpty) {
+          final cols = info.map((c) => c['name'] as String).toSet();
+          final temColCategoria = cols.contains('id_categoria_personalizada');
+
+          if (!temColCategoria) {
+            // Escolhe uma categoria padrão (fallback) caso não exista vínculo.
+            final catRows = await db.rawQuery(
+              'SELECT id FROM categorias_personalizadas ORDER BY id LIMIT 1;',
+            );
+            final defaultCatId =
+                catRows.isNotEmpty ? (catRows.first['id'] as int) : 1;
+
+            // Tabela nova no formato antigo
+            await db.execute('''
+              CREATE TABLE subcategorias_personalizadas_v36 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_categoria_personalizada INTEGER NOT NULL,
+                nome TEXT NOT NULL,
+                criado_em INTEGER NOT NULL,
+                UNIQUE(id_categoria_personalizada, nome)
+              );
+            ''');
+
+            // Detecta se existe a tabela de vínculo antiga
+            final vincExists = await db.rawQuery('''
+              SELECT name
+              FROM sqlite_master
+              WHERE type='table' AND name='categorias_subcategorias'
+              LIMIT 1;
+            ''');
+
+            if (vincExists.isNotEmpty) {
+              // Migra usando o vínculo (pega a primeira categoria por subcategoria)
+              await db.execute('''
+                INSERT OR IGNORE INTO subcategorias_personalizadas_v36
+                  (id, id_categoria_personalizada, nome, criado_em)
+                SELECT
+                  s.id,
+                  COALESCE(
+                    (SELECT MIN(cs.id_categoria_personalizada)
+                     FROM categorias_subcategorias cs
+                     WHERE cs.id_subcategoria_personalizada = s.id),
+                    $defaultCatId
+                  ) AS id_categoria_personalizada,
+                  s.nome,
+                  COALESCE(s.criado_em, ${DateTime.now().millisecondsSinceEpoch})
+                FROM subcategorias_personalizadas s;
+              ''');
+            } else {
+              // Migra sem vínculo: atribui categoria padrão
+              await db.execute('''
+                INSERT OR IGNORE INTO subcategorias_personalizadas_v36
+                  (id, id_categoria_personalizada, nome, criado_em)
+                SELECT
+                  s.id,
+                  $defaultCatId,
+                  s.nome,
+                  COALESCE(s.criado_em, ${DateTime.now().millisecondsSinceEpoch})
+                FROM subcategorias_personalizadas s;
+              ''');
+            }
+
+            // Troca tabelas
+            await db.execute('DROP TABLE subcategorias_personalizadas;');
+            await db.execute(
+              'ALTER TABLE subcategorias_personalizadas_v36 RENAME TO subcategorias_personalizadas;',
+            );
+
+            // Recria índice
+            try {
+              await db.execute('''
+                CREATE INDEX IF NOT EXISTS idx_subcat_cat
+                ON subcategorias_personalizadas (id_categoria_personalizada);
+              ''');
+            } catch (_) {}
+          }
+        }
+      } catch (_) {
+        // não interrompe upgrade
+      }
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
