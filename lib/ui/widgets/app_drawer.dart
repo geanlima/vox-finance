@@ -19,6 +19,7 @@ import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
 import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
 import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
+import 'package:vox_finance/ui/pages/faturas_salvas/faturas_salvas_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 
 class AppDrawer extends StatefulWidget {
@@ -372,6 +373,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.table_rows,
                   title: 'Lançamentos',
                   route: '/lancamentos',
+                ),
+                _subItem(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Fatura do cartão de crédito',
+                  route: FaturasSalvasPage.routeName,
                 ),
                 _subItem(
                   icon: Icons.home_work_outlined,
