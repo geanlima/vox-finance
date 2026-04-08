@@ -384,19 +384,25 @@ class LancamentoRepository {
     required int diaVencimento,
     required int numeroParcela,
   }) {
-    final dia = diaVencimento.clamp(1, 28);
+    // Vencimento deve sempre cair no dia configurado no cartão (diaVencimento).
+    // Se o mês não tiver esse dia (ex.: 31 em fevereiro), ajusta para o último dia do mês.
+    final dia = diaVencimento.clamp(1, 31);
+    final vencimentoEsteMes = _garantirDataValida(
+      dataCompra.year,
+      dataCompra.month,
+      dia,
+    );
 
-    final vencimentoEsteMes = DateTime(dataCompra.year, dataCompra.month, dia);
+    final int offsetMes =
+        dataCompra.isBefore(vencimentoEsteMes)
+            ? (numeroParcela - 1)
+            : numeroParcela;
 
-    if (dataCompra.isBefore(vencimentoEsteMes)) {
-      return DateTime(
-        dataCompra.year,
-        dataCompra.month + (numeroParcela - 1),
-        dia,
-      );
-    } else {
-      return DateTime(dataCompra.year, dataCompra.month + numeroParcela, dia);
-    }
+    return _garantirDataValida(
+      dataCompra.year,
+      dataCompra.month + offsetMes,
+      dia,
+    );
   }
 
   DateTime _calcularDataLancamento({

@@ -1,3 +1,5 @@
+// ignore_for_file: control_flow_in_finally, deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
@@ -53,7 +55,8 @@ class _MetricasPageState extends State<MetricasPage> {
         periodoTipo: _periodoTipo,
         ano: _referencia.year,
         mes: _periodoTipo == 'mensal' ? _referencia.month : null,
-        semana: _periodoTipo == 'semanal' ? _repo.semanaDoAno(_referencia) : null,
+        semana:
+            _periodoTipo == 'semanal' ? _repo.semanaDoAno(_referencia) : null,
       );
 
       if (!mounted) return;
@@ -251,8 +254,9 @@ class _MetricasPageState extends State<MetricasPage> {
                                 subcategoriaId = null;
                               });
                             },
-                            validator: (v) =>
-                                v == null ? 'Selecione a categoria.' : null,
+                            validator:
+                                (v) =>
+                                    v == null ? 'Selecione a categoria.' : null,
                           ),
                           const SizedBox(height: 10),
 
@@ -268,19 +272,18 @@ class _MetricasPageState extends State<MetricasPage> {
                                           ? 'Sem subcategorias para esta categoria.'
                                           : null),
                             ),
-                            items:
-                                [
-                                  const DropdownMenuItem<int?>(
-                                    value: null,
-                                    child: Text('— Sem subcategoria —'),
-                                  ),
-                                  ...subs.map(
-                                    (s) => DropdownMenuItem<int?>(
-                                      value: s.id,
-                                      child: Text(s.nome),
-                                    ),
-                                  ),
-                                ],
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('— Sem subcategoria —'),
+                              ),
+                              ...subs.map(
+                                (s) => DropdownMenuItem<int?>(
+                                  value: s.id,
+                                  child: Text(s.nome),
+                                ),
+                              ),
+                            ],
                             onChanged:
                                 (categoriaId == null || subs.isEmpty)
                                     ? null
@@ -313,22 +316,26 @@ class _MetricasPageState extends State<MetricasPage> {
                             contentPadding: EdgeInsets.zero,
                             title: const Text('Considerar somente pagos'),
                             value: considerarSomentePagos,
-                            onChanged: (v) =>
-                                modalSetState(() => considerarSomentePagos = v),
+                            onChanged:
+                                (v) => modalSetState(
+                                  () => considerarSomentePagos = v,
+                                ),
                           ),
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             title: const Text('Incluir lançamentos futuros'),
                             value: incluirFuturos,
-                            onChanged: (v) =>
-                                modalSetState(() => incluirFuturos = v),
+                            onChanged:
+                                (v) => modalSetState(() => incluirFuturos = v),
                           ),
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             title: const Text('Ignorar pagamento de fatura'),
                             value: ignorarPagamentoFatura,
-                            onChanged: (v) =>
-                                modalSetState(() => ignorarPagamentoFatura = v),
+                            onChanged:
+                                (v) => modalSetState(
+                                  () => ignorarPagamentoFatura = v,
+                                ),
                           ),
                           const SizedBox(height: 8),
 
@@ -377,10 +384,9 @@ class _MetricasPageState extends State<MetricasPage> {
                             onPressed: () async {
                               if (!formKey.currentState!.validate()) return;
 
-                              final lim =
-                                  double.parse(
-                                    limiteCtrl.text.trim().replaceAll(',', '.'),
-                                  );
+                              final lim = double.parse(
+                                limiteCtrl.text.trim().replaceAll(',', '.'),
+                              );
                               final a1 = int.parse(pct1Ctrl.text.trim());
                               final a2 = int.parse(pct2Ctrl.text.trim());
 
@@ -390,12 +396,14 @@ class _MetricasPageState extends State<MetricasPage> {
                                 ativo: true,
                                 periodoTipo: periodoTipo,
                                 ano: referencia.year,
-                                mes: periodoTipo == 'mensal'
-                                    ? referencia.month
-                                    : null,
-                                semana: periodoTipo == 'semanal'
-                                    ? _repo.semanaDoAno(referencia)
-                                    : null,
+                                mes:
+                                    periodoTipo == 'mensal'
+                                        ? referencia.month
+                                        : null,
+                                semana:
+                                    periodoTipo == 'semanal'
+                                        ? _repo.semanaDoAno(referencia)
+                                        : null,
                                 idCategoriaPersonalizada: categoriaId!,
                                 idSubcategoriaPersonalizada: subcategoriaId,
                                 limiteValor: lim,
@@ -482,127 +490,132 @@ class _MetricasPageState extends State<MetricasPage> {
         onPressed: () => _abrirForm(),
         child: const Icon(Icons.add),
       ),
-      body: _carregando
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _periodoTipo,
-                          decoration: const InputDecoration(
-                            labelText: 'Período',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'mensal',
-                              child: Text('Mensal'),
+      body:
+          _carregando
+              ? const Center(child: CircularProgressIndicator())
+              : Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _periodoTipo,
+                            decoration: const InputDecoration(
+                              labelText: 'Período',
+                              border: OutlineInputBorder(),
+                              isDense: true,
                             ),
-                            DropdownMenuItem(
-                              value: 'semanal',
-                              child: Text('Semanal'),
-                            ),
-                          ],
-                          onChanged: (v) async {
-                            if (v == null) return;
-                            setState(() => _periodoTipo = v);
-                            await _carregar();
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      OutlinedButton.icon(
-                        onPressed: _selecionarReferencia,
-                        icon: const Icon(Icons.calendar_month_outlined),
-                        label: Text(_periodoLabel),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: _metricas.isEmpty
-                        ? const Center(
-                            child: Text('Nenhuma métrica cadastrada.'),
-                          )
-                        : ListView.separated(
-                            itemCount: _metricas.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, idx) {
-                              final m = _metricas[idx];
-                              final cat = _catById(m.idCategoriaPersonalizada);
-                              final sub =
-                                  m.idSubcategoriaPersonalizada == null
-                                      ? null
-                                      : _subById(
-                                          m.idCategoriaPersonalizada,
-                                          m.idSubcategoriaPersonalizada!,
-                                        );
-
-                              return FutureBuilder<ConsumoMetrica>(
-                                future: _repo.calcularConsumo(
-                                  metrica: m,
-                                  referenciaPeriodo: _referencia,
-                                ),
-                                builder: (context, snap) {
-                                  final consumo = snap.data;
-                                  final pct = consumo?.percentual ?? 0.0;
-                                  final total = consumo?.total ?? 0.0;
-                                  final limite = consumo?.limite ?? m.limiteValor;
-
-                                  return Card(
-                                    child: ListTile(
-                                      title: Text(
-                                        sub != null
-                                            ? '${cat?.nome ?? 'Categoria'} • ${sub.nome}'
-                                            : (cat?.nome ?? 'Categoria'),
-                                      ),
-                                      subtitle: Text(
-                                        '${m.periodoTipo} • pagos:${m.considerarSomentePagos ? 'sim' : 'não'} • futuros:${m.incluirFuturos ? 'sim' : 'não'}',
-                                      ),
-                                      trailing: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            '${_money.format(total)} / ${_money.format(limite)}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${pct.toStringAsFixed(0)}%',
-                                            style: TextStyle(
-                                              color: pct >= 100
-                                                  ? Theme.of(context)
-                                                      .colorScheme
-                                                      .error
-                                                  : Colors.grey[700],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      onTap: () => _abrirForm(existente: m),
-                                      onLongPress: () => _excluir(m),
-                                    ),
-                                  );
-                                },
-                              );
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'mensal',
+                                child: Text('Mensal'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'semanal',
+                                child: Text('Semanal'),
+                              ),
+                            ],
+                            onChanged: (v) async {
+                              if (v == null) return;
+                              setState(() => _periodoTipo = v);
+                              await _carregar();
                             },
                           ),
-                  ),
-                ],
+                        ),
+                        const SizedBox(width: 10),
+                        OutlinedButton.icon(
+                          onPressed: _selecionarReferencia,
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          label: Text(_periodoLabel),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child:
+                          _metricas.isEmpty
+                              ? const Center(
+                                child: Text('Nenhuma métrica cadastrada.'),
+                              )
+                              : ListView.separated(
+                                itemCount: _metricas.length,
+                                separatorBuilder:
+                                    (_, __) => const SizedBox(height: 10),
+                                itemBuilder: (context, idx) {
+                                  final m = _metricas[idx];
+                                  final cat = _catById(
+                                    m.idCategoriaPersonalizada,
+                                  );
+                                  final sub =
+                                      m.idSubcategoriaPersonalizada == null
+                                          ? null
+                                          : _subById(
+                                            m.idCategoriaPersonalizada,
+                                            m.idSubcategoriaPersonalizada!,
+                                          );
+
+                                  return FutureBuilder<ConsumoMetrica>(
+                                    future: _repo.calcularConsumo(
+                                      metrica: m,
+                                      referenciaPeriodo: _referencia,
+                                    ),
+                                    builder: (context, snap) {
+                                      final consumo = snap.data;
+                                      final pct = consumo?.percentual ?? 0.0;
+                                      final total = consumo?.total ?? 0.0;
+                                      final limite =
+                                          consumo?.limite ?? m.limiteValor;
+
+                                      return Card(
+                                        child: ListTile(
+                                          title: Text(
+                                            sub != null
+                                                ? '${cat?.nome ?? 'Categoria'} • ${sub.nome}'
+                                                : (cat?.nome ?? 'Categoria'),
+                                          ),
+                                          subtitle: Text(
+                                            '${m.periodoTipo} • pagos:${m.considerarSomentePagos ? 'sim' : 'não'} • futuros:${m.incluirFuturos ? 'sim' : 'não'}',
+                                          ),
+                                          trailing: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                '${_money.format(total)} / ${_money.format(limite)}',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${pct.toStringAsFixed(0)}%',
+                                                style: TextStyle(
+                                                  color:
+                                                      pct >= 100
+                                                          ? Theme.of(
+                                                            context,
+                                                          ).colorScheme.error
+                                                          : Colors.grey[700],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          onTap: () => _abrirForm(existente: m),
+                                          onLongPress: () => _excluir(m),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                    ),
+                  ],
+                ),
               ),
-            ),
     );
   }
 }
-

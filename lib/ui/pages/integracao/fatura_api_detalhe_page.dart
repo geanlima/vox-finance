@@ -9,10 +9,14 @@ class FaturaApiDetalhePage extends StatelessWidget {
     super.key,
     required this.fatura,
     required this.periodoLabel,
+    this.onSalvarLocalmente,
   });
 
   final FaturaApiDto fatura;
   final String periodoLabel;
+
+  /// Se preenchido, mostra botão para gravar no SQLite (mesmo fluxo da lista).
+  final VoidCallback? onSalvarLocalmente;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +29,14 @@ class FaturaApiDetalhePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lançamentos'),
+        actions: [
+          if (onSalvarLocalmente != null)
+            IconButton(
+              icon: const Icon(Icons.save_alt),
+              tooltip: 'Salvar fatura local',
+              onPressed: onSalvarLocalmente,
+            ),
+        ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -173,6 +185,7 @@ class FaturaApiDetalhePage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -194,6 +207,14 @@ class FaturaApiDetalhePage extends StatelessWidget {
                           style: TextStyle(fontSize: 12, color: cs.error),
                         ),
                       ),
+                    if (onSalvarLocalmente != null) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: onSalvarLocalmente,
+                        icon: const Icon(Icons.save_alt),
+                        label: const Text('Salvar fatura local'),
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +10,7 @@ import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
@@ -34,6 +37,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
   final _cartaoRepo = CartaoCreditoRepository();
   final _contaRepo = ContaBancariaRepository();
   final _lancRepo = LancamentoRepository();
+  final _contaPagarRepo = ContaPagarRepository();
   final _dbService = DbService.instance;
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateHora = DateFormat.yMMMd('pt_BR').add_Hm();
@@ -223,6 +227,15 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
         idCartao: cartao.id,
       );
       final idLancFatura = await _lancRepo.salvar(lancFatura);
+
+      // 3b) Conta a pagar do valor total da fatura (vinculada ao lançamento de pagamento)
+      await _contaPagarRepo.upsertContaPagarDaFatura(
+        idLancamento: idLancFatura,
+        descricao: lancFatura.descricao,
+        valor: valorFechamento,
+        dataVencimento: DateTime(venc.year, venc.month, venc.day),
+        idCartao: cartao.id,
+      );
 
       // 4) Marca a fatura salva como fechada e guarda o id do lançamento gerado
       await _repo.marcarFaturaComoFechada(
