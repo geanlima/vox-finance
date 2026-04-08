@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
@@ -406,8 +408,39 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),
                       )
-                    else
+                    else ...[
+                      Card(
+                        color: cs.primaryContainer.withOpacity(0.35),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 22,
+                                color: cs.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Salvar fatura local: deslize o card para a esquerda ou abra a fatura e use o botão no detalhe. '
+                                  'Associação aos lançamentos: menu → Movimentação → '
+                                  'Fatura do cartão de crédito → abra a fatura salva.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.35,
+                                    color: cs.onSurface,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       ..._faturas.map((f) => _tileFatura(context, f)),
+                    ],
                   ],
                 ],
               ),
@@ -445,7 +478,7 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
       if (f.dataVencimento != null)
         'Venc. ${DateFormat.yMMMd('pt_BR').format(f.dataVencimento!)}',
       if (f.pago != null) (f.pago! ? 'Paga' : 'Em aberto'),
-      'Visualizar lançamentos dessa fatura',
+      'Toque para ver itens · salvar fatura local',
     ].join(' · ');
 
     return Slidable(
@@ -500,6 +533,7 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
                     (_) => FaturaApiDetalhePage(
                       fatura: f,
                       periodoLabel: '$_periodoLabel de $_ano',
+                      onSalvarLocalmente: () => _salvarFaturaLocalmente(context, f),
                     ),
               ),
             );

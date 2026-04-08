@@ -152,6 +152,14 @@ class CartaoCreditoRepository {
       );
     }
 
+    await _contaPagarRepo.upsertContaPagarDaFatura(
+      idLancamento: idLancamentoFatura,
+      descricao: descricaoFatura,
+      valor: total,
+      dataVencimento: dataVencimento,
+      idCartao: idCartao,
+    );
+
     // 6) Gera/atualiza o registro na tabela FATURA_CARTAO (lado 1)
     final idFatura = await salvarFaturaCartao(
       idCartao: idCartao,

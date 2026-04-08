@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use, duplicate_ignore
+
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
@@ -175,6 +177,7 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
                       child: Column(
                         children: [
                           DropdownButtonFormField<int>(
+                            // ignore: deprecated_member_use
                             value: _cartaoId,
                             decoration: const InputDecoration(
                               labelText: 'Cartão',

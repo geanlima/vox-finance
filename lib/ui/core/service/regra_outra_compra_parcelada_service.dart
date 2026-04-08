@@ -78,20 +78,12 @@ class RegraOutraCompraParceladaService {
         dataPagamento: pago ? DateTime.now() : null,
       );
 
-      // 2.3) PEGAR TODOS OS LANÇAMENTOS QUE COMPÕEM A FATURA
-      //      E MARCAR COMO PAGA A CONTA_A_PAGAR DE CADA UM
+      // 2.3) Contas a pagar de cada compra vinculada à fatura (id_lancamento em conta_pagar)
       final itensFatura = await cartaoRepo.getLancamentosDaFatura(lanc);
 
       for (final item in itensFatura) {
-        // Somente se tiver grupo + parcela (vínculo com conta_pagar)
-        if (item.grupoParcelas != null &&
-            item.grupoParcelas!.isNotEmpty &&
-            item.parcelaNumero != null) {
-          await _contaPagarRepo.marcarPorGrupoEParcela(
-            grupo: item.grupoParcelas!,
-            parcelaNumero: item.parcelaNumero!,
-            pago: pago,
-          );
+        if (item.id != null) {
+          await _contaPagarRepo.marcarComoPagoPorLancamentoId(item.id!, pago);
         }
       }
 
