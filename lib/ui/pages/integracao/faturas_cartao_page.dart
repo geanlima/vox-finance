@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/core/service/integracao_cartoes_api_service.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/fatura_api_dto.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_repository.dart';
 import 'package:vox_finance/ui/pages/integracao/fatura_api_detalhe_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
@@ -21,6 +23,7 @@ class FaturasCartaoPage extends StatefulWidget {
 class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
   final _repo = CartaoCreditoRepository();
   final _api = IntegracaoCartoesApiService.instance;
+  final _cacheRepo = IntegracaoFaturaCacheRepository();
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
   bool _loadingCartoes = true;
@@ -445,45 +448,122 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
       'Visualizar lançamentos dessa fatura',
     ].join(' · ');
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
-        title: Text(
-          '$_periodoLabel de $_ano',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: sub.isEmpty ? null : Text(sub),
-        trailing: Text(
-          _money.format(f.valorTotal),
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color:
-                f.pago == true
-                    ? cs.tertiary
-                    : f.pago == false
-                    ? cs.error
-                    : cs.onSurface,
-          ),
-        ),
-        onTap: () {
-          if (cartao == null) return;
-          Navigator.push<void>(
-            context,
-            MaterialPageRoute<void>(
-              builder:
-                  (_) => FaturaApiDetalhePage(
-                    fatura: f,
-                    periodoLabel: '$_periodoLabel de $_ano',
-                  ),
+    return Slidable(
+      key: ValueKey('${_cartaoLocalId}_${_ano}_${_mes}_${f.id ?? f.valorTotal}'),
+      endActionPane: ActionPane(
+        motion: const DrawerMotion(),
+        extentRatio: 0.22,
+        children: [
+          CustomSlidableAction(
+            onPressed: (_) => _salvarFaturaLocalmente(context, f),
+            backgroundColor: cs.primary,
+            borderRadius: BorderRadius.circular(12),
+            child: const Icon(
+              Icons.save_alt,
+              size: 28,
+              color: Colors.white,
             ),
-          );
-        },
+          ),
+        ],
       ),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          title: Text(
+            '$_periodoLabel de $_ano',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: sub.isEmpty ? null : Text(sub),
+          trailing: Text(
+            _money.format(f.valorTotal),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color:
+                  f.pago == true
+                      ? cs.tertiary
+                      : f.pago == false
+                      ? cs.error
+                      : cs.onSurface,
+            ),
+          ),
+          onTap: () {
+            if (cartao == null) return;
+            Navigator.push<void>(
+              context,
+              MaterialPageRoute<void>(
+                builder:
+                    (_) => FaturaApiDetalhePage(
+                      fatura: f,
+                      periodoLabel: '$_periodoLabel de $_ano',
+                    ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _salvarFaturaLocalmente(BuildContext context, FaturaApiDto f) async {
+    final cartao = _cartaoAtual;
+    if (cartao?.id == null) return;
+    final codigoApi = cartao!.codigoCartaoApi?.trim() ?? '';
+    if (codigoApi.isEmpty) return;
+
+    final sourceKey = _cacheRepo.buildSourceKey(
+      idCartaoLocal: cartao.id!,
+      ano: _ano,
+      mes: _mes,
+      f: f,
+    );
+    final existente = await _cacheRepo.getBySourceKey(sourceKey);
+
+    bool overwrite = false;
+    if (existente != null) {
+      overwrite =
+          (await showDialog<bool>(
+            context: context,
+            builder: (context) {
+              return AlertDialog(
+                title: const Text('Sobrescrever fatura salva?'),
+                content: const Text(
+                  'Já existe uma fatura salva localmente para este cartão/período.\n\n'
+                  'Se continuar, os dados salvos serão substituídos.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Sobrescrever'),
+                  ),
+                ],
+              );
+            },
+          )) ==
+          true;
+      if (!overwrite) return;
+    }
+
+    await _cacheRepo.salvarFaturaFromApi(
+      idCartaoLocal: cartao.id!,
+      codigoCartaoApi: codigoApi,
+      ano: _ano,
+      mes: _mes,
+      f: f,
+      overwrite: overwrite,
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fatura salva localmente.')),
     );
   }
 }

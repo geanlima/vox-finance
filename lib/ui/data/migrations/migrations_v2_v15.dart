@@ -703,6 +703,100 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V38: Cache local de faturas da integração (evita consultar API sempre)
+    // =========================
+    if (oldVersion < 38) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS integracao_faturas_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_key TEXT NOT NULL,
+
+          id_cartao_local INTEGER NOT NULL,
+          codigo_cartao_api TEXT NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+
+          fatura_api_id TEXT,
+          descricao TEXT,
+          valor_total REAL NOT NULL,
+          data_vencimento INTEGER,
+          data_fechamento INTEGER,
+          pago INTEGER,
+
+          importado_em INTEGER NOT NULL,
+
+          UNIQUE(source_key)
+        );
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_int_faturas_cartao_periodo
+        ON integracao_faturas_cache (id_cartao_local, ano, mes);
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS integracao_faturas_cache_itens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_fatura_cache INTEGER NOT NULL,
+          item_api_id TEXT,
+          descricao TEXT NOT NULL,
+          valor REAL NOT NULL,
+          data_hora INTEGER,
+          categoria TEXT,
+
+          FOREIGN KEY (id_fatura_cache) REFERENCES integracao_faturas_cache(id)
+        );
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_int_faturas_itens_fatura
+        ON integracao_faturas_cache_itens (id_fatura_cache);
+      ''');
+    }
+
+    // =========================
+    // V39: Consolidação - vínculo item(importado) -> lançamento(local)
+    // =========================
+    if (oldVersion < 39) {
+      await _addColumnSafe(
+        db,
+        'integracao_faturas_cache_itens',
+        'id_lancamento_local',
+        'INTEGER',
+      );
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_int_faturas_itens_lanc
+          ON integracao_faturas_cache_itens (id_lancamento_local);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V40: Fechamento de fatura salva (gera lançamento de pagamento)
+    // =========================
+    if (oldVersion < 40) {
+      await _addColumnSafe(
+        db,
+        'integracao_faturas_cache',
+        'fechada_em',
+        'INTEGER',
+      );
+      await _addColumnSafe(
+        db,
+        'integracao_faturas_cache',
+        'id_lancamento_fatura',
+        'INTEGER',
+      );
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_int_faturas_fechada
+          ON integracao_faturas_cache (fechada_em);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(

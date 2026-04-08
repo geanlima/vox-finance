@@ -77,6 +77,25 @@ class _HomePageState extends State<HomePage> {
   double _rendaDiaria = 0.0;
   final DespesasFixasService _despesasFixasService = DespesasFixasService();
   List<ContaPagar> _vencimentosHoje = const [];
+  List<CartaoCredito> _cartoesFechandoSemFatura = const [];
+  bool _aplicouDataInicialDaRota = false;
+
+  DateTime? _readInitialDateFromRouteArgs() {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == null) return null;
+    if (args is DateTime) return args;
+    if (args is int) return DateTime.fromMillisecondsSinceEpoch(args);
+    if (args is Map) {
+      final v = args['data'] ?? args['date'] ?? args['initialDate'];
+      if (v is DateTime) return v;
+      if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+      if (v is String) {
+        final ms = int.tryParse(v);
+        if (ms != null) return DateTime.fromMillisecondsSinceEpoch(ms);
+      }
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -96,6 +115,21 @@ class _HomePageState extends State<HomePage> {
     _regraCartaoParcelado = RegraCartaoParceladoService(
       lancRepo: _repositoryLancamento,
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_aplicouDataInicialDaRota) return;
+    final dt = _readInitialDateFromRouteArgs();
+    if (dt == null) return;
+
+    _aplicouDataInicialDaRota = true;
+    _dataSelecionada = DateTime(dt.year, dt.month, dt.day);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _carregarDoBanco();
+      await _recalcularAvisoFechamento();
+    });
   }
 
   Future<void> _bootstrap() async {
@@ -202,10 +236,61 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _cartoes = lista;
     });
+    await _recalcularAvisoFechamento();
   }
 
   bool _mesmoDia(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Future<void> _recalcularAvisoFechamento() async {
+    // Aviso só faz sentido quando já carregou cartões
+    if (_cartoes.isEmpty) {
+      if (!mounted) return;
+      setState(() => _cartoesFechandoSemFatura = const []);
+      return;
+    }
+
+    final diaSel = _dataSelecionada;
+    final cartoesFechandoNoDia =
+        _cartoes.where((c) {
+          final ehCreditoLike =
+              c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos;
+          return ehCreditoLike &&
+              c.controlaFatura &&
+              c.diaFechamento != null &&
+              c.diaVencimento != null &&
+              c.diaFechamento == diaSel.day;
+        }).toList();
+
+    if (cartoesFechandoNoDia.isEmpty) {
+      if (!mounted) return;
+      setState(() => _cartoesFechandoSemFatura = const []);
+      return;
+    }
+
+    final db = await _dbService.db;
+    final faltando = <CartaoCredito>[];
+
+    for (final c in cartoesFechandoNoDia) {
+      final id = c.id;
+      final diaVenc = c.diaVencimento;
+      if (id == null || diaVenc == null) continue;
+
+      final dataVencimento = DateTime(diaSel.year, diaSel.month, diaVenc);
+      final rows = await db.query(
+        'lancamentos',
+        where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
+        whereArgs: [id, dataVencimento.millisecondsSinceEpoch],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        faltando.add(c);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _cartoesFechandoSemFatura = faltando);
+  }
 
   // --------- totais / filtros ---------
 
@@ -468,6 +553,7 @@ class _HomePageState extends State<HomePage> {
       _dataSelecionada = _dataSelecionada.subtract(const Duration(days: 1));
     });
     await _carregarDoBanco();
+    await _recalcularAvisoFechamento();
   }
 
   Future<void> _proximoDia() async {
@@ -475,6 +561,7 @@ class _HomePageState extends State<HomePage> {
       _dataSelecionada = _dataSelecionada.add(const Duration(days: 1));
     });
     await _carregarDoBanco();
+    await _recalcularAvisoFechamento();
   }
 
   Future<void> _selecionarDataNoCalendario() async {
@@ -494,6 +581,7 @@ class _HomePageState extends State<HomePage> {
         );
       });
       await _carregarDoBanco();
+      await _recalcularAvisoFechamento();
     }
   }
 
@@ -697,18 +785,31 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-            if (fechamentoNoDiaSelecionado)
+            if (fechamentoNoDiaSelecionado && _cartoesFechandoSemFatura.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.receipt_long),
-                    label: const Text('Gerar fatura dos cartões'),
-                    onPressed: _gerarFaturasDoDiaSelecionado,
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  color: Colors.blueGrey.withOpacity(0.08),
+                  child: ListTile(
+                    leading: const Icon(Icons.receipt_long_outlined),
+                    title: const Text('Fechamento de fatura hoje'),
+                    subtitle: Text(
+                      _cartoesFechandoSemFatura.length == 1
+                          ? 'O cartão ${_cartoesFechandoSemFatura.first.descricao} está fechando hoje e a fatura ainda não foi gerada.'
+                          : 'Os cartões ${_cartoesFechandoSemFatura.map((c) => c.descricao).join(', ')} estão fechando hoje e as faturas ainda não foram geradas.',
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/faturas-salvas',
+                      ),
+                      child: const Text('Abrir'),
+                    ),
                   ),
                 ),
               ),
+            // Botão "Gerar fatura dos cartões" removido:
+            // o fluxo agora é feito na manutenção de faturas.
             ResumoDiaCard(
               ehHoje: ehHoje,
               dataFormatada: dataFormatada,
