@@ -725,26 +725,32 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       context: context,
       isScrollControlled: true,
       builder: (context) {
+        final mq = MediaQuery.of(context);
         return SafeArea(
-          child: ListView.builder(
-            itemCount: lista.length + 1,
-            itemBuilder: (context, i) {
-              if (i == 0) {
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: mq.viewInsets.bottom + mq.viewPadding.bottom,
+            ),
+            child: ListView.builder(
+              itemCount: lista.length + 1,
+              itemBuilder: (context, i) {
+                if (i == 0) {
+                  return ListTile(
+                    leading: const Icon(Icons.link_off),
+                    title: const Text('Remover associação'),
+                    onTap: () => Navigator.pop(context, null),
+                  );
+                }
+                final l = lista[i - 1];
                 return ListTile(
-                  leading: const Icon(Icons.link_off),
-                  title: const Text('Remover associação'),
-                  onTap: () => Navigator.pop(context, null),
+                  title: Text(l.descricao),
+                  subtitle: Text(
+                    '${DateFormat('dd/MM HH:mm').format(l.dataHora)} • ${_money.format(l.valor)}',
+                  ),
+                  onTap: () => Navigator.pop(context, l),
                 );
-              }
-              final l = lista[i - 1];
-              return ListTile(
-                title: Text(l.descricao),
-                subtitle: Text(
-                  '${DateFormat('dd/MM HH:mm').format(l.dataHora)} • ${_money.format(l.valor)}',
-                ),
-                onTap: () => Navigator.pop(context, l),
-              );
-            },
+              },
+            ),
           ),
         );
       },
