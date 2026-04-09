@@ -122,163 +122,170 @@ class LancamentoList extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             elevation: 1.5,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child:
-                  isFatura
-                      // =========================
-                      //  L A Y O U T   F A T U R A
-                      // =========================
-                      ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CircleAvatar(
-                            radius: 22,
-                            child: Icon(lanc.formaPagamento.icon, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  currency.format(lanc.valor),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: valorColor,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${lanc.descricao} (Pagamento de fatura)',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.orange.shade700,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Status: $statusTexto',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: statusCor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  dateHoraFormat.format(lanc.dataHora),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black45,
-                                  ),
-                                ),
-                              ],
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap:
+                  isFatura && onVerItensFatura != null
+                      ? () => onVerItensFatura!(lanc)
+                      : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child:
+                    isFatura
+                        // =========================
+                        //  L A Y O U T   F A T U R A
+                        // =========================
+                        ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              child: Icon(lanc.formaPagamento.icon, size: 24),
                             ),
-                          ),
-                        ],
-                      )
-                      // ==============================
-                      //  L A Y O U T   N O R M A L
-                      // ==============================
-                      : Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CircleAvatar(
-                            radius: 22,
-                            child: Icon(lanc.formaPagamento.icon, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (lanc.descricao.isNotEmpty) ...[
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    lanc.descricao,
+                                    currency.format(lanc.valor),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: valorColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${lanc.descricao} (Pagamento de fatura)',
                                     style: TextStyle(
                                       fontSize: 14,
                                       color: Colors.orange.shade700,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                ],
-
-                                // 🔹 badge "Receita" / "Despesa"
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        ehReceita
-                                            ? Colors.green.withOpacity(0.12)
-                                            : Colors.red.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    ehReceita ? 'Receita' : 'Despesa',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          ehReceita
-                                              ? Colors.green.shade700
-                                              : Colors.red.shade700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-
-                                Text(
-                                  'Status: $statusTexto',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: statusCor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                if (ehParcelado) ...[
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Parcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
-                                    style: const TextStyle(
+                                    'Status: $statusTexto',
+                                    style: TextStyle(
                                       fontSize: 13,
-                                      color: Colors.black54,
+                                      color: statusCor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    dateHoraFormat.format(lanc.dataHora),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black45,
                                     ),
                                   ),
                                 ],
-                                const SizedBox(height: 2),
-                                Text(
-                                  dateHoraFormat.format(lanc.dataHora),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black45,
+                              ),
+                            ),
+                          ],
+                        )
+                        // ==============================
+                        //  L A Y O U T   N O R M A L
+                        // ==============================
+                        : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              child: Icon(lanc.formaPagamento.icon, size: 24),
+                            ),
+                            const SizedBox(width: 12),
+
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (lanc.descricao.isNotEmpty) ...[
+                                    Text(
+                                      lanc.descricao,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.orange.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                  ],
+
+                                  // 🔹 badge "Receita" / "Despesa"
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          ehReceita
+                                              ? Colors.green.withOpacity(0.12)
+                                              : Colors.red.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      ehReceita ? 'Receita' : 'Despesa',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color:
+                                            ehReceita
+                                                ? Colors.green.shade700
+                                                : Colors.red.shade700,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
+                                  const SizedBox(height: 4),
 
-                          const SizedBox(width: 8),
-
-                          // 🔹 valor (verde se receita, normal se despesa)
-                          Text(
-                            currency.format(lanc.valor),
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: valorColor,
+                                  Text(
+                                    'Status: $statusTexto',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: statusCor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (ehParcelado) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Parcela ${lanc.parcelaNumero}/${lanc.parcelaTotal}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    dateHoraFormat.format(lanc.dataHora),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black45,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+
+                            const SizedBox(width: 8),
+
+                            // 🔹 valor (verde se receita, normal se despesa)
+                            Text(
+                              currency.format(lanc.valor),
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: valorColor,
+                              ),
+                            ),
+                          ],
+                        ),
+              ),
             ),
           ),
         );
