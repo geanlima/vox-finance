@@ -28,6 +28,7 @@ import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
 import 'package:vox_finance/ui/pages/integracao/associar_cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
 import 'package:vox_finance/ui/pages/faturas_salvas/faturas_salvas_page.dart';
+import 'package:vox_finance/ui/pages/parcelamentos/parcelamentos_page.dart';
 
 class VoxFinanceApp extends StatelessWidget {
   const VoxFinanceApp({super.key});
@@ -80,6 +81,7 @@ class VoxFinanceApp extends StatelessWidget {
           const SubcategoriasPersonalizadasPage(),
       MetricasPage.routeName: (_) => const MetricasPage(),
       '/contas-pagar': (_) => const ContasPagarPage(),
+      ParcelamentosPage.routeName: (_) => const ParcelamentosPage(),
       '/cartoes-credito': (_) => const CartaoCreditoPage(),
       '/contas-bancarias': (_) => const ContasPage(),
       '/graficos': (_) => const GraficosPage(),
