@@ -64,7 +64,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   bool _aplicouFiltroDaRota = false;
 
   List<ParcelamentoResumo> _resumos = const [];
-  double _totalPendente = 0.0;
+  /// Soma de todas as parcelas pendentes (parcelado, exc. FATURA_*).
+  double _totalEmAbertoGeral = 0.0;
+  /// Parcelas pendentes com vencimento no mês corrente.
+  double _totalNesteMes = 0.0;
+  /// Parcelas pendentes com vencimento no mês seguinte.
+  double _totalProximoMes = 0.0;
+  /// Soma do pendente só dos grupos exibidos (no filtro "finalizando este mês").
+  double _totalPendenteLista = 0.0;
   Map<int?, double> _pendentePorCartaoId = const {};
 
   @override
@@ -99,6 +106,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     required String value,
     required ColorScheme cs,
     Color? valueColor,
+    double labelFontSize = 11,
+    double valueFontSize = 16,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,7 +115,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
         Text(
           label.toUpperCase(),
           style: TextStyle(
-            fontSize: 11,
+            fontSize: labelFontSize,
             letterSpacing: 0.4,
             color: cs.onSurfaceVariant,
             fontWeight: FontWeight.w700,
@@ -116,7 +125,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
         Text(
           value,
           style: TextStyle(
-            fontSize: 16,
+            fontSize: valueFontSize,
             fontWeight: FontWeight.w900,
             color: valueColor ?? cs.onSurface,
           ),
@@ -192,12 +201,25 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
             .where((c) => !_ehGrupoFatura(c.grupoParcelas))
             .toList();
 
-    // Total pendente por cartão (para o resumo "Total em aberto")
+    // Total pendente por cartão (para o resumo "por cartão")
     final pendentePorCartao = <int?, double>{};
+    final agora = DateTime.now();
+    final inicioProximoMes = DateTime(agora.year, agora.month + 1, 1);
+    double totalGeral = 0.0;
+    double nesteMes = 0.0;
+    double proximoMes = 0.0;
     for (final c in parceladas) {
       if (c.pago) continue;
       final k = c.idCartao; // pode ser null em bases antigas
       pendentePorCartao[k] = (pendentePorCartao[k] ?? 0.0) + c.valor;
+      totalGeral += c.valor;
+      final v = c.dataVencimento;
+      if (v.year == agora.year && v.month == agora.month) {
+        nesteMes += c.valor;
+      }
+      if (v.year == inicioProximoMes.year && v.month == inicioProximoMes.month) {
+        proximoMes += c.valor;
+      }
     }
 
     final mapa = <String, List<ContaPagar>>{};
@@ -206,7 +228,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     }
 
     final resumos = <ParcelamentoResumo>[];
-    double totalPendente = 0.0;
+    final pendentePorCartaoDaLista = <int?, double>{};
 
     for (final entry in mapa.entries) {
       final grupo = entry.key;
@@ -224,13 +246,16 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       // Filtros (aplicados por GRUPO)
       if (_filtro == ParcelamentosFiltro.emAberto && pendente <= 0) continue;
       if (_filtro == ParcelamentosFiltro.finalizandoMes) {
-        final agora = DateTime.now();
         final finalizaEsteMes = ultimo.year == agora.year && ultimo.month == agora.month;
         final temPendente = pendente > 0;
         if (!finalizaEsteMes || !temPendente) continue;
       }
 
-      totalPendente += pendente;
+      for (final c in itens.where((x) => !x.pago)) {
+        final k = c.idCartao;
+        pendentePorCartaoDaLista[k] =
+            (pendentePorCartaoDaLista[k] ?? 0.0) + c.valor;
+      }
 
       resumos.add(
         ParcelamentoResumo(
@@ -250,11 +275,21 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
 
     resumos.sort((a, b) => b.valorPendente.compareTo(a.valorPendente));
 
+    final totalPendenteLista =
+        resumos.fold<double>(0.0, (a, r) => a + r.valorPendente);
+    final mapaCartaoModal =
+        _filtro == ParcelamentosFiltro.finalizandoMes
+            ? pendentePorCartaoDaLista
+            : pendentePorCartao;
+
     if (!mounted) return;
     setState(() {
       _resumos = resumos;
-      _totalPendente = totalPendente;
-      _pendentePorCartaoId = pendentePorCartao;
+      _totalEmAbertoGeral = totalGeral;
+      _totalNesteMes = nesteMes;
+      _totalProximoMes = proximoMes;
+      _totalPendenteLista = totalPendenteLista;
+      _pendentePorCartaoId = mapaCartaoModal;
       _carregando = false;
     });
   }
@@ -290,9 +325,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Em aberto por cartão',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                    Text(
+                      _filtro == ParcelamentosFiltro.finalizandoMes
+                          ? 'Finalizando este mês por cartão'
+                          : 'Em aberto por cartão',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -348,6 +388,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final ref = DateTime.now();
+    final proxMesRef = DateTime(ref.year, ref.month + 1, 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -403,43 +445,128 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                   ),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap:
-                        _carregando || _totalPendente <= 0
-                            ? null
-                            : () => _mostrarResumoPorCartao(context),
+                    onTap: () {
+                      final t =
+                          _filtro == ParcelamentosFiltro.finalizandoMes
+                              ? _totalPendenteLista
+                              : _totalEmAbertoGeral;
+                      if (_carregando || t <= 0) return;
+                      _mostrarResumoPorCartao(context);
+                    },
                     child: Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: cs.primary.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(
-                              Icons.view_timeline_outlined,
-                              color: cs.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _kv(
-                              label: 'Total em aberto',
-                              value: _currency.format(_totalPendente),
-                              cs: cs,
-                              valueColor: cs.primary,
-                            ),
-                          ),
-                          if (_totalPendente > 0)
-                            Icon(
-                              Icons.chevron_right,
-                              color: cs.onSurfaceVariant,
-                            ),
-                        ],
-                      ),
+                      child:
+                          _filtro == ParcelamentosFiltro.finalizandoMes
+                              ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: cs.tertiary.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Icon(
+                                      Icons.event_available_outlined,
+                                      color: cs.tertiary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _kv(
+                                      label:
+                                          'Total finalizando este mês (${DateFormat('MM/yyyy').format(ref)})',
+                                      value: _currency.format(_totalPendenteLista),
+                                      cs: cs,
+                                      valueColor: cs.primary,
+                                    ),
+                                  ),
+                                  if (_totalPendenteLista > 0)
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                ],
+                              )
+                              : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: cs.primary.withOpacity(0.10),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.view_timeline_outlined,
+                                          color: cs.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _kv(
+                                          label: 'Total em aberto',
+                                          value: _currency.format(
+                                            _totalEmAbertoGeral,
+                                          ),
+                                          cs: cs,
+                                          valueColor: cs.primary,
+                                        ),
+                                      ),
+                                      if (_totalEmAbertoGeral > 0)
+                                        Icon(
+                                          Icons.chevron_right,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                    ],
+                                  ),
+                                  Divider(
+                                    height: 24,
+                                    color: cs.outlineVariant.withOpacity(0.5),
+                                  ),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _kv(
+                                          label:
+                                              'A pagar neste mês (${DateFormat('MM/yyyy').format(ref)})',
+                                          value: _currency.format(
+                                            _totalNesteMes,
+                                          ),
+                                          cs: cs,
+                                          valueColor: cs.error,
+                                          labelFontSize: 10,
+                                          valueFontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _kv(
+                                          label:
+                                              'A pagar próximo mês (${DateFormat('MM/yyyy').format(proxMesRef)})',
+                                          value: _currency.format(
+                                            _totalProximoMes,
+                                          ),
+                                          cs: cs,
+                                          valueColor: cs.tertiary,
+                                          labelFontSize: 10,
+                                          valueFontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                     ),
                   ),
                 ),
