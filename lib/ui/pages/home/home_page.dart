@@ -78,6 +78,9 @@ class _HomePageState extends State<HomePage> {
   final DespesasFixasService _despesasFixasService = DespesasFixasService();
   List<ContaPagar> _vencimentosHoje = const [];
   List<CartaoCredito> _cartoesFechandoSemFatura = const [];
+  DateTime? _parcelamentosAte;
+  String? _baseUltimaFaturaLabel;
+  int _qtdParcelamentosEmAberto = 0;
   bool _aplicouDataInicialDaRota = false;
 
   DateTime? _readInitialDateFromRouteArgs() {
@@ -137,6 +140,7 @@ class _HomePageState extends State<HomePage> {
     await _carregarDoBanco();
     await _carregarVencimentosHoje();
     await _mostrarAlertaVencimentosHojeSeNecessario();
+    await _recalcularAvisoParcelamentos();
   }
 
   bool _isSameDay(DateTime a, DateTime b) =>
@@ -228,6 +232,56 @@ class _HomePageState extends State<HomePage> {
         ..clear()
         ..addAll(lista);
       _rendaDiaria = rendaDiaria;
+    });
+
+    await _recalcularAvisoParcelamentos();
+  }
+
+  Future<void> _recalcularAvisoParcelamentos() async {
+    // 1) Maior vencimento entre parcelas pendentes (compra parcelada)
+    final pendentes = await _repositoryContaPagar.getPendentes();
+    final parcelasPendentes =
+        pendentes
+            .where((c) => (c.parcelaTotal ?? 0) > 1)
+            // não considera grupos de fatura (pagamento_fatura)
+            .where((c) => !(c.grupoParcelas).startsWith('FATURA_'))
+            .toList();
+
+    DateTime? ate;
+    if (parcelasPendentes.isNotEmpty) {
+      parcelasPendentes.sort(
+        (a, b) => b.dataVencimento.compareTo(a.dataVencimento),
+      );
+      ate = parcelasPendentes.first.dataVencimento;
+    }
+
+    // 2) Base: último mês com pagamento de fatura gerado (pagamento_fatura = 1)
+    final db = await _dbService.db;
+    final rows = await db.query(
+      'lancamentos',
+      columns: ['data_hora'],
+      where: 'pagamento_fatura = 1',
+      orderBy: 'data_hora DESC',
+      limit: 1,
+    );
+
+    String? baseLabel;
+    if (rows.isNotEmpty) {
+      final ms = rows.first['data_hora'];
+      if (ms is int) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+        baseLabel = DateFormat('MM/yyyy').format(dt);
+      }
+    }
+
+    final qtdGrupos =
+        parcelasPendentes.map((c) => c.grupoParcelas).toSet().length;
+
+    if (!mounted) return;
+    setState(() {
+      _parcelamentosAte = ate;
+      _baseUltimaFaturaLabel = baseLabel;
+      _qtdParcelamentosEmAberto = qtdGrupos;
     });
   }
 
@@ -805,6 +859,33 @@ class _HomePageState extends State<HomePage> {
                       ),
                       child: const Text('Abrir'),
                     ),
+                  ),
+                ),
+              ),
+            if (_parcelamentosAte != null && _qtdParcelamentosEmAberto > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  color: Colors.green.withOpacity(0.08),
+                  child: ListTile(
+                    leading: const Icon(Icons.view_timeline_outlined),
+                    title: Text(
+                      _qtdParcelamentosEmAberto == 1
+                          ? '1 parcelamento em aberto'
+                          : '$_qtdParcelamentosEmAberto parcelamentos em aberto',
+                    ),
+                    subtitle: Text(
+                      'Você tem parcelamentos até ${DateFormat('dd/MM/yyyy').format(_parcelamentosAte!)}'
+                      '${_baseUltimaFaturaLabel == null ? '' : ' · base: última fatura $_baseUltimaFaturaLabel'}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: TextButton(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/parcelamentos'),
+                      child: const Text('Ver'),
+                    ),
+                    onTap: () => Navigator.pushNamed(context, '/parcelamentos'),
                   ),
                 ),
               ),

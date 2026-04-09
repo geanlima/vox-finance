@@ -157,8 +157,10 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   Future<void> _carregar() async {
     setState(() => _carregando = true);
 
-    final todas =
-        _mostrarSomentePendentes ? await _contaRepo.getPendentes() : await _contaRepo.getTodas();
+    // Importante: para calcular corretamente "x/y pagas" precisamos carregar
+    // todas as parcelas (pagas + pendentes). O filtro "somente pendentes"
+    // será aplicado por grupo, com base no valor pendente do grupo.
+    final todas = await _contaRepo.getTodas();
 
     // Somente compras parceladas (parcela_total > 1) e não inclui as contas da FATURA_*
     final parceladas =
@@ -195,6 +197,10 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       final qtdParcelas = itens.map((c) => c.parcelaTotal ?? 0).fold<int>(0, (a, v) => v > a ? v : a);
       final primeiro = itens.first.dataVencimento;
       final ultimo = itens.last.dataVencimento;
+
+      // Se o usuário quer ver "somente pendentes", escondemos grupos já quitados,
+      // mas ainda calculamos progressos com base em todas as parcelas do grupo.
+      if (_mostrarSomentePendentes && pendente <= 0) continue;
 
       totalPendente += pendente;
 

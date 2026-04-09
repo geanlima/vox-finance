@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/core/service/despesas_fixas_aviso_service.dart';
 import 'package:vox_finance/ui/core/service/metrica_alerta_service.dart';
 import 'package:vox_finance/ui/data/modules/metricas/metrica_limite_repository.dart';
 import 'package:vox_finance/ui/pages/home/home_voice.dart';
+import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 class HomeDashboardPage extends StatefulWidget {
@@ -44,6 +45,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   List<Lembrete> _lembretesAtrasados = const [];
   List<AlertaMetricaItem> _alertasMetricas = const [];
   String? _msgMetrica;
+  DateTime? _parcelamentosAte;
+  String? _baseUltimaFaturaLabel;
+  int _qtdParcelamentosEmAberto = 0;
 
   @override
   void initState() {
@@ -102,6 +106,41 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       final vencidos =
           pendentes.where((c) => c.dataVencimento.isBefore(inicioHoje)).toList();
 
+      // ✅ Aviso de parcelamentos: maior vencimento pendente de compras parceladas
+      // (não considera grupos de fatura "FATURA_*").
+      final parcelasPendentes =
+          pendentes
+              .where((c) => (c.parcelaTotal ?? 0) > 1)
+              .where((c) => !(c.grupoParcelas).startsWith('FATURA_'))
+              .toList();
+      DateTime? parcelamentosAte;
+      if (parcelasPendentes.isNotEmpty) {
+        parcelasPendentes.sort(
+          (a, b) => b.dataVencimento.compareTo(a.dataVencimento),
+        );
+        parcelamentosAte = parcelasPendentes.first.dataVencimento;
+      }
+      final qtdGruposParcelas =
+          parcelasPendentes.map((c) => c.grupoParcelas).toSet().length;
+
+      // Base: último mês com lançamento de pagamento de fatura (pagamento_fatura = 1)
+      String? baseUltimaFatura;
+      final db = await DatabaseInitializer.initialize();
+      final rows = await db.query(
+        'lancamentos',
+        columns: ['data_hora'],
+        where: 'pagamento_fatura = 1',
+        orderBy: 'data_hora DESC',
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        final ms = rows.first['data_hora'];
+        if (ms is int) {
+          baseUltimaFatura =
+              DateFormat('MM/yyyy').format(DateTime.fromMillisecondsSinceEpoch(ms));
+        }
+      }
+
       final lembretesHoje = await _lembreteRepo.pendentesNoIntervalo(
         inicioHoje,
         fimHoje,
@@ -121,6 +160,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       setState(() {
         _vencimentosHoje = deHoje;
         _vencidos = vencidos;
+        _parcelamentosAte = parcelamentosAte;
+        _qtdParcelamentosEmAberto = qtdGruposParcelas;
+        _baseUltimaFaturaLabel = baseUltimaFatura;
         _lembretesHoje = lembretesHoje;
         _lembretesAtrasados = lembretesAtrasados;
         _alertasMetricas = alertas;
@@ -146,6 +188,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _error = e.toString();
         _vencimentosHoje = const [];
         _vencidos = const [];
+        _parcelamentosAte = null;
+        _qtdParcelamentosEmAberto = 0;
+        _baseUltimaFaturaLabel = null;
         _lembretesHoje = const [];
         _lembretesAtrasados = const [];
       });
@@ -361,6 +406,24 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                       ctaText: 'Ver',
                       onCta: () => _goMain('/metricas'),
                       accent: Colors.orange.shade800,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_parcelamentosAte != null && _qtdParcelamentosEmAberto > 0) ...[
+                    _actionCard(
+                      context: context,
+                      icon: Icons.view_timeline_outlined,
+                      title:
+                          _qtdParcelamentosEmAberto == 1
+                              ? '1 parcelamento em aberto'
+                              : '$_qtdParcelamentosEmAberto parcelamentos em aberto',
+                      subtitle:
+                          'Você tem parcelamentos até ${DateFormat('dd/MM/yyyy').format(_parcelamentosAte!)}'
+                          '${_baseUltimaFaturaLabel == null ? '' : ' · base: última fatura $_baseUltimaFaturaLabel'}',
+                      onTap: () => _goMain('/parcelamentos'),
+                      ctaText: 'Ver',
+                      onCta: () => _goMain('/parcelamentos'),
+                      accent: Colors.green.shade700,
                     ),
                     const SizedBox(height: 12),
                   ],
