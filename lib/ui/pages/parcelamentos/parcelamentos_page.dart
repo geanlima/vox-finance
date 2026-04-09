@@ -13,6 +13,8 @@ import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/conta_pagar_detalhe.dart';
 
+enum ParcelamentosFiltro { emAberto, finalizandoMes, todos }
+
 class ParcelamentoResumo {
   final String grupoParcelas;
   final String descricao;
@@ -43,6 +45,7 @@ class ParcelamentosPage extends StatefulWidget {
   const ParcelamentosPage({super.key});
 
   static const routeName = '/parcelamentos';
+  static const argFiltro = 'filtro';
 
   @override
   State<ParcelamentosPage> createState() => _ParcelamentosPageState();
@@ -57,7 +60,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   final _cartaoRepo = CartaoCreditoRepository();
 
   bool _carregando = false;
-  bool _mostrarSomentePendentes = true;
+  ParcelamentosFiltro _filtro = ParcelamentosFiltro.emAberto;
+  bool _aplicouFiltroDaRota = false;
 
   List<ParcelamentoResumo> _resumos = const [];
   double _totalPendente = 0.0;
@@ -67,6 +71,25 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   void initState() {
     super.initState();
     _carregar();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_aplicouFiltroDaRota) return;
+    _aplicouFiltroDaRota = true;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map) {
+      final v = args[ParcelamentosPage.argFiltro];
+      if (v == 'finalizandoMes') {
+        _filtro = ParcelamentosFiltro.finalizandoMes;
+      } else if (v == 'todos') {
+        _filtro = ParcelamentosFiltro.todos;
+      } else if (v == 'emAberto') {
+        _filtro = ParcelamentosFiltro.emAberto;
+      }
+    }
   }
 
   bool _ehGrupoFatura(String grupo) => grupo.startsWith('FATURA_');
@@ -198,9 +221,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       final primeiro = itens.first.dataVencimento;
       final ultimo = itens.last.dataVencimento;
 
-      // Se o usuário quer ver "somente pendentes", escondemos grupos já quitados,
-      // mas ainda calculamos progressos com base em todas as parcelas do grupo.
-      if (_mostrarSomentePendentes && pendente <= 0) continue;
+      // Filtros (aplicados por GRUPO)
+      if (_filtro == ParcelamentosFiltro.emAberto && pendente <= 0) continue;
+      if (_filtro == ParcelamentosFiltro.finalizandoMes) {
+        final agora = DateTime.now();
+        final finalizaEsteMes = ultimo.year == agora.year && ultimo.month == agora.month;
+        final temPendente = pendente > 0;
+        if (!finalizaEsteMes || !temPendente) continue;
+      }
 
       totalPendente += pendente;
 
@@ -328,15 +356,30 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
           const SyncIconButton(),
           IconButton(
             icon: Icon(
-              _mostrarSomentePendentes ? Icons.filter_alt : Icons.filter_alt_outlined,
+              _filtro == ParcelamentosFiltro.emAberto
+                  ? Icons.filter_alt
+                  : (_filtro == ParcelamentosFiltro.finalizandoMes
+                      ? Icons.event_available_outlined
+                      : Icons.filter_alt_outlined),
             ),
-            tooltip: _mostrarSomentePendentes ? 'Mostrando: em aberto' : 'Mostrando: todos',
-            onPressed: _carregando
-                ? null
-                : () {
-                    setState(() => _mostrarSomentePendentes = !_mostrarSomentePendentes);
-                    _carregar();
-                  },
+            tooltip: switch (_filtro) {
+              ParcelamentosFiltro.emAberto => 'Mostrando: em aberto',
+              ParcelamentosFiltro.finalizandoMes => 'Mostrando: finalizando este mês',
+              ParcelamentosFiltro.todos => 'Mostrando: todos',
+            },
+            onPressed:
+                _carregando
+                    ? null
+                    : () {
+                      setState(() {
+                        _filtro = switch (_filtro) {
+                          ParcelamentosFiltro.emAberto => ParcelamentosFiltro.finalizandoMes,
+                          ParcelamentosFiltro.finalizandoMes => ParcelamentosFiltro.todos,
+                          ParcelamentosFiltro.todos => ParcelamentosFiltro.emAberto,
+                        };
+                      });
+                      _carregar();
+                    },
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -406,9 +449,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                           child: Padding(
                             padding: const EdgeInsets.all(24),
                             child: Text(
-                              _mostrarSomentePendentes
-                                  ? 'Nenhum parcelamento em aberto.'
-                                  : 'Nenhum parcelamento encontrado.',
+                              switch (_filtro) {
+                                ParcelamentosFiltro.emAberto =>
+                                  'Nenhum parcelamento em aberto.',
+                                ParcelamentosFiltro.finalizandoMes =>
+                                  'Nenhuma compra finalizando este mês.',
+                                ParcelamentosFiltro.todos =>
+                                  'Nenhum parcelamento encontrado.',
+                              },
                               textAlign: TextAlign.center,
                               style: TextStyle(color: cs.onSurfaceVariant),
                             ),
