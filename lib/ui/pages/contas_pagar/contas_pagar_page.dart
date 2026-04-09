@@ -79,6 +79,47 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   double _totalPendente = 0;
   double get _totalPago => _totalGeral - _totalPendente;
 
+  Widget _totChip(
+    BuildContext context,
+    String label,
+    String value,
+    Color color, {
+    bool fullWidth = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: color.withOpacity(0.10),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface.withOpacity(0.85),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -547,11 +588,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
               ],
             ),
             child: Card(
-              margin: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 6,
-              ),
-              color: vencida ? colors.errorContainer.withOpacity(0.15) : null,
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: ListTile(
                 leading: Icon(
                   resumo.todasPagas
@@ -564,27 +601,22 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                       : (vencida ? colors.error : colors.primary),
                 ),
                 title: Text(resumo.descricao),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      resumo.quantidadeParcelas > 1
-                          ? '${resumo.quantidadeParcelas} parcelas · '
-                              '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
-                              '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}'
-                          : 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}',
-                    ),
-                    if (resumo.formaDescricao != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        resumo.formaDescricao!,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ],
+                isThreeLine: true,
+                subtitle: Text(
+                  resumo.quantidadeParcelas > 1
+                      ? '${resumo.quantidadeParcelas} parcelas · '
+                          '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
+                          '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}\n'
+                          '${resumo.valorPendente > 0 ? 'Pendente: ${_currency.format(resumo.valorPendente)}' : 'Tudo pago'}'
+                      : 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}\n'
+                          '${resumo.valorPendente > 0 ? 'Pendente: ${_currency.format(resumo.valorPendente)}' : 'Tudo pago'}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color:
+                        resumo.todasPagas
+                            ? Colors.green.shade800
+                            : (vencida ? colors.error : Colors.orange.shade900),
+                  ),
                 ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -611,7 +643,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                             grupoParcelas: resumo.grupoParcelas,
                           ),
                     ),
-                  ).then((_) => _carregar()); // ao voltar, recarrega totalizador
+                  ).then((_) => _carregar());
                 },
               ),
             ),
@@ -656,75 +688,46 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
               child: Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Total geral
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Text(
+                        'Resumo',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          const Text(
-                            'Total geral',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          Expanded(
+                            child: _totChip(
+                              context,
+                              'Já pago',
+                              _currency.format(_totalPago),
+                              Colors.green.shade700,
+                            ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _currency.format(_totalGeral),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _totChip(
+                              context,
+                              'Pendente',
+                              _currency.format(_totalPendente),
+                              Colors.orange.shade800,
                             ),
                           ),
                         ],
                       ),
-
-                      // Total pendente
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Pendente',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _currency.format(_totalPendente),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: colors.error,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Total pago
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text(
-                            'Já pago',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _currency.format(_totalPago),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: colors.primary,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 8),
+                      _totChip(
+                        context,
+                        'Total geral (pago + pendente)',
+                        _currency.format(_totalGeral),
+                        Theme.of(context).colorScheme.primary,
+                        fullWidth: true,
                       ),
                     ],
                   ),

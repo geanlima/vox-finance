@@ -220,6 +220,79 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     Navigator.pushNamed(context, route);
   }
 
+  Widget _actionCard({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap,
+    String? ctaText,
+    VoidCallback? onCta,
+    Color? accent,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final acc = accent ?? cs.primary;
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.55)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: acc.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: acc),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (ctaText != null && onCta != null)
+                TextButton(onPressed: onCta, child: Text(ctaText))
+              else if (onTap != null)
+                Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,15 +342,14 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   if (_alertasMetricas.isNotEmpty) ...[
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.insights_outlined),
-                        title: Text(
+                    _actionCard(
+                      context: context,
+                      icon: Icons.insights_outlined,
+                      title:
                           _alertasMetricas.length == 1
                               ? '1 métrica em atenção'
                               : '${_alertasMetricas.length} métricas em atenção',
-                        ),
-                        subtitle: Text(
+                      subtitle:
                           _alertasMetricas
                               .take(3)
                               .map(
@@ -285,99 +357,80 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                                     '${a.consumo.percentual.toStringAsFixed(0)}% do limite',
                               )
                               .join(' • '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: TextButton(
-                          onPressed: () => _goMain('/metricas'),
-                          child: const Text('Ver'),
-                        ),
-                        onTap: () => _goMain('/metricas'),
-                      ),
+                      onTap: () => _goMain('/metricas'),
+                      ctaText: 'Ver',
+                      onCta: () => _goMain('/metricas'),
+                      accent: Colors.orange.shade800,
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.notifications_active_outlined),
-                      title: Text(
+                  _actionCard(
+                    context: context,
+                    icon: Icons.notifications_active_outlined,
+                    title:
                         (_vencimentosHoje.isEmpty && _vencidos.isEmpty)
                             ? 'Nenhum vencimento para hoje'
                             : (_vencidos.isNotEmpty
                                 ? '${_vencidos.length} vencido(s) • ${_vencimentosHoje.length} para hoje'
                                 : '${_vencimentosHoje.length} vencimento(s) para hoje'),
-                      ),
-                      subtitle:
-                          (_vencimentosHoje.isEmpty && _vencidos.isEmpty)
-                              ? const Text('Tudo certo por hoje.')
-                              : Text(
-                                [..._vencidos, ..._vencimentosHoje]
-                                    .take(3)
-                                    .map(
-                                      (e) =>
-                                          '${e.descricao} (${DateFormat('dd/MM').format(e.dataVencimento)})',
-                                    )
-                                    .join(' • '),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                      trailing: TextButton(
-                        onPressed: () => _goMain('/contas-pagar'),
-                        child: const Text('Ver'),
-                      ),
-                    ),
+                    subtitle:
+                        (_vencimentosHoje.isEmpty && _vencidos.isEmpty)
+                            ? 'Tudo certo por hoje.'
+                            : [..._vencidos, ..._vencimentosHoje]
+                                .take(3)
+                                .map(
+                                  (e) =>
+                                      '${e.descricao} (${DateFormat('dd/MM').format(e.dataVencimento)})',
+                                )
+                                .join(' • '),
+                    onTap: () => _goMain('/contas-pagar'),
+                    ctaText: 'Ver',
+                    onCta: () => _goMain('/contas-pagar'),
+                    accent:
+                        _vencidos.isNotEmpty
+                            ? Theme.of(context).colorScheme.error
+                            : Colors.orange.shade800,
                   ),
                   const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.alarm),
-                      title: Text(
+                  _actionCard(
+                    context: context,
+                    icon: Icons.alarm,
+                    title:
                         (_lembretesHoje.isEmpty && _lembretesAtrasados.isEmpty)
                             ? 'Nenhum lembrete pendente'
                             : (_lembretesAtrasados.isNotEmpty
                                 ? '${_lembretesAtrasados.length} atrasado(s) • ${_lembretesHoje.length} para hoje'
                                 : '${_lembretesHoje.length} lembrete(s) para hoje'),
-                      ),
-                      subtitle:
-                          (_lembretesHoje.isEmpty && _lembretesAtrasados.isEmpty)
-                              ? const Text('Tudo certo por enquanto.')
-                              : Text(
-                                [..._lembretesAtrasados, ..._lembretesHoje]
-                                    .take(3)
-                                    .map(
-                                      (e) =>
-                                          '${e.titulo} (${DateFormat('dd/MM HH:mm').format(e.dataHora)})',
-                                    )
-                                    .join(' • '),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                      trailing: TextButton(
-                        onPressed: () => _goMain('/lembretes'),
-                        child: const Text('Ver'),
-                      ),
-                      onTap: () => _goMain('/lembretes'),
-                    ),
+                    subtitle:
+                        (_lembretesHoje.isEmpty && _lembretesAtrasados.isEmpty)
+                            ? 'Tudo certo por enquanto.'
+                            : [..._lembretesAtrasados, ..._lembretesHoje]
+                                .take(3)
+                                .map(
+                                  (e) =>
+                                      '${e.titulo} (${DateFormat('dd/MM HH:mm').format(e.dataHora)})',
+                                )
+                                .join(' • '),
+                    onTap: () => _goMain('/lembretes'),
+                    ctaText: 'Ver',
+                    onCta: () => _goMain('/lembretes'),
+                    accent: Theme.of(context).colorScheme.tertiary,
                   ),
                   const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.table_rows),
-                      title: const Text('Ir para lançamentos'),
-                      subtitle: const Text('Abrir tela de gastos/lançamentos'),
-                      onTap: () => _goMain('/lancamentos'),
-                    ),
+                  _actionCard(
+                    context: context,
+                    icon: Icons.table_rows,
+                    title: 'Ir para lançamentos',
+                    subtitle: 'Abrir tela de gastos/lançamentos',
+                    onTap: () => _goMain('/lancamentos'),
                   ),
                   const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.home_work_outlined),
-                      title: const Text('Despesas fixas'),
-                      subtitle: const Text(
-                        'Gerenciar contas mensais automáticas',
-                      ),
-                      onTap: () => _goMain('/despesas-fixas'),
-                    ),
+                  _actionCard(
+                    context: context,
+                    icon: Icons.home_work_outlined,
+                    title: 'Despesas fixas',
+                    subtitle: 'Gerenciar contas mensais automáticas',
+                    onTap: () => _goMain('/despesas-fixas'),
                   ),
                 ],
               ),

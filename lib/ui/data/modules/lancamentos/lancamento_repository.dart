@@ -301,10 +301,12 @@ class LancamentoRepository {
 
     // ⭐ Buscar diaVencimento do cartão (para contas a pagar)
     int? diaVencimentoCartao = cartao?.diaVencimento;
+    int? diaFechamentoCartao = cartao?.diaFechamento;
     if (diaVencimentoCartao == null && base.idCartao != null) {
       final cartaoRepo = CartaoCreditoRepository();
       final cartaoDb = await cartaoRepo.getCartaoCreditoById(base.idCartao!);
       diaVencimentoCartao = cartaoDb?.diaVencimento;
+      diaFechamentoCartao = cartaoDb?.diaFechamento;
     }
 
     // ✅ Melhor prática: transação (evita salvar metade se der erro)
@@ -320,9 +322,10 @@ class LancamentoRepository {
 
         // CONTA A PAGAR: vencimento no dia do cartão
         DateTime dataVencimentoConta;
-        if (diaVencimentoCartao != null) {
+        if (diaVencimentoCartao != null && diaFechamentoCartao != null) {
           dataVencimentoConta = _calcularVencimentoCartaoParaConta(
             dataCompra: dataCompra,
+            diaFechamento: diaFechamentoCartao,
             diaVencimento: diaVencimentoCartao,
             numeroParcela: numeroParcela,
           );
@@ -381,22 +384,27 @@ class LancamentoRepository {
 
   DateTime _calcularVencimentoCartaoParaConta({
     required DateTime dataCompra,
+    required int diaFechamento,
     required int diaVencimento,
     required int numeroParcela,
   }) {
     // Vencimento deve sempre cair no dia configurado no cartão (diaVencimento).
     // Se o mês não tiver esse dia (ex.: 31 em fevereiro), ajusta para o último dia do mês.
     final dia = diaVencimento.clamp(1, 31);
-    final vencimentoEsteMes = _garantirDataValida(
+
+    // Regra do cartão:
+    // - Se a compra aconteceu APÓS o dia de fechamento, ela entra na próxima fatura,
+    //   então o 1º vencimento é no próximo mês.
+    // - Se aconteceu ATÉ o dia de fechamento, entra na fatura do mês e vence neste mês.
+    final fechamentoEsteMes = _garantirDataValida(
       dataCompra.year,
       dataCompra.month,
-      dia,
+      diaFechamento.clamp(1, 31),
     );
 
-    final int offsetMes =
-        dataCompra.isBefore(vencimentoEsteMes)
-            ? (numeroParcela - 1)
-            : numeroParcela;
+    final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMes);
+    final int baseOffset = aposFechamento ? 1 : 0;
+    final int offsetMes = baseOffset + (numeroParcela - 1);
 
     return _garantirDataValida(
       dataCompra.year,
