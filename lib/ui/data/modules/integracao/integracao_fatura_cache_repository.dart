@@ -5,11 +5,9 @@ import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/data/models/fatura_api_dto.dart';
 import 'package:vox_finance/ui/data/models/integracao_fatura_cache.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
-import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
 class IntegracaoFaturaCacheRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();
-  final _lancRepo = LancamentoRepository();
 
   String buildSourceKey({
     required int idCartaoLocal,
@@ -144,17 +142,47 @@ class IntegracaoFaturaCacheRepository {
     required int ano,
     required int mes,
   }) async {
+    // Importante: conta_pagar pode vencer em um mês diferente do lançamento (data_hora),
+    // então buscamos primeiro por conta_pagar no período e depois carregamos os lançamentos.
+    final db = await _db;
     final inicio = DateTime(ano, mes, 1);
-    final fim = DateTime(ano, mes + 1, 1).subtract(const Duration(milliseconds: 1));
-    final lista = await _lancRepo.getByPeriodo(inicio, fim);
-    return lista
-        .where(
-          (l) =>
-              l.idCartao == idCartaoLocal &&
-              l.pagamentoFatura == false &&
-              l.formaPagamento.toString().contains('credito'),
-        )
-        .toList();
+    final fim = DateTime(ano, mes + 1, 1).subtract(
+      const Duration(milliseconds: 1),
+    );
+
+    final rows = await db.rawQuery(
+      '''
+      SELECT DISTINCT id_lancamento AS id
+      FROM conta_pagar
+      WHERE id_cartao = ?
+        AND id_lancamento IS NOT NULL
+        AND grupo_parcelas NOT LIKE 'FATURA_%'
+        AND data_vencimento >= ?
+        AND data_vencimento <= ?
+      ORDER BY data_vencimento ASC
+      ''',
+      [
+        idCartaoLocal,
+        inicio.millisecondsSinceEpoch,
+        fim.millisecondsSinceEpoch,
+      ],
+    );
+
+    if (rows.isEmpty) return [];
+
+    final ids =
+        rows.map<int>((r) => (r['id'] as num).toInt()).toSet().toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
+
+    final lancRows = await db.query(
+      'lancamentos',
+      where:
+          'id IN ($placeholders) AND id_cartao = ? AND pagamento_fatura = 0',
+      whereArgs: [...ids, idCartaoLocal],
+      orderBy: 'data_hora ASC',
+    );
+
+    return lancRows.map((e) => Lancamento.fromMap(e)).toList();
   }
 
   /// Auto-match por valor (e proximidade de data, se houver).

@@ -21,6 +21,7 @@ import 'package:vox_finance/ui/pages/integracao/associacao_page.dart';
 import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
 import 'package:vox_finance/ui/pages/faturas_salvas/faturas_salvas_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
+import 'package:vox_finance/ui/pages/parcelamentos/parcelamentos_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -373,6 +374,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.table_rows,
                   title: 'Lançamentos',
                   route: '/lancamentos',
+                ),
+                _subItem(
+                  icon: Icons.view_timeline_outlined,
+                  title: 'Parcelamentos',
+                  route: ParcelamentosPage.routeName,
                 ),
                 _subItem(
                   icon: Icons.receipt_long_outlined,

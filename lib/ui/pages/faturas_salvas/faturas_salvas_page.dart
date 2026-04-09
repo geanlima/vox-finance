@@ -144,9 +144,10 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Faturas salvas'),
+        title: const Text('Fatura do cartão de crédito'),
         actions: [
           IconButton(
             onPressed: _carregar,
@@ -266,6 +267,18 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
                                       return Card(
                                         margin:
                                             const EdgeInsets.only(bottom: 10),
+                                        elevation: 0,
+                                        color: cs.surface,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          side: BorderSide(
+                                            color: cs.outlineVariant.withOpacity(
+                                              0.55,
+                                            ),
+                                          ),
+                                        ),
                                         child: Slidable(
                                           key: ValueKey(f.id ?? idx),
                                           endActionPane: ActionPane(
@@ -289,20 +302,9 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
                                               ),
                                             ],
                                           ),
-                                          child: ListTile(
-                                            title: Text(
-                                              '$_periodoLabel de $_ano',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            subtitle: Text(sub),
-                                            trailing: Text(
-                                              _money.format(f.valorTotal),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(16),
                                             onTap: () {
                                               Navigator.push<void>(
                                                 context,
@@ -317,6 +319,78 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
                                                 ),
                                               );
                                             },
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.all(14),
+                                              child: Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Container(
+                                                    width: 44,
+                                                    height: 44,
+                                                    decoration: BoxDecoration(
+                                                      color: cs.primary
+                                                          .withOpacity(0.10),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        14,
+                                                      ),
+                                                    ),
+                                                    child: Icon(
+                                                      Icons.receipt_long_outlined,
+                                                      color: cs.primary,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(
+                                                          '$_periodoLabel de $_ano',
+                                                          style:
+                                                              const TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w800,
+                                                            fontSize: 15,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          height: 6,
+                                                        ),
+                                                        Text(
+                                                          sub,
+                                                          maxLines: 2,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            color: cs
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Text(
+                                                    _money.format(f.valorTotal),
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      fontSize: 16,
+                                                      color: f.pago == true
+                                                          ? Colors.green
+                                                          : (f.pago == false
+                                                              ? cs.error
+                                                              : cs.primary),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       );
