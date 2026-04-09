@@ -48,6 +48,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   DateTime? _parcelamentosAte;
   String? _baseUltimaFaturaLabel;
   int _qtdParcelamentosEmAberto = 0;
+  /// Compras parceladas cuja última parcela vence no mês atual e ainda há pendência.
+  int _qtdComprasFinalizandoMes = 0;
 
   @override
   void initState() {
@@ -123,6 +125,29 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       final qtdGruposParcelas =
           parcelasPendentes.map((c) => c.grupoParcelas).toSet().length;
 
+      // Compras que “encerram” no mês corrente: última parcela do grupo vence neste mês/ano
+      // e ainda existe parcela pendente (exclui FATURA_*).
+      int qtdFinalizandoMes = 0;
+      final todasContas = await _contaRepo.getTodas();
+      final parceladasPorGrupo = <String, List<ContaPagar>>{};
+      for (final c in todasContas) {
+        if ((c.parcelaTotal ?? 0) <= 1) continue;
+        if (c.grupoParcelas.startsWith('FATURA_')) continue;
+        parceladasPorGrupo.putIfAbsent(c.grupoParcelas, () => []).add(c);
+      }
+      for (final itens in parceladasPorGrupo.values) {
+        if (itens.isEmpty) continue;
+        final ultimoVenc = itens
+            .map((e) => e.dataVencimento)
+            .reduce((a, b) => a.isAfter(b) ? a : b);
+        final temPendente = itens.any((e) => !e.pago);
+        if (ultimoVenc.year == agora.year &&
+            ultimoVenc.month == agora.month &&
+            temPendente) {
+          qtdFinalizandoMes++;
+        }
+      }
+
       // Base: último mês com lançamento de pagamento de fatura (pagamento_fatura = 1)
       String? baseUltimaFatura;
       final db = await DatabaseInitializer.initialize();
@@ -162,6 +187,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _vencidos = vencidos;
         _parcelamentosAte = parcelamentosAte;
         _qtdParcelamentosEmAberto = qtdGruposParcelas;
+        _qtdComprasFinalizandoMes = qtdFinalizandoMes;
         _baseUltimaFaturaLabel = baseUltimaFatura;
         _lembretesHoje = lembretesHoje;
         _lembretesAtrasados = lembretesAtrasados;
@@ -190,6 +216,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _vencidos = const [];
         _parcelamentosAte = null;
         _qtdParcelamentosEmAberto = 0;
+        _qtdComprasFinalizandoMes = 0;
         _baseUltimaFaturaLabel = null;
         _lembretesHoje = const [];
         _lembretesAtrasados = const [];
@@ -263,6 +290,12 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     final current = ModalRoute.of(context)?.settings.name;
     if (current == route) return;
     Navigator.pushNamed(context, route);
+  }
+
+  void _goMainArgs(String route, Object? args) {
+    final current = ModalRoute.of(context)?.settings.name;
+    if (current == route) return;
+    Navigator.pushNamed(context, route, arguments: args);
   }
 
   Widget _actionCard({
@@ -418,12 +451,35 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                               ? '1 parcelamento em aberto'
                               : '$_qtdParcelamentosEmAberto parcelamentos em aberto',
                       subtitle:
-                          'Você tem parcelamentos até ${DateFormat('dd/MM/yyyy').format(_parcelamentosAte!)}'
+                          'Até ${DateFormat('dd/MM/yyyy').format(_parcelamentosAte!)}'
                           '${_baseUltimaFaturaLabel == null ? '' : ' · base: última fatura $_baseUltimaFaturaLabel'}',
                       onTap: () => _goMain('/parcelamentos'),
                       ctaText: 'Ver',
                       onCta: () => _goMain('/parcelamentos'),
                       accent: Colors.green.shade700,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_qtdComprasFinalizandoMes > 0) ...[
+                    _actionCard(
+                      context: context,
+                      icon: Icons.event_available_outlined,
+                      title:
+                          _qtdComprasFinalizandoMes == 1
+                              ? '1 compra finaliza este mês'
+                              : '$_qtdComprasFinalizandoMes compras finalizam este mês',
+                      subtitle:
+                          'Última parcela em ${DateFormat('MM/yyyy').format(DateTime.now())}',
+                      onTap: () => _goMainArgs(
+                        '/parcelamentos',
+                        { 'filtro': 'finalizandoMes' },
+                      ),
+                      ctaText: 'Ver',
+                      onCta: () => _goMainArgs(
+                        '/parcelamentos',
+                        { 'filtro': 'finalizandoMes' },
+                      ),
+                      accent: Colors.teal.shade700,
                     ),
                     const SizedBox(height: 12),
                   ],
