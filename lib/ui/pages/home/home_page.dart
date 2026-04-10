@@ -25,7 +25,6 @@ import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.d
 import 'package:vox_finance/ui/widgets/resumo_dia_card.dart';
 import 'package:vox_finance/ui/widgets/lancamento_list.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 import 'package:vox_finance/ui/pages/home/widgets/resumo_gastos_dia_bottom_sheet.dart';
 
 import 'home_ocr.dart';
@@ -731,7 +730,6 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('VoxFinance'),
         actions: [
-          const SyncIconButton(),
           IconButton(
             icon: const Icon(Icons.payments),
             onPressed: _abrirLancamentosFuturos,
