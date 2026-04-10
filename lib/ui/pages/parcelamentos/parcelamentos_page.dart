@@ -10,7 +10,6 @@ import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repos
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/conta_pagar_detalhe.dart';
 
 enum ParcelamentosFiltro { emAberto, finalizandoMes, todos }
@@ -72,7 +71,10 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   double _totalProximoMes = 0.0;
   /// Soma do pendente só dos grupos exibidos (no filtro "finalizando este mês").
   double _totalPendenteLista = 0.0;
-  Map<int?, double> _pendentePorCartaoId = const {};
+  Map<int?, double> _abertoPorCartaoId = const {};
+  Map<int?, double> _nesteMesPorCartaoId = const {};
+  Map<int?, double> _proximoMesPorCartaoId = const {};
+  Map<int?, double> _finalizandoMesPorCartaoId = const {};
 
   @override
   void initState() {
@@ -86,6 +88,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     if (_aplicouFiltroDaRota) return;
     _aplicouFiltroDaRota = true;
 
+    final filtroAntes = _filtro;
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is Map) {
       final v = args[ParcelamentosPage.argFiltro];
@@ -96,6 +99,15 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       } else if (v == 'emAberto') {
         _filtro = ParcelamentosFiltro.emAberto;
       }
+    }
+
+    // Se a rota pediu um filtro diferente do padrão, recarrega para que
+    // lista/totalizadores/modal reflitam o filtro já na primeira abertura.
+    if (filtroAntes != _filtro) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _carregar();
+      });
     }
   }
 
@@ -201,24 +213,30 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
             .where((c) => !_ehGrupoFatura(c.grupoParcelas))
             .toList();
 
-    // Total pendente por cartão (para o resumo "por cartão")
-    final pendentePorCartao = <int?, double>{};
+    // Total pendente por cartão (para o detalhamento por cartão)
+    final abertoPorCartao = <int?, double>{};
+    final nesteMesPorCartao = <int?, double>{};
+    final proximoMesPorCartao = <int?, double>{};
     final agora = DateTime.now();
+    final inicioMes = DateTime(agora.year, agora.month, 1);
     final inicioProximoMes = DateTime(agora.year, agora.month + 1, 1);
+    final inicioMesDepois = DateTime(agora.year, agora.month + 2, 1);
     double totalGeral = 0.0;
     double nesteMes = 0.0;
     double proximoMes = 0.0;
     for (final c in parceladas) {
       if (c.pago) continue;
       final k = c.idCartao; // pode ser null em bases antigas
-      pendentePorCartao[k] = (pendentePorCartao[k] ?? 0.0) + c.valor;
+      abertoPorCartao[k] = (abertoPorCartao[k] ?? 0.0) + c.valor;
       totalGeral += c.valor;
       final v = c.dataVencimento;
-      if (v.year == agora.year && v.month == agora.month) {
+      if (!v.isBefore(inicioMes) && v.isBefore(inicioProximoMes)) {
         nesteMes += c.valor;
+        nesteMesPorCartao[k] = (nesteMesPorCartao[k] ?? 0.0) + c.valor;
       }
-      if (v.year == inicioProximoMes.year && v.month == inicioProximoMes.month) {
+      if (!v.isBefore(inicioProximoMes) && v.isBefore(inicioMesDepois)) {
         proximoMes += c.valor;
+        proximoMesPorCartao[k] = (proximoMesPorCartao[k] ?? 0.0) + c.valor;
       }
     }
 
@@ -228,7 +246,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     }
 
     final resumos = <ParcelamentoResumo>[];
-    final pendentePorCartaoDaLista = <int?, double>{};
+    final finalizandoMesPorCartao = <int?, double>{};
 
     for (final entry in mapa.entries) {
       final grupo = entry.key;
@@ -251,10 +269,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
         if (!finalizaEsteMes || !temPendente) continue;
       }
 
-      for (final c in itens.where((x) => !x.pago)) {
-        final k = c.idCartao;
-        pendentePorCartaoDaLista[k] =
-            (pendentePorCartaoDaLista[k] ?? 0.0) + c.valor;
+      // Se o filtro ativo for "finalizando este mês", o detalhamento por cartão
+      // precisa refletir somente os grupos exibidos.
+      if (_filtro == ParcelamentosFiltro.finalizandoMes) {
+        for (final c in itens.where((x) => !x.pago)) {
+          final k = c.idCartao;
+          finalizandoMesPorCartao[k] =
+              (finalizandoMesPorCartao[k] ?? 0.0) + c.valor;
+        }
       }
 
       resumos.add(
@@ -277,10 +299,6 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
 
     final totalPendenteLista =
         resumos.fold<double>(0.0, (a, r) => a + r.valorPendente);
-    final mapaCartaoModal =
-        _filtro == ParcelamentosFiltro.finalizandoMes
-            ? pendentePorCartaoDaLista
-            : pendentePorCartao;
 
     if (!mounted) return;
     setState(() {
@@ -289,15 +307,22 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       _totalNesteMes = nesteMes;
       _totalProximoMes = proximoMes;
       _totalPendenteLista = totalPendenteLista;
-      _pendentePorCartaoId = mapaCartaoModal;
+      _abertoPorCartaoId = abertoPorCartao;
+      _nesteMesPorCartaoId = nesteMesPorCartao;
+      _proximoMesPorCartaoId = proximoMesPorCartao;
+      _finalizandoMesPorCartaoId = finalizandoMesPorCartao;
       _carregando = false;
     });
   }
 
-  Future<void> _mostrarResumoPorCartao(BuildContext context) async {
-    if (_pendentePorCartaoId.isEmpty) return;
+  Future<void> _mostrarResumoPorCartao(
+    BuildContext context, {
+    required String titulo,
+    required Map<int?, double> valoresPorCartao,
+  }) async {
+    if (valoresPorCartao.isEmpty) return;
 
-    final entries = _pendentePorCartaoId.entries.toList()
+    final entries = valoresPorCartao.entries.toList()
       ..sort((a, b) => (b.value).compareTo(a.value));
 
     // Busca descrições dos cartões para ids != null
@@ -326,9 +351,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      _filtro == ParcelamentosFiltro.finalizandoMes
-                          ? 'Finalizando este mês por cartão'
-                          : 'Em aberto por cartão',
+                      titulo,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -395,7 +418,6 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       appBar: AppBar(
         title: const Text('Parcelamentos'),
         actions: [
-          const SyncIconButton(),
           IconButton(
             icon: Icon(
               _filtro == ParcelamentosFiltro.emAberto
@@ -451,7 +473,17 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                               ? _totalPendenteLista
                               : _totalEmAbertoGeral;
                       if (_carregando || t <= 0) return;
-                      _mostrarResumoPorCartao(context);
+                      _mostrarResumoPorCartao(
+                        context,
+                        titulo:
+                            _filtro == ParcelamentosFiltro.finalizandoMes
+                                ? 'Finalizando este mês por cartão'
+                                : 'Em aberto por cartão',
+                        valoresPorCartao:
+                            _filtro == ParcelamentosFiltro.finalizandoMes
+                                ? _finalizandoMesPorCartaoId
+                                : _abertoPorCartaoId,
+                      );
                     },
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -537,30 +569,74 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Expanded(
-                                        child: _kv(
-                                          label:
-                                              'A pagar neste mês (${DateFormat('MM/yyyy').format(ref)})',
-                                          value: _currency.format(
-                                            _totalNesteMes,
+                                        child: InkWell(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          onTap: () {
+                                            if (_carregando ||
+                                                _totalNesteMes <= 0) {
+                                              return;
+                                            }
+                                            _mostrarResumoPorCartao(
+                                              context,
+                                              titulo:
+                                                  'A pagar neste mês por cartão',
+                                              valoresPorCartao:
+                                                  _nesteMesPorCartaoId,
+                                            );
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 4,
+                                            ),
+                                            child: _kv(
+                                              label:
+                                                  'A pagar neste mês (${DateFormat('MM/yyyy').format(ref)})',
+                                              value: _currency.format(
+                                                _totalNesteMes,
+                                              ),
+                                              cs: cs,
+                                              valueColor: cs.error,
+                                              labelFontSize: 10,
+                                              valueFontSize: 14,
+                                            ),
                                           ),
-                                          cs: cs,
-                                          valueColor: cs.error,
-                                          labelFontSize: 10,
-                                          valueFontSize: 14,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
-                                        child: _kv(
-                                          label:
-                                              'A pagar próximo mês (${DateFormat('MM/yyyy').format(proxMesRef)})',
-                                          value: _currency.format(
-                                            _totalProximoMes,
+                                        child: InkWell(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          onTap: () {
+                                            if (_carregando ||
+                                                _totalProximoMes <= 0) {
+                                              return;
+                                            }
+                                            _mostrarResumoPorCartao(
+                                              context,
+                                              titulo:
+                                                  'A pagar próximo mês por cartão',
+                                              valoresPorCartao:
+                                                  _proximoMesPorCartaoId,
+                                            );
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 4,
+                                            ),
+                                            child: _kv(
+                                              label:
+                                                  'A pagar próximo mês (${DateFormat('MM/yyyy').format(proxMesRef)})',
+                                              value: _currency.format(
+                                                _totalProximoMes,
+                                              ),
+                                              cs: cs,
+                                              valueColor: cs.tertiary,
+                                              labelFontSize: 10,
+                                              valueFontSize: 14,
+                                            ),
                                           ),
-                                          cs: cs,
-                                          valueColor: cs.tertiary,
-                                          labelFontSize: 10,
-                                          valueFontSize: 14,
                                         ),
                                       ),
                                     ],

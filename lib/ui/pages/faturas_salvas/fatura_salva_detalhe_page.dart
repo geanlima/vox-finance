@@ -612,7 +612,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                                                   )
                                                   : () => _selecionarLancamento(l),
                                           child: Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                            mainAxisSize: MainAxisSize.max,
                                             children: [
                                               Icon(
                                                 vinc == null
@@ -622,14 +622,18 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                                                 color: badgeFg,
                                               ),
                                               const SizedBox(width: 6),
-                                              Text(
-                                                vinc == null
-                                                    ? 'Não associado'
-                                                    : 'Associado: ${vinc.descricao}',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: badgeFg,
+                                              Expanded(
+                                                child: Text(
+                                                  vinc == null
+                                                      ? 'Não associado'
+                                                      : 'Associado: ${vinc.descricao}',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: badgeFg,
+                                                  ),
                                                 ),
                                               ),
                                               const SizedBox(width: 6),
@@ -795,7 +799,24 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [Text(label), Text(valor)],
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              valor,
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ],
       ),
     );
   }

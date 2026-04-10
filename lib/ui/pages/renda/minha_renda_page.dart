@@ -4,7 +4,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
 import 'package:vox_finance/ui/data/models/fonte_renda.dart';
@@ -271,7 +270,7 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Fontes de renda'),
-        actions: const [SyncIconButton()],
+        actions: const [],
       ),
       drawer: const AppDrawer(currentRoute: '/minha-renda'),
 
