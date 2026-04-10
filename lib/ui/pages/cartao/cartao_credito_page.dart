@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
-import 'package:vox_finance/ui/widgets/sync_icon_button.dart';
 
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
@@ -722,7 +721,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cartões'),
-        actions: const [SyncIconButton()],
+        actions: const [],
       ),
       drawer: const AppDrawer(currentRoute: '/cartoes-credito'),
       floatingActionButton: FloatingActionButton(
