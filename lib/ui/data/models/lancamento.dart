@@ -37,6 +37,9 @@ extension TipoDespesaExt on TipoDespesa {
 }
 
 class Lancamento {
+  /// Sentinela para [copyWith] permitir `idCartao: null` / `idConta: null` explícitos.
+  static const Object _copyWithUnset = Object();
+
   int? id;
   double valor;
   String descricao;
@@ -117,8 +120,8 @@ class Lancamento {
     bool? pago,
     DateTime? dataPagamento,
     Categoria? categoria,
-    int? idCartao,
-    int? idConta,
+    Object? idCartao = _copyWithUnset,
+    Object? idConta = _copyWithUnset,
     String? grupoParcelas,
     int? parcelaNumero,
     int? parcelaTotal,
@@ -137,8 +140,14 @@ class Lancamento {
       pago: pago ?? this.pago,
       dataPagamento: dataPagamento ?? this.dataPagamento,
       categoria: categoria ?? this.categoria,
-      idCartao: idCartao ?? this.idCartao,
-      idConta: idConta ?? this.idConta,
+      idCartao:
+          identical(idCartao, _copyWithUnset)
+              ? this.idCartao
+              : idCartao as int?,
+      idConta:
+          identical(idConta, _copyWithUnset)
+              ? this.idConta
+              : idConta as int?,
       grupoParcelas: grupoParcelas ?? this.grupoParcelas,
       parcelaNumero: parcelaNumero ?? this.parcelaNumero,
       parcelaTotal: parcelaTotal ?? this.parcelaTotal,
