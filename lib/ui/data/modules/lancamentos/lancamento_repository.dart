@@ -1,6 +1,5 @@
 // lib/ui/data/modules/lancamentos/lancamento_repository.dart
 import 'package:sqflite/sqflite.dart';
-import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
@@ -80,6 +79,22 @@ class LancamentoRepository {
     return Lancamento.fromMap(result.first);
   }
 
+  /// Vários lançamentos por id (ex.: vínculo conta_pagar.id_lancamento).
+  Future<Map<int, Lancamento>> getByIds(Set<int> ids) async {
+    if (ids.isEmpty) return {};
+    final db = await _db;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await db.query(
+      'lancamentos',
+      where: 'id IN ($placeholders)',
+      whereArgs: ids.toList(),
+    );
+    return {
+      for (final r in rows)
+        if (r['id'] is int) (r['id'] as int): Lancamento.fromMap(r),
+    };
+  }
+
   Future<int> salvar(Lancamento lanc) async {
     final db = await _db;
 
@@ -100,6 +115,60 @@ class LancamentoRepository {
         whereArgs: [lanc.id],
       );
     }
+  }
+
+  /// Salva o lançamento e replica forma/cartão/conta nos demais lançamentos
+  /// do mesmo grupo (compra parcelada) e nas contas a pagar vinculadas.
+  Future<void> salvarESincronizarPagamentoNoGrupoParcelado(
+    Lancamento lanc,
+  ) async {
+    final id = lanc.id;
+    final grupo = lanc.grupoParcelas;
+    final total = lanc.parcelaTotal ?? 0;
+    if (id == null || grupo == null || grupo.isEmpty || total <= 1) {
+      await salvar(lanc);
+      return;
+    }
+
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.update(
+        'lancamentos',
+        lanc.toMap(),
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      final patch = <String, Object?>{
+        'forma_pagamento': lanc.formaPagamento.index,
+        'id_cartao': lanc.idCartao,
+        'id_conta': lanc.idConta,
+      };
+
+      await txn.update(
+        'lancamentos',
+        patch,
+        where: 'grupo_parcelas = ? AND id != ?',
+        whereArgs: [grupo, id],
+      );
+
+      final idsRows = await txn.query(
+        'lancamentos',
+        columns: ['id'],
+        where: 'grupo_parcelas = ?',
+        whereArgs: [grupo],
+      );
+      for (final r in idsRows) {
+        final idL = r['id'] as int?;
+        if (idL == null) continue;
+        await txn.update(
+          'conta_pagar',
+          patch,
+          where: 'id_lancamento = ?',
+          whereArgs: [idL],
+        );
+      }
+    });
   }
 
   Future<void> deletar(int id) async {
@@ -360,7 +429,7 @@ class LancamentoRepository {
         final dadosLanc = lancParcela.toMap()..remove('id');
         final int idLancamento = await txn.insert('lancamentos', dadosLanc);
 
-        // 2) conta a pagar
+        // 2) conta a pagar (espelha forma/conta/cartão do lançamento)
         final conta = ContaPagar(
           id: null,
           descricao: lancParcela.descricao,
@@ -372,8 +441,9 @@ class LancamentoRepository {
           parcelaTotal: qtdParcelas,
           grupoParcelas: grupo,
           idLancamento: idLancamento,
-          formaPagamento: FormaPagamento.credito,
-          idCartao: base.idCartao,
+          formaPagamento: lancParcela.formaPagamento,
+          idCartao: lancParcela.idCartao,
+          idConta: lancParcela.idConta,
         );
 
         final dadosConta = conta.toMap()..remove('id');
