@@ -972,7 +972,15 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         await _regraOutraCompra.criarParcelasNaoPagas(base, qtd);
       }
     } else {
-      await _repositoryLancamento.salvar(lanc);
+      if (lanc.grupoParcelas != null &&
+          lanc.grupoParcelas!.isNotEmpty &&
+          (lanc.parcelaTotal ?? 0) > 1) {
+        await _repositoryLancamento.salvarESincronizarPagamentoNoGrupoParcelado(
+          lanc,
+        );
+      } else {
+        await _repositoryLancamento.salvar(lanc);
+      }
     }
 
     // 8) Atualiza tela e fecha modal

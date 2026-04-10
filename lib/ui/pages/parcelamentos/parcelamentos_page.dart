@@ -1,18 +1,57 @@
 // lib/ui/pages/parcelamentos/parcelamentos_page.dart
 // ignore_for_file: deprecated_member_use
 
+import 'dart:math' show min;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/conta_pagar_detalhe.dart';
 
 enum ParcelamentosFiltro { emAberto, finalizandoMes, todos }
+
+/// Chave estável para agregar pendência: cartão (`c:id`), forma (`f:idx` ou `f:idx@b:contaId`), ou `x`.
+///
+/// Usa [ContaPagar] e, quando houver, o [Lancamento] vinculado.
+/// Prioriza forma/cartão/conta do **lançamento** (é o que o usuário edita no formulário).
+String _chaveOrigem(ContaPagar c, Lancamento? l) {
+  // Lançamento é o que o usuário altera no formulário; conta_pagar pode ficar defasada.
+  FormaPagamento? forma = l?.formaPagamento ?? c.formaPagamento;
+  if (forma == null) return 'x';
+
+  final idCartao = l?.idCartao ?? c.idCartao;
+  if (forma == FormaPagamento.credito && idCartao != null) {
+    return 'c:$idCartao';
+  }
+
+  final idConta = c.idConta ?? l?.idConta;
+  if (idConta != null) {
+    return 'f:${forma.index}@b:$idConta';
+  }
+  return 'f:${forma.index}';
+}
+
+class _OrigemResumoLinha {
+  const _OrigemResumoLinha({
+    required this.titulo,
+    this.subtitulo,
+    required this.icon,
+    required this.valor,
+  });
+
+  final String titulo;
+  final String? subtitulo;
+  final IconData icon;
+  final double valor;
+}
 
 class ParcelamentoResumo {
   final String grupoParcelas;
@@ -37,7 +76,24 @@ class ParcelamentoResumo {
     required this.primeiroVencimento,
     required this.ultimoVencimento,
     required this.formaDescricao,
+   });
+}
+
+/// Pendência em meses além do atual e do próximo (para o bottom sheet).
+class ParcelamentoMesPendente {
+  final int ano;
+  final int mes;
+  final double total;
+  final Map<String, double> porOrigem;
+
+  const ParcelamentoMesPendente({
+    required this.ano,
+    required this.mes,
+    required this.total,
+    required this.porOrigem,
   });
+
+  DateTime get inicioMes => DateTime(ano, mes, 1);
 }
 
 class ParcelamentosPage extends StatefulWidget {
@@ -57,6 +113,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   final _contaRepo = ContaPagarRepository();
   final _lancRepo = LancamentoRepository();
   final _cartaoRepo = CartaoCreditoRepository();
+  final _contaBancariaRepo = ContaBancariaRepository();
 
   bool _carregando = false;
   ParcelamentosFiltro _filtro = ParcelamentosFiltro.emAberto;
@@ -71,10 +128,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   double _totalProximoMes = 0.0;
   /// Soma do pendente só dos grupos exibidos (no filtro "finalizando este mês").
   double _totalPendenteLista = 0.0;
-  Map<int?, double> _abertoPorCartaoId = const {};
-  Map<int?, double> _nesteMesPorCartaoId = const {};
-  Map<int?, double> _proximoMesPorCartaoId = const {};
-  Map<int?, double> _finalizandoMesPorCartaoId = const {};
+  Map<String, double> _abertoPorOrigemChave = const {};
+  Map<String, double> _nesteMesPorOrigemChave = const {};
+  Map<String, double> _proximoMesPorOrigemChave = const {};
+  Map<String, double> _finalizandoMesPorOrigemChave = const {};
+  List<ParcelamentoMesPendente> _outrosMeses = const [];
+  /// Soma do pendente com vencimento após o próximo mês.
+  double _totalDemaisMeses = 0.0;
+  bool _demaisMesesExpandido = false;
 
   @override
   void initState() {
@@ -112,6 +173,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   }
 
   bool _ehGrupoFatura(String grupo) => grupo.startsWith('FATURA_');
+
+  static int _chaveAnoMes(DateTime d) => d.year * 100 + d.month;
 
   Widget _kv({
     required String label,
@@ -185,7 +248,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     if (lancs.isEmpty) return null;
 
     final l = lancs.first;
-    if (l.idCartao != null) {
+    if (l.formaPagamento == FormaPagamento.credito && l.idCartao != null) {
       final CartaoCredito? cartao = await _cartaoRepo.getCartaoCreditoById(
         l.idCartao!,
       );
@@ -193,6 +256,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
         final ultimos =
             cartao.ultimos4Digitos.isNotEmpty ? cartao.ultimos4Digitos : '****';
         return 'Crédito - ${cartao.descricao} • **** $ultimos';
+      }
+    }
+    if (l.idConta != null) {
+      final contas = await _contaBancariaRepo.getContasBancarias();
+      for (final cb in contas) {
+        if (cb.id == l.idConta) {
+          return '${l.formaPagamento.label} • ${cb.descricao}';
+        }
       }
     }
     return l.formaPagamento.label;
@@ -213,32 +284,70 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
             .where((c) => !_ehGrupoFatura(c.grupoParcelas))
             .toList();
 
-    // Total pendente por cartão (para o detalhamento por cartão)
-    final abertoPorCartao = <int?, double>{};
-    final nesteMesPorCartao = <int?, double>{};
-    final proximoMesPorCartao = <int?, double>{};
+    // Total pendente por origem (cartão / forma / conta) para o detalhamento
+    final abertoPorOrigem = <String, double>{};
     final agora = DateTime.now();
     final inicioMes = DateTime(agora.year, agora.month, 1);
     final inicioProximoMes = DateTime(agora.year, agora.month + 1, 1);
-    final inicioMesDepois = DateTime(agora.year, agora.month + 2, 1);
+    final chaveMesAtual = _chaveAnoMes(inicioMes);
+    final chaveProximoMes = _chaveAnoMes(inicioProximoMes);
+
+    /// Por mês de vencimento (yyyyMM): total e por origem (só pendentes).
+    final totalPorMes = <int, double>{};
+    final porOrigemPorMes = <int, Map<String, double>>{};
+
+    final idsLancParcelas =
+        parceladas
+            .where((c) => c.idLancamento != null)
+            .map((c) => c.idLancamento!)
+            .toSet();
+    final lancPorId = await _lancRepo.getByIds(idsLancParcelas);
+
     double totalGeral = 0.0;
-    double nesteMes = 0.0;
-    double proximoMes = 0.0;
     for (final c in parceladas) {
       if (c.pago) continue;
-      final k = c.idCartao; // pode ser null em bases antigas
-      abertoPorCartao[k] = (abertoPorCartao[k] ?? 0.0) + c.valor;
+      final idL = c.idLancamento;
+      final origem = _chaveOrigem(
+        c,
+        idL != null ? lancPorId[idL] : null,
+      );
+      abertoPorOrigem[origem] = (abertoPorOrigem[origem] ?? 0.0) + c.valor;
       totalGeral += c.valor;
       final v = c.dataVencimento;
-      if (!v.isBefore(inicioMes) && v.isBefore(inicioProximoMes)) {
-        nesteMes += c.valor;
-        nesteMesPorCartao[k] = (nesteMesPorCartao[k] ?? 0.0) + c.valor;
-      }
-      if (!v.isBefore(inicioProximoMes) && v.isBefore(inicioMesDepois)) {
-        proximoMes += c.valor;
-        proximoMesPorCartao[k] = (proximoMesPorCartao[k] ?? 0.0) + c.valor;
-      }
+      final chaveMes = _chaveAnoMes(v);
+      totalPorMes[chaveMes] = (totalPorMes[chaveMes] ?? 0.0) + c.valor;
+      porOrigemPorMes.putIfAbsent(chaveMes, () => <String, double>{});
+      final bucket = porOrigemPorMes[chaveMes]!;
+      bucket[origem] = (bucket[origem] ?? 0.0) + c.valor;
     }
+
+    final nesteMes = totalPorMes[chaveMesAtual] ?? 0.0;
+    final proximoMes = totalPorMes[chaveProximoMes] ?? 0.0;
+    final nesteMesPorOrigem =
+        porOrigemPorMes[chaveMesAtual] ?? <String, double>{};
+    final proximoMesPorOrigem =
+        porOrigemPorMes[chaveProximoMes] ?? <String, double>{};
+
+    final outrosMeses = <ParcelamentoMesPendente>[];
+    for (final e in totalPorMes.entries) {
+      if (e.key == chaveMesAtual || e.key == chaveProximoMes) continue;
+      if (e.value <= 0.009) continue;
+      final y = e.key ~/ 100;
+      final m = e.key % 100;
+      outrosMeses.add(
+        ParcelamentoMesPendente(
+          ano: y,
+          mes: m,
+          total: e.value,
+          porOrigem: Map<String, double>.from(porOrigemPorMes[e.key] ?? {}),
+        ),
+      );
+    }
+    outrosMeses.sort(
+      (a, b) => _chaveAnoMes(a.inicioMes).compareTo(_chaveAnoMes(b.inicioMes)),
+    );
+    final totalDemaisMeses =
+        outrosMeses.fold<double>(0.0, (a, x) => a + x.total);
 
     final mapa = <String, List<ContaPagar>>{};
     for (final c in parceladas) {
@@ -246,7 +355,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     }
 
     final resumos = <ParcelamentoResumo>[];
-    final finalizandoMesPorCartao = <int?, double>{};
+    final finalizandoMesPorOrigem = <String, double>{};
 
     for (final entry in mapa.entries) {
       final grupo = entry.key;
@@ -269,13 +378,17 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
         if (!finalizaEsteMes || !temPendente) continue;
       }
 
-      // Se o filtro ativo for "finalizando este mês", o detalhamento por cartão
+      // Se o filtro ativo for "finalizando este mês", o detalhamento por origem
       // precisa refletir somente os grupos exibidos.
       if (_filtro == ParcelamentosFiltro.finalizandoMes) {
         for (final c in itens.where((x) => !x.pago)) {
-          final k = c.idCartao;
-          finalizandoMesPorCartao[k] =
-              (finalizandoMesPorCartao[k] ?? 0.0) + c.valor;
+          final idL = c.idLancamento;
+          final k = _chaveOrigem(
+            c,
+            idL != null ? lancPorId[idL] : null,
+          );
+          finalizandoMesPorOrigem[k] =
+              (finalizandoMesPorOrigem[k] ?? 0.0) + c.valor;
         }
       }
 
@@ -307,31 +420,96 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       _totalNesteMes = nesteMes;
       _totalProximoMes = proximoMes;
       _totalPendenteLista = totalPendenteLista;
-      _abertoPorCartaoId = abertoPorCartao;
-      _nesteMesPorCartaoId = nesteMesPorCartao;
-      _proximoMesPorCartaoId = proximoMesPorCartao;
-      _finalizandoMesPorCartaoId = finalizandoMesPorCartao;
+      _abertoPorOrigemChave = abertoPorOrigem;
+      _nesteMesPorOrigemChave = nesteMesPorOrigem;
+      _proximoMesPorOrigemChave = proximoMesPorOrigem;
+      _finalizandoMesPorOrigemChave = finalizandoMesPorOrigem;
+      _outrosMeses = outrosMeses;
+      _totalDemaisMeses = totalDemaisMeses;
+      _demaisMesesExpandido = false;
       _carregando = false;
     });
   }
 
-  Future<void> _mostrarResumoPorCartao(
+  Future<_OrigemResumoLinha> _linhaParaChaveOrigem(
+    String chave,
+    double valor,
+  ) async {
+    if (chave.startsWith('c:')) {
+      final id = int.tryParse(chave.substring(2));
+      if (id != null) {
+        final cartao = await _cartaoRepo.getCartaoCreditoById(id);
+        if (cartao != null) {
+          final ultimos =
+              cartao.ultimos4Digitos.isNotEmpty ? cartao.ultimos4Digitos : null;
+          return _OrigemResumoLinha(
+            titulo: cartao.descricao,
+            subtitulo: ultimos == null ? 'Crédito' : 'Crédito • **** $ultimos',
+            icon: Icons.credit_card,
+            valor: valor,
+          );
+        }
+        return _OrigemResumoLinha(
+          titulo: 'Cartão #$id',
+          subtitulo: 'Crédito',
+          icon: Icons.credit_card,
+          valor: valor,
+        );
+      }
+    }
+
+    final mForma = RegExp(r'^f:(\d+)(?:@b:(\d+))?$').firstMatch(chave);
+    if (mForma != null) {
+      final idx = int.tryParse(mForma.group(1)!) ?? -1;
+      final contaIdStr = mForma.group(2);
+      FormaPagamento? forma;
+      if (idx >= 0 && idx < FormaPagamento.values.length) {
+        forma = FormaPagamento.values[idx];
+      }
+      final tituloBase = forma?.label ?? 'Forma $idx';
+      IconData icon = forma?.icon ?? Icons.payment;
+      String? subtitulo;
+      if (contaIdStr != null) {
+        final contaId = int.tryParse(contaIdStr);
+        if (contaId != null) {
+          final contas = await _contaBancariaRepo.getContasBancarias();
+          for (final cb in contas) {
+            if (cb.id == contaId) {
+              subtitulo = cb.descricao;
+              break;
+            }
+          }
+        }
+      }
+      return _OrigemResumoLinha(
+        titulo: tituloBase,
+        subtitulo: subtitulo,
+        icon: icon,
+        valor: valor,
+      );
+    }
+
+    return _OrigemResumoLinha(
+      titulo: 'Outros / não informado',
+      subtitulo: 'Cadastre forma de pagamento nas parcelas para detalhar',
+      icon: Icons.help_outline,
+      valor: valor,
+    );
+  }
+
+  Future<void> _mostrarResumoPorOrigem(
     BuildContext context, {
     required String titulo,
-    required Map<int?, double> valoresPorCartao,
+    required Map<String, double> valoresPorOrigem,
   }) async {
-    if (valoresPorCartao.isEmpty) return;
+    if (valoresPorOrigem.isEmpty) return;
 
-    final entries = valoresPorCartao.entries.toList()
+    final entries = valoresPorOrigem.entries.toList()
       ..sort((a, b) => (b.value).compareTo(a.value));
 
-    // Busca descrições dos cartões para ids != null
-    final cardMap = <int, CartaoCredito>{};
+    final linhas = <_OrigemResumoLinha>[];
     for (final e in entries) {
-      final id = e.key;
-      if (id == null) continue;
-      final c = await _cartaoRepo.getCartaoCreditoById(id);
-      if (c != null) cardMap[id] = c;
+      linhas.add(await _linhaParaChaveOrigem(e.key, e.value));
     }
 
     if (!context.mounted) return;
@@ -350,11 +528,13 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      titulo,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
+                    Expanded(
+                      child: Text(
+                        titulo,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                     TextButton(
@@ -364,36 +544,30 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Flexible(
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(ctx).height * 0.55,
+                  ),
                   child: ListView.separated(
                     shrinkWrap: true,
-                    itemCount: entries.length,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: linhas.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (ctx, i) {
-                      final e = entries[i];
-                      final id = e.key;
-                      final valor = e.value;
-                      final cartao = id == null ? null : cardMap[id];
-
-                      final title =
-                          cartao == null
-                              ? (id == null ? 'Sem cartão' : 'Cartão $id')
-                              : cartao.descricao;
-                      final ultimos =
-                          cartao?.ultimos4Digitos.isNotEmpty == true
-                              ? cartao!.ultimos4Digitos
-                              : null;
-
+                      final linha = linhas[i];
                       return ListTile(
-                        leading: Icon(Icons.credit_card, color: cs.primary),
-                        title: Text(title),
+                        leading: Icon(linha.icon, color: cs.primary),
+                        title: Text(linha.titulo),
                         subtitle:
-                            ultimos == null ? null : Text('**** $ultimos'),
+                            linha.subtitulo == null
+                                ? null
+                                : Text(linha.subtitulo!),
                         trailing: Text(
-                          _currency.format(valor),
+                          _currency.format(linha.valor),
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: valor > 0 ? cs.error : cs.primary,
+                            color:
+                                linha.valor > 0 ? cs.error : cs.primary,
                           ),
                         ),
                       );
@@ -473,16 +647,16 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                               ? _totalPendenteLista
                               : _totalEmAbertoGeral;
                       if (_carregando || t <= 0) return;
-                      _mostrarResumoPorCartao(
+                      _mostrarResumoPorOrigem(
                         context,
                         titulo:
                             _filtro == ParcelamentosFiltro.finalizandoMes
-                                ? 'Finalizando este mês por cartão'
-                                : 'Em aberto por cartão',
-                        valoresPorCartao:
+                                ? 'Finalizando este mês por forma de pagamento'
+                                : 'Em aberto por forma de pagamento',
+                        valoresPorOrigem:
                             _filtro == ParcelamentosFiltro.finalizandoMes
-                                ? _finalizandoMesPorCartaoId
-                                : _abertoPorCartaoId,
+                                ? _finalizandoMesPorOrigemChave
+                                : _abertoPorOrigemChave,
                       );
                     },
                     child: Padding(
@@ -514,11 +688,6 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                       valueColor: cs.primary,
                                     ),
                                   ),
-                                  if (_totalPendenteLista > 0)
-                                    Icon(
-                                      Icons.chevron_right,
-                                      color: cs.onSurfaceVariant,
-                                    ),
                                 ],
                               )
                               : Column(
@@ -553,11 +722,6 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                           valueColor: cs.primary,
                                         ),
                                       ),
-                                      if (_totalEmAbertoGeral > 0)
-                                        Icon(
-                                          Icons.chevron_right,
-                                          color: cs.onSurfaceVariant,
-                                        ),
                                     ],
                                   ),
                                   Divider(
@@ -577,12 +741,12 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                                 _totalNesteMes <= 0) {
                                               return;
                                             }
-                                            _mostrarResumoPorCartao(
+                                            _mostrarResumoPorOrigem(
                                               context,
                                               titulo:
-                                                  'A pagar neste mês por cartão',
-                                              valoresPorCartao:
-                                                  _nesteMesPorCartaoId,
+                                                  'Mês atual por forma de pagamento',
+                                              valoresPorOrigem:
+                                                  _nesteMesPorOrigemChave,
                                             );
                                           },
                                           child: Padding(
@@ -591,7 +755,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                             ),
                                             child: _kv(
                                               label:
-                                                  'A pagar neste mês (${DateFormat('MM/yyyy').format(ref)})',
+                                                  'Mês atual (${DateFormat('MM/yyyy').format(ref)})',
                                               value: _currency.format(
                                                 _totalNesteMes,
                                               ),
@@ -613,12 +777,12 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                                 _totalProximoMes <= 0) {
                                               return;
                                             }
-                                            _mostrarResumoPorCartao(
+                                            _mostrarResumoPorOrigem(
                                               context,
                                               titulo:
-                                                  'A pagar próximo mês por cartão',
-                                              valoresPorCartao:
-                                                  _proximoMesPorCartaoId,
+                                                  'Próximo mês por forma de pagamento',
+                                              valoresPorOrigem:
+                                                  _proximoMesPorOrigemChave,
                                             );
                                           },
                                           child: Padding(
@@ -627,7 +791,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                             ),
                                             child: _kv(
                                               label:
-                                                  'A pagar próximo mês (${DateFormat('MM/yyyy').format(proxMesRef)})',
+                                                  'Próximo mês (${DateFormat('MM/yyyy').format(proxMesRef)})',
                                               value: _currency.format(
                                                 _totalProximoMes,
                                               ),
@@ -641,6 +805,235 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                       ),
                                     ],
                                   ),
+                                  if (_outrosMeses.isNotEmpty) ...[
+                                    Divider(
+                                      height: 1,
+                                      thickness: 1,
+                                      color: cs.outlineVariant.withOpacity(0.5),
+                                    ),
+                                    TapRegion(
+                                      onTapOutside: (_) {
+                                        if (_demaisMesesExpandido) {
+                                          setState(
+                                            () => _demaisMesesExpandido = false,
+                                          );
+                                        }
+                                      },
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          Tooltip(
+                                            message:
+                                                'Demais meses (${_outrosMeses.length})',
+                                            child: InkWell(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              onTap:
+                                                  _carregando
+                                                      ? null
+                                                      : () => setState(
+                                                        () =>
+                                                            _demaisMesesExpandido =
+                                                                !_demaisMesesExpandido,
+                                                      ),
+                                              child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 2,
+                                                    horizontal: 12,
+                                                  ),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  AnimatedRotation(
+                                                    turns:
+                                                        _demaisMesesExpandido
+                                                            ? 0.5
+                                                            : 0,
+                                                    duration: const Duration(
+                                                      milliseconds: 220,
+                                                    ),
+                                                    curve: Curves.easeInOut,
+                                                    child: Icon(
+                                                      Icons.expand_more,
+                                                      size: 24,
+                                                      color: cs.onSurfaceVariant,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            ),
+                                          ),
+                                          AnimatedSize(
+                                            duration: const Duration(
+                                              milliseconds: 260,
+                                            ),
+                                            alignment: Alignment.topCenter,
+                                            curve: Curves.easeInOut,
+                                            child:
+                                                _demaisMesesExpandido
+                                                    ? Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .stretch,
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .fromLTRB(
+                                                                    12,
+                                                                    4,
+                                                                    12,
+                                                                    10,
+                                                                  ),
+                                                          child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .stretch,
+                                                            children: [
+                                                              Text(
+                                                                'DEMAIS MESES (${_outrosMeses.length})',
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .center,
+                                                                style: TextStyle(
+                                                                  fontSize: 10,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w800,
+                                                                  letterSpacing:
+                                                                      0.35,
+                                                                  color: cs
+                                                                      .onSurfaceVariant,
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                height: 6,
+                                                              ),
+                                                              Text(
+                                                                _currency.format(
+                                                                  _totalDemaisMeses,
+                                                                ),
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .center,
+                                                                style: TextStyle(
+                                                                  fontSize: 16,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w900,
+                                                                  color: cs
+                                                                      .onSurface,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        Divider(
+                                                          height: 1,
+                                                          color: cs
+                                                              .outlineVariant
+                                                              .withOpacity(0.45),
+                                                        ),
+                                                        ConstrainedBox(
+                                                          constraints:
+                                                              BoxConstraints(
+                                                                maxHeight: min(
+                                                                  280,
+                                                                  MediaQuery.sizeOf(
+                                                                    context,
+                                                                  ).height *
+                                                                      0.38,
+                                                                ),
+                                                              ),
+                                                          child: ListView.separated(
+                                                            shrinkWrap: true,
+                                                            physics:
+                                                                const ClampingScrollPhysics(),
+                                                            itemCount:
+                                                                _outrosMeses
+                                                                    .length,
+                                                            separatorBuilder:
+                                                                (
+                                                                  _,
+                                                                  __,
+                                                                ) => Divider(
+                                                                  height: 1,
+                                                                  color: cs
+                                                                      .outlineVariant
+                                                                      .withOpacity(
+                                                                        0.35,
+                                                                      ),
+                                                                ),
+                                                            itemBuilder: (
+                                                              ctx,
+                                                              i,
+                                                            ) {
+                                                              final item =
+                                                                  _outrosMeses[i];
+                                                              final label =
+                                                                  DateFormat(
+                                                                    'MM/yyyy',
+                                                                  ).format(
+                                                                    item.inicioMes,
+                                                                  );
+                                                              return ListTile(
+                                                                dense: true,
+                                                                visualDensity:
+                                                                    VisualDensity
+                                                                        .compact,
+                                                                title: Text(
+                                                                  'A pagar em $label',
+                                                                  style: const TextStyle(
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w700,
+                                                                    fontSize: 13,
+                                                                  ),
+                                                                ),
+                                                                trailing: Text(
+                                                                  _currency.format(
+                                                                    item.total,
+                                                                  ),
+                                                                  style: TextStyle(
+                                                                    fontWeight:
+                                                                        FontWeight.w800,
+                                                                    color: cs.error,
+                                                                    fontSize: 13,
+                                                                  ),
+                                                                ),
+                                                                onTap: () {
+                                                                  if (item.total <=
+                                                                      0) {
+                                                                    return;
+                                                                  }
+                                                                  _mostrarResumoPorOrigem(
+                                                                    context,
+                                                                    titulo:
+                                                                        'A pagar em $label',
+                                                                    valoresPorOrigem:
+                                                                        item.porOrigem,
+                                                                  );
+                                                                },
+                                                              );
+                                                            },
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    )
+                                                    : const SizedBox(
+                                                      width: double.infinity,
+                                                    ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                     ),
@@ -702,26 +1095,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              r.descricao,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 15,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Icon(
-                                            Icons.chevron_right,
-                                            color: cs.onSurfaceVariant,
-                                          ),
-                                        ],
+                                      Text(
+                                        r.descricao,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15,
+                                        ),
                                       ),
                                       if (r.formaDescricao != null) ...[
                                         const SizedBox(height: 4),
