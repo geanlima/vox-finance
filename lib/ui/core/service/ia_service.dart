@@ -1,6 +1,7 @@
 // ignore_for_file: unused_field
 
 import 'package:vox_finance/ui/core/enum/categoria.dart';
+import 'package:vox_finance/ui/core/utils/money_split.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
@@ -100,7 +101,7 @@ class IAService {
     required int quantidadeParcelas,
   }) async {
     final grupo = 'PARC_${DateTime.now().microsecondsSinceEpoch}';
-    final valorParcela = valorTotal / quantidadeParcelas;
+    final valoresParcela = splitTotalEmPartesIguais(valorTotal, quantidadeParcelas);
 
     for (var i = 0; i < quantidadeParcelas; i++) {
       final venc = DateTime(
@@ -111,7 +112,7 @@ class IAService {
 
       final conta = ContaPagar(
         descricao: descricao,
-        valor: valorParcela,
+        valor: valoresParcela[i],
         dataVencimento: venc,
         pago: false,
         dataPagamento: null,

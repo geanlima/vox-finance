@@ -51,8 +51,7 @@ class LancamentoList extends StatelessWidget {
         final statusTexto = lanc.pago ? 'Pago' : 'Pendente';
         final statusCor = lanc.pago ? Colors.green : Colors.orange;
 
-        final bool ehParcelado =
-            lanc.parcelaTotal != null && (lanc.parcelaTotal ?? 0) > 1;
+        final bool ehParcelado = lanc.exibirRotuloParcelaNaLista;
 
         // 🔹 tipo (entrada x saída)
         final bool ehReceita = lanc.tipoMovimento == TipoMovimento.receita;

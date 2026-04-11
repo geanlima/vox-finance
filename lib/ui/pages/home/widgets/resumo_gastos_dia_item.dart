@@ -11,6 +11,9 @@ class ResumoGastosDiaItem extends StatelessWidget {
   final Color color;
   final NumberFormat currency;
 
+  /// Se não for null, a linha inteira é clicável (drill-down dos lançamentos).
+  final VoidCallback? onTap;
+
   const ResumoGastosDiaItem({
     super.key,
     required this.icone,
@@ -19,11 +22,12 @@ class ResumoGastosDiaItem extends StatelessWidget {
     required this.color,
     required this.currency,
     this.subtitulo,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final child = Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -62,7 +66,22 @@ class ResumoGastosDiaItem extends StatelessWidget {
             currency.format(valor),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 20, color: color.withOpacity(0.8)),
+          ],
         ],
+      ),
+    );
+
+    if (onTap == null) return child;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: child,
       ),
     );
   }

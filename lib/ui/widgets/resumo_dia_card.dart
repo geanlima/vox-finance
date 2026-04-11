@@ -1,14 +1,36 @@
 import 'package:flutter/material.dart';
 
+/// Tamanho e peso únicos para todos os valores (totalizadores) do card.
+TextStyle _estiloValorMonetario(Color cor) => TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      fontFeatures: const [FontFeature.tabularFigures()],
+      color: cor,
+    );
+
+const TextStyle _estiloTituloLinha = TextStyle(
+  fontSize: 14,
+  fontWeight: FontWeight.w700,
+);
+
 class ResumoDiaCard extends StatelessWidget {
   final bool ehHoje;
   final String dataFormatada;
 
-  /// Total apenas de DESPESAS no dia
-  final String totalDespesasFormatado;
+  /// Despesas do dia exceto parcelas de compras parceladas (avulsas / à vista / 1x).
+  final String despesaDoDiaFormatado;
 
-  /// Total de RECEITAS no dia (você pode passar já SOMANDO lançamentos + renda diária)
-  final String totalReceitasFormatado;
+  /// Parcelas de compras com mais de uma parcela (mesmo critério da lista).
+  final String comprasParceladasFormatado;
+
+  /// Receitas do dia (lançamentos pagos + renda diária das fontes).
+  final String receitaDoDiaFormatado;
+
+  /// Saldo do dia: receitas − (despesa do dia + compras parceladas).
+  final String totalDoDiaFormatado;
+
+  /// Se o saldo é ≥ 0 (afeta a cor do [totalDoDiaFormatado]).
+  final bool saldoDoDiaNaoNegativo;
 
   /// (Opcional) Renda diária calculada a partir das fontes de renda
   /// Se null ou vazia, não mostra a linha explicativa.
@@ -21,34 +43,45 @@ class ResumoDiaCard extends StatelessWidget {
   final VoidCallback onProximoDia;
   final VoidCallback onSelecionarData;
 
-  /// Callback quando tocar em algum total
-  final VoidCallback onTapTotal;
+  final VoidCallback onTapDespesaDoDia;
+  final VoidCallback onTapComprasParceladas;
+  final VoidCallback onTapReceitaNoDia;
+  final VoidCallback onTapTotalDoDia;
 
   const ResumoDiaCard({
     super.key,
     required this.ehHoje,
     required this.dataFormatada,
-    required this.totalDespesasFormatado,
-    required this.totalReceitasFormatado,
+    required this.despesaDoDiaFormatado,
+    required this.comprasParceladasFormatado,
+    required this.receitaDoDiaFormatado,
+    required this.totalDoDiaFormatado,
+    required this.saldoDoDiaNaoNegativo,
     required this.totalPagamentoFaturaFormatado,
     required this.onDiaAnterior,
     required this.onProximoDia,
     required this.onSelecionarData,
-    required this.onTapTotal,
-    this.rendaDiariaFormatada, // 👈 novo, opcional
+    required this.onTapDespesaDoDia,
+    required this.onTapComprasParceladas,
+    required this.onTapReceitaNoDia,
+    required this.onTapTotalDoDia,
+    this.rendaDiariaFormatada,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final corSaldo =
+        saldoDoDiaNaoNegativo ? Colors.green.shade700 : Colors.deepOrange.shade800;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Navegação de data
             Row(
               children: [
                 IconButton(
@@ -64,17 +97,18 @@ class ResumoDiaCard extends StatelessWidget {
                       children: [
                         Text(
                           ehHoje ? 'Hoje' : 'Dia selecionado',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           dataFormatada,
                           style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
@@ -93,97 +127,32 @@ class ResumoDiaCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
-            // Total DESPESAS
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Despesas no dia',
-                    style: TextStyle(fontSize: 15),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: InkWell(
-                    onTap: onTapTotal,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              totalDespesasFormatado,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.redAccent,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_downward, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            _LinhaValor(
+              label: 'Despesa do Dia',
+              valorFormatado: despesaDoDiaFormatado,
+              corValor: Colors.redAccent,
+              icone: Icons.arrow_downward,
+              onTap: onTapDespesaDoDia,
+            ),
+            const SizedBox(height: 6),
+            _LinhaValor(
+              label: 'Compras Parceladas',
+              valorFormatado: comprasParceladasFormatado,
+              corValor: Colors.redAccent.shade200,
+              icone: Icons.credit_card,
+              onTap: onTapComprasParceladas,
+            ),
+            const SizedBox(height: 6),
+            _LinhaValor(
+              label: 'Receita no Dia',
+              valorFormatado: receitaDoDiaFormatado,
+              corValor: Colors.green,
+              icone: Icons.arrow_upward,
+              onTap: onTapReceitaNoDia,
             ),
 
-            const SizedBox(height: 4),
-
-            // Total RECEITAS (já pode ser: lançamentos + renda diária)
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Receitas no dia',
-                    style: TextStyle(fontSize: 15),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: InkWell(
-                    onTap: onTapTotal,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              totalReceitasFormatado,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_upward, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // Linha opcional explicando a renda diária das fontes
             if (rendaDiariaFormatada != null &&
                 rendaDiariaFormatada!.isNotEmpty) ...[
               const SizedBox(height: 4),
@@ -196,20 +165,126 @@ class ResumoDiaCard extends StatelessWidget {
               ),
             ],
 
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Divider(height: 1, color: Colors.grey.shade400),
+            ),
+
+            InkWell(
+              onTap: onTapTotalDoDia,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Total do Dia',
+                        style: _estiloTituloLinha.copyWith(
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          totalDoDiaFormatado,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: _estiloValorMonetario(corSaldo),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             if (totalPagamentoFaturaFormatado.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(
-                'Pagamento de fatura: $totalPagamentoFaturaFormatado',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w500,
+              Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Pagamento de fatura: '),
+                    TextSpan(
+                      text: totalPagamentoFaturaFormatado,
+                      style: _estiloValorMonetario(Colors.red),
+                    ),
+                  ],
                 ),
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LinhaValor extends StatelessWidget {
+  final String label;
+  final String valorFormatado;
+  final Color corValor;
+  final IconData icone;
+  final VoidCallback onTap;
+
+  const _LinhaValor({
+    required this.label,
+    required this.valorFormatado,
+    required this.corValor,
+    required this.icone,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: _estiloTituloLinha.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      valorFormatado,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: _estiloValorMonetario(corValor),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(icone, size: 16, color: corValor),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

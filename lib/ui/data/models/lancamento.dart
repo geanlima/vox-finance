@@ -161,6 +161,44 @@ class Lancamento {
   }
 
   // ----------------------------------------------------------
+  //  U I  —  grupo / parcelas (despesas fixas usam prefixo FIXA_)
+  // ----------------------------------------------------------
+
+  /// Contas geradas por [DespesaFixaRepository] usam `grupo_parcelas` = `FIXA_{id}_YYYYMM`
+  /// com `parcela_total` = 1; não devem aparecer como "Parcela 1/1".
+  bool get ehGrupoDespesaFixa =>
+      grupoParcelas != null && grupoParcelas!.startsWith('FIXA_');
+
+  /// Exibir linha "Parcela X/Y" na lista principal (só compras com mais de uma parcela).
+  bool get exibirRotuloParcelaNaLista =>
+      !ehGrupoDespesaFixa &&
+      parcelaTotal != null &&
+      parcelaTotal! > 1;
+
+  /// Linha extra em detalhes (bottom sheet da fatura, etc.).
+  /// Não mostra "Parcela 1/1"; para fixas mostra só [Despesa fixa].
+  String? get linhaDetalheGrupoParcela {
+    final g = grupoParcelas;
+    if (g == null || g.isEmpty) return null;
+    if (ehGrupoDespesaFixa) return 'Despesa fixa';
+    final tot = parcelaTotal ?? 1;
+    final num = parcelaNumero ?? 1;
+    if (tot > 1) return 'Grupo: $g · Parcela $num/$tot';
+    return 'Grupo: $g';
+  }
+
+  /// Texto curto para listas (ex.: detalhe de fatura no cartão): sem "1/1".
+  String? get linhaResumoParcelaCurta {
+    final g = grupoParcelas;
+    if (g == null || g.isEmpty) return null;
+    if (ehGrupoDespesaFixa) return 'Despesa fixa';
+    final tot = parcelaTotal ?? 1;
+    final num = parcelaNumero ?? 1;
+    if (tot > 1) return 'Parcela $num/$tot';
+    return null;
+  }
+
+  // ----------------------------------------------------------
   //  M A P   <->   S Q L I T E
   // ----------------------------------------------------------
 
