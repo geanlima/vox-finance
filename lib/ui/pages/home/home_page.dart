@@ -4,14 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 import 'package:vox_finance/ui/core/service/regra_outra_compra_parcelada_service.dart';
 
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
-import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
@@ -25,6 +23,7 @@ import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.d
 import 'package:vox_finance/ui/widgets/resumo_dia_card.dart';
 import 'package:vox_finance/ui/widgets/lancamento_list.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/pages/home/models/filtro_detalhe_resumo_home.dart';
 import 'package:vox_finance/ui/pages/home/widgets/resumo_gastos_dia_bottom_sheet.dart';
 
 import 'home_ocr.dart';
@@ -75,7 +74,6 @@ class _HomePageState extends State<HomePage> {
   final RendaRepository _rendaRepository = RendaRepository();
   double _rendaDiaria = 0.0;
   final DespesasFixasService _despesasFixasService = DespesasFixasService();
-  List<ContaPagar> _vencimentosHoje = const [];
   List<CartaoCredito> _cartoesFechandoSemFatura = const [];
   bool _aplicouDataInicialDaRota = false;
 
@@ -134,56 +132,6 @@ class _HomePageState extends State<HomePage> {
   Future<void> _bootstrap() async {
     await _despesasFixasService.gerarNoMesAtualSeNecessario();
     await _carregarDoBanco();
-    await _carregarVencimentosHoje();
-    await _mostrarAlertaVencimentosHojeSeNecessario();
-  }
-
-  bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  Future<void> _carregarVencimentosHoje() async {
-    final hoje = DateTime.now();
-    final pendentes = await _repositoryContaPagar.getPendentes();
-    final deHoje = pendentes.where((c) => _isSameDay(c.dataVencimento, hoje)).toList();
-    if (!mounted) return;
-    setState(() => _vencimentosHoje = deHoje);
-  }
-
-  Future<void> _mostrarAlertaVencimentosHojeSeNecessario() async {
-    if (!mounted || _vencimentosHoje.isEmpty) return;
-    final sp = await SharedPreferences.getInstance();
-    final hoje = DateTime.now();
-    final hojeKey =
-        '${hoje.year.toString().padLeft(4, '0')}-${hoje.month.toString().padLeft(2, '0')}-${hoje.day.toString().padLeft(2, '0')}';
-    final jaMostrou = sp.getString('alerta_vencimentos_hoje') == hojeKey;
-    if (jaMostrou) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Vencimentos de hoje'),
-        content: Text(
-          _vencimentosHoje.length == 1
-              ? 'Você tem 1 conta vencendo hoje.'
-              : 'Você tem ${_vencimentosHoje.length} contas vencendo hoje.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Depois'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pushNamed(context, '/contas-pagar');
-            },
-            child: const Text('Ver contas'),
-          ),
-        ],
-      ),
-    );
-
-    await sp.setString('alerta_vencimentos_hoje', hojeKey);
   }
 
   Future<void> _carregarContas() async {
@@ -309,6 +257,28 @@ class _HomePageState extends State<HomePage> {
               !l.pagamentoFatura &&
               l.tipoMovimento == TipoMovimento.despesa,
         )
+        .fold(0.0, (total, l) => total + l.valor);
+  }
+
+  static bool _ehDespesaDiaSemFatura(Lancamento l) =>
+      l.pago &&
+      !l.pagamentoFatura &&
+      l.tipoMovimento == TipoMovimento.despesa;
+
+  static bool _ehCompraParcelada(Lancamento l) =>
+      l.parcelaTotal != null && (l.parcelaTotal ?? 0) > 1;
+
+  /// Parcelas de compras parceladas (parcela_total > 1) no mesmo critério de [_totalGastoDia].
+  double get _totalGastoDiaParcelado {
+    return _lancamentos
+        .where((l) => _ehDespesaDiaSemFatura(l) && _ehCompraParcelada(l))
+        .fold(0.0, (total, l) => total + l.valor);
+  }
+
+  /// Demais despesas do dia (não parceladas ou parcela única), mesmo critério de [_totalGastoDia].
+  double get _totalGastoDiaDemais {
+    return _lancamentos
+        .where((l) => _ehDespesaDiaSemFatura(l) && !_ehCompraParcelada(l))
         .fold(0.0, (total, l) => total + l.valor);
   }
 
@@ -710,12 +680,10 @@ class _HomePageState extends State<HomePage> {
     final dataFormatada = _dateDiaFormat.format(_dataSelecionada);
     final fechamentoNoDiaSelecionado = _diaSelecionadoEhFechamentoDeAlgumCartao;
 
-    // 👇 despesas (somente despesa paga, sem pagamento de fatura)
-    final totalDespesasFormatado = _currency.format(_totalGastoDia);
-
     // total de receitas = lançamentos de receita pagos + renda diária das fontes marcadas
     final double totalReceitasComRenda = _totalReceitaDia + _rendaDiaria;
-    final totalReceitasFormatado = _currency.format(totalReceitasComRenda);
+    // Saldo do dia (sem pagamento de fatura nas despesas — mesmo critério de antes)
+    final double saldoDoDia = totalReceitasComRenda - _totalGastoDia;
 
     // 👇 se tiver renda diária > 0, mostramos a linha extra no card
     final String rendaDiariaFormatada =
@@ -756,36 +724,48 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            if (_vencimentosHoje.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Card(
-                  color: Colors.amber.withOpacity(0.15),
-                  child: ListTile(
-                    leading: const Icon(Icons.notifications_active_outlined),
-                    title: Text(
-                      _vencimentosHoje.length == 1
-                          ? '1 vencimento para hoje'
-                          : '${_vencimentosHoje.length} vencimentos para hoje',
-                    ),
-                    subtitle: Text(
-                      _vencimentosHoje
-                          .take(2)
-                          .map((e) => e.descricao)
-                          .join(' • '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: TextButton(
-                      onPressed: () => Navigator.pushNamed(context, '/contas-pagar'),
-                      child: const Text('Ver'),
-                    ),
-                  ),
-                ),
+            // Botão "Gerar fatura dos cartões" removido:
+            // o fluxo agora é feito na manutenção de faturas.
+            ResumoDiaCard(
+              ehHoje: ehHoje,
+              dataFormatada: dataFormatada,
+              despesaDoDiaFormatado: _currency.format(_totalGastoDiaDemais),
+              comprasParceladasFormatado:
+                  _currency.format(_totalGastoDiaParcelado),
+              receitaDoDiaFormatado: _currency.format(totalReceitasComRenda),
+              totalDoDiaFormatado: _currency.format(saldoDoDia),
+              saldoDoDiaNaoNegativo: saldoDoDia >= 0,
+              rendaDiariaFormatada: rendaDiariaFormatada,
+              totalPagamentoFaturaFormatado: totalPagamentoFaturaFormatado,
+              onDiaAnterior: _diaAnterior,
+              onProximoDia: _proximoDia,
+              onSelecionarData: _selecionarDataNoCalendario,
+              onTapDespesaDoDia: () =>
+                  _mostrarDetalheResumo(FiltroDetalheResumoHome.despesaAvulsas),
+              onTapComprasParceladas: () => _mostrarDetalheResumo(
+                FiltroDetalheResumoHome.comprasParceladas,
               ),
-            if (fechamentoNoDiaSelecionado && _cartoesFechandoSemFatura.isNotEmpty)
+              onTapReceitaNoDia: () =>
+                  _mostrarDetalheResumo(FiltroDetalheResumoHome.receitasLancadas),
+              onTapTotalDoDia: () =>
+                  _mostrarDetalheResumo(FiltroDetalheResumoHome.todosGastos),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: LancamentoList(
+                lancamentos: lancamentosDia,
+                currency: _currency,
+                dateHoraFormat: _dateHoraFormat,
+                onEditar: (l) => _abrirFormLancamento(existente: l),
+                onExcluir: _excluirLancamento,
+                onPagar: _pagarLancamento,
+                onVerItensFatura: _verItensFatura,
+              ),
+            ),
+            if (fechamentoNoDiaSelecionado &&
+                _cartoesFechandoSemFatura.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.only(top: 8),
                 child: Material(
                   color: Theme.of(context)
                       .colorScheme
@@ -836,32 +816,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-            // Botão "Gerar fatura dos cartões" removido:
-            // o fluxo agora é feito na manutenção de faturas.
-            ResumoDiaCard(
-              ehHoje: ehHoje,
-              dataFormatada: dataFormatada,
-              totalDespesasFormatado: totalDespesasFormatado,
-              totalReceitasFormatado: totalReceitasFormatado,
-              rendaDiariaFormatada: rendaDiariaFormatada, // 👈 NOVO
-              totalPagamentoFaturaFormatado: totalPagamentoFaturaFormatado,
-              onDiaAnterior: _diaAnterior,
-              onProximoDia: _proximoDia,
-              onSelecionarData: _selecionarDataNoCalendario,
-              onTapTotal: _mostrarResumoPorFormaPagamento,
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: LancamentoList(
-                lancamentos: lancamentosDia,
-                currency: _currency,
-                dateHoraFormat: _dateHoraFormat,
-                onEditar: (l) => _abrirFormLancamento(existente: l),
-                onExcluir: _excluirLancamento,
-                onPagar: _pagarLancamento,
-                onVerItensFatura: _verItensFatura,
-              ),
-            ),
           ],
         ),
       ),
@@ -869,8 +823,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _descricaoComParcela(Lancamento l) {
-    if (l.parcelaTotal != null &&
-        l.parcelaTotal! > 1 &&
+    if (l.exibirRotuloParcelaNaLista &&
         l.parcelaNumero != null &&
         l.parcelaNumero! > 0) {
       // Ex.: Mercado (1/10)
@@ -879,21 +832,107 @@ class _HomePageState extends State<HomePage> {
     return l.descricao;
   }
 
-  Future<void> _mostrarResumoPorFormaPagamento() async {
-    // somente gastos pagos e que NÃO são pagamento de fatura
-    final lancamentosDia =
-        _lancamentosDoDia.where((l) => l.pago && !l.pagamentoFatura).toList();
-
-    if (lancamentosDia.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não há lançamentos nesse dia.')),
-      );
-      return;
-    }
-
+  Future<void> _mostrarDetalheResumo(FiltroDetalheResumoHome filtro) async {
     await _carregarCartoes();
     await _carregarContas();
 
+    late final List<Lancamento> lista;
+    late final String tituloModal;
+    late final String rotuloTotal;
+    late final ModoListaResumoMovimento modoLista;
+
+    switch (filtro) {
+      case FiltroDetalheResumoHome.despesaAvulsas:
+        lista =
+            _lancamentosDoDia
+                .where(
+                  (l) =>
+                      l.pago &&
+                      !l.pagamentoFatura &&
+                      l.tipoMovimento == TipoMovimento.despesa &&
+                      !_ehCompraParcelada(l),
+                )
+                .toList();
+        tituloModal = 'Despesa do dia — avulsos e à vista';
+        rotuloTotal = 'Subtotal';
+        modoLista = ModoListaResumoMovimento.apenasDespesas;
+        break;
+      case FiltroDetalheResumoHome.comprasParceladas:
+        lista =
+            _lancamentosDoDia
+                .where(
+                  (l) =>
+                      l.pago &&
+                      !l.pagamentoFatura &&
+                      l.tipoMovimento == TipoMovimento.despesa &&
+                      _ehCompraParcelada(l),
+                )
+                .toList();
+        tituloModal = 'Compras parceladas';
+        rotuloTotal = 'Subtotal';
+        modoLista = ModoListaResumoMovimento.apenasDespesas;
+        break;
+      case FiltroDetalheResumoHome.receitasLancadas:
+        lista =
+            _lancamentosDoDia
+                .where(
+                  (l) => l.pago && l.tipoMovimento == TipoMovimento.receita,
+                )
+                .toList();
+        tituloModal = 'Receitas no dia';
+        rotuloTotal = 'Total de receitas';
+        modoLista = ModoListaResumoMovimento.apenasReceitas;
+        break;
+      case FiltroDetalheResumoHome.todosGastos:
+        lista =
+            _lancamentosDoDia
+                .where(
+                  (l) =>
+                      l.pago &&
+                      !l.pagamentoFatura &&
+                      l.tipoMovimento == TipoMovimento.despesa,
+                )
+                .toList();
+        tituloModal = 'Gastos detalhados';
+        rotuloTotal = 'Total do dia';
+        modoLista = ModoListaResumoMovimento.apenasDespesas;
+        break;
+    }
+
+    if (lista.isEmpty) {
+      if (filtro == FiltroDetalheResumoHome.receitasLancadas &&
+          _rendaDiaria > 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não há receitas lançadas neste dia. O valor do card pode incluir só a renda diária das fontes.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final String msg;
+      switch (filtro) {
+        case FiltroDetalheResumoHome.despesaAvulsas:
+          msg = 'Não há despesas avulsas ou à vista neste dia.';
+          break;
+        case FiltroDetalheResumoHome.comprasParceladas:
+          msg = 'Não há compras parceladas neste dia.';
+          break;
+        case FiltroDetalheResumoHome.receitasLancadas:
+          msg = 'Não há receitas neste dia.';
+          break;
+        case FiltroDetalheResumoHome.todosGastos:
+          msg = 'Não há gastos pagos neste dia para detalhar.';
+          break;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
+
+    if (!mounted) return;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -901,10 +940,13 @@ class _HomePageState extends State<HomePage> {
       builder: (context) {
         return ResumoGastosDiaBottomSheet(
           dataSelecionada: _dataSelecionada,
-          lancamentos: lancamentosDia,
+          lancamentos: lista,
           cartoes: _cartoes,
           contas: _contas,
           currency: _currency,
+          titulo: tituloModal,
+          rotuloTotal: rotuloTotal,
+          modoLista: modoLista,
         );
       },
     );
@@ -973,8 +1015,7 @@ class _HomePageState extends State<HomePage> {
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (ctx, index) {
                         final lanc = itens[index];
-                        final grupo = lanc.grupoParcelas;
-                        final temGrupo = grupo != null && grupo.isNotEmpty;
+                        final linhaGrupo = lanc.linhaDetalheGrupoParcela;
 
                         return Card(
                           shape: RoundedRectangleBorder(
@@ -1029,11 +1070,10 @@ class _HomePageState extends State<HomePage> {
                                           color: Colors.grey,
                                         ),
                                       ),
-                                      if (temGrupo) ...[
+                                      if (linhaGrupo != null) ...[
                                         const SizedBox(height: 2),
                                         Text(
-                                          'Grupo: $grupo · '
-                                          'Parcela ${lanc.parcelaNumero ?? 1}/${lanc.parcelaTotal ?? 1}',
+                                          linhaGrupo,
                                           style: const TextStyle(
                                             fontSize: 11,
                                             color: Colors.grey,

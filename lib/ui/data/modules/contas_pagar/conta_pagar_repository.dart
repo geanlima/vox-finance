@@ -1,6 +1,7 @@
 // lib/ui/data/modules/contas_pagar/conta_pagar_repository.dart
 
 import 'package:sqflite/sqflite.dart';
+import 'package:vox_finance/ui/core/utils/money_split.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 
@@ -158,6 +159,50 @@ class ContaPagarRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Atualiza descrição, valor (repartido igualmente entre as parcelas) e datas de
+  /// vencimento (1 parcela por mês a partir de [primeiraDataVencimento], igual ao fluxo de criação).
+  ///
+  /// **Não** altera a tabela `lancamentos`: mantém `id_lancamento`, `grupo_parcelas`,
+  /// `pago`, `data_pagamento`, forma/cartão/conta em cada linha.
+  Future<void> atualizarGrupoContasPagarExistente({
+    required String grupoParcelas,
+    required String descricao,
+    required double valorTotal,
+    required DateTime primeiraDataVencimento,
+  }) async {
+    final parcelas = await getParcelasPorGrupo(grupoParcelas);
+    if (parcelas.isEmpty) return;
+
+    parcelas.sort((a, b) {
+      final pa = a.parcelaNumero ?? 0;
+      final pb = b.parcelaNumero ?? 0;
+      return pa.compareTo(pb);
+    });
+
+    final n = parcelas.length;
+    if (n <= 0 || valorTotal <= 0) return;
+
+    final valoresParcela = splitTotalEmPartesIguais(valorTotal, n);
+
+    // Mesma lógica de [IAService.salvarContasParceladas]: 1º vencimento, +1 mês por parcela.
+    for (var i = 0; i < parcelas.length; i++) {
+      final p = parcelas[i];
+      final venc = DateTime(
+        primeiraDataVencimento.year,
+        primeiraDataVencimento.month + i,
+        primeiraDataVencimento.day,
+      );
+
+      p.descricao = descricao;
+      p.valor = valoresParcela[i];
+      p.dataVencimento = venc;
+      if (p.parcelaTotal != null) {
+        p.parcelaTotal = n;
+      }
+      await salvar(p);
+    }
   }
 
   /// Atualiza valor, descrição e forma nas parcelas **ainda não pagas** geradas pela

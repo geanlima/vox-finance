@@ -50,12 +50,11 @@ class LancamentoListTile extends StatelessWidget {
   }
 
   String? _descricaoParcela() {
-    if (lancamento.parcelaTotal != null &&
-        lancamento.parcelaTotal! > 1 &&
-        lancamento.parcelaNumero != null) {
-      return '${lancamento.parcelaNumero}/${lancamento.parcelaTotal}';
+    if (!lancamento.exibirRotuloParcelaNaLista ||
+        lancamento.parcelaNumero == null) {
+      return null;
     }
-    return null;
+    return '${lancamento.parcelaNumero}/${lancamento.parcelaTotal}';
   }
 
   @override

@@ -33,9 +33,10 @@ class CurrencyInputFormatter extends TextInputFormatter {
     );
   }
 
-  /// Converte o texto formatado de volta para double
+  /// Converte o texto (ex.: `R$ 1.234,56` ou `1234,56`) para reais usando só os dígitos como centavos.
   static double parse(String formattedText) {
     final numeric = formattedText.replaceAll(RegExp(r'[^0-9]'), '');
+    if (numeric.isEmpty) return 0;
     return double.parse(numeric) / 100;
   }
 }

@@ -9,14 +9,25 @@ import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
 import 'package:vox_finance/ui/pages/home/models/grupo_resumo_dia.dart';
+import 'package:vox_finance/ui/pages/home/widgets/resumo_grupo_lancamentos_bottom_sheet.dart';
 import 'package:vox_finance/ui/pages/home/widgets/resumo_gastos_dia_item.dart';
+
+/// Lista já filtrada pelo chamador; aqui só agrupa por forma/cartão/conta.
+enum ModoListaResumoMovimento {
+  apenasDespesas,
+  apenasReceitas,
+}
 
 class ResumoGastosDiaBottomSheet extends StatelessWidget {
   final DateTime dataSelecionada;
-  final List<Lancamento> lancamentos; // já filtrados (pagos e não pagamento fatura)
+  final List<Lancamento> lancamentos;
   final List<CartaoCredito> cartoes;
   final List<ContaBancaria> contas;
   final NumberFormat currency;
+
+  final String titulo;
+  final String rotuloTotal;
+  final ModoListaResumoMovimento modoLista;
 
   const ResumoGastosDiaBottomSheet({
     super.key,
@@ -25,6 +36,9 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
     required this.cartoes,
     required this.contas,
     required this.currency,
+    this.titulo = 'Gastos detalhados',
+    this.rotuloTotal = 'Total do dia',
+    this.modoLista = ModoListaResumoMovimento.apenasDespesas,
   });
 
   @override
@@ -34,13 +48,23 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
     final dateDiaFormat = DateFormat('dd/MM/yyyy');
 
     // ===================== AGRUPAMENTO =====================
+    final Iterable<Lancamento> linhas = lancamentos.where((l) {
+      switch (modoLista) {
+        case ModoListaResumoMovimento.apenasDespesas:
+          return l.tipoMovimento == TipoMovimento.despesa;
+        case ModoListaResumoMovimento.apenasReceitas:
+          return l.tipoMovimento == TipoMovimento.receita;
+      }
+    });
+
+    final listaAgrupar = linhas.toList();
 
     final Map<String, GrupoResumoDia> grupos = {};
 
     String keyFrom(String label, String? subtitulo) =>
         '$label|${subtitulo ?? ""}';
 
-    for (final lanc in lancamentos) {
+    for (final lanc in listaAgrupar) {
       final forma = lanc.formaPagamento;
 
       String label;
@@ -99,18 +123,20 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
 
       if (grupos.containsKey(key)) {
         grupos[key]!.total += lanc.valor;
+        grupos[key]!.lancamentos.add(lanc);
       } else {
         grupos[key] = GrupoResumoDia(
           label: label,
           subtitulo: subtitulo,
           icon: icon,
           total: lanc.valor,
+          lancamentos: [lanc],
         );
       }
     }
 
     final totalGeral =
-        lancamentos.fold<double>(0.0, (a, b) => a + b.valor);
+        listaAgrupar.fold<double>(0.0, (a, b) => a + b.valor);
 
     // ===================== UI =====================
 
@@ -157,7 +183,7 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Gastos detalhados',
+                      titulo,
                       style: tema.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -199,9 +225,9 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Total do dia',
-                                style: TextStyle(
+                              Text(
+                                rotuloTotal,
+                                style: const TextStyle(
                                   fontSize: 12,
                                   color: Colors.black54,
                                 ),
@@ -245,6 +271,22 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
                       valor: g.total,
                       color: corPrimaria,
                       currency: currency,
+                      onTap:
+                          g.lancamentos.isEmpty
+                              ? null
+                              : () {
+                                ResumoGrupoLancamentosBottomSheet.show(
+                                  context,
+                                  tituloGrupo: g.label,
+                                  subtituloGrupo: g.subtitulo,
+                                  icone: g.icon,
+                                  lancamentos: g.lancamentos,
+                                  currency: currency,
+                                  ehDespesa:
+                                      modoLista ==
+                                      ModoListaResumoMovimento.apenasDespesas,
+                                );
+                              },
                     );
                   }).toList(),
                 ),

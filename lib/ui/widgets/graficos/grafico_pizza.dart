@@ -299,6 +299,24 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
   }
 
+  /// Mesma regra da tela de lançamentos: parcela de compra com mais de uma parcela.
+  static bool _ehCompraParcelada(Lancamento l) =>
+      l.parcelaTotal != null && (l.parcelaTotal ?? 0) > 1;
+
+  /// Soma das parcelas de compras parceladas no mês.
+  double get _totalMesParcelado {
+    return _lancamentos
+        .where(_ehCompraParcelada)
+        .fold<double>(0.0, (a, l) => a + l.valor);
+  }
+
+  /// Demais despesas do mês (à vista, 1x, fixas, etc.).
+  double get _totalMesDemais {
+    return _lancamentos
+        .where((l) => !_ehCompraParcelada(l))
+        .fold<double>(0.0, (a, l) => a + l.valor);
+  }
+
   /// 🔹 Agrupa por categoria considerando:
   /// - se tiver idCategoriaPersonalizada → usa nome + cor da tabela
   /// - senão → usa nome do enum Categoria
@@ -1120,6 +1138,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   Widget build(BuildContext context) {
     final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
     final totalMesFormatado = _currency.format(_totalMes);
+    final parceladoMesFormatado = _currency.format(_totalMesParcelado);
+    final demaisMesFormatado = _currency.format(_totalMesDemais);
     final mediaDiariaFormatada = _currency.format(_mediaDiariaMes);
     final mediaDiariaMesCalendarioFormatada = _currency.format(
       _mediaDiariaMesCalendario,
@@ -1279,6 +1299,90 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Composição: parcelado x demais — dois cards (mesmo padrão do "Total gasto no mês")
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withOpacity(0.08),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.credit_card,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Compras parceladas',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        parceladoMesFormatado,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.redAccent.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withOpacity(0.08),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.receipt_long,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Demais gastos no mês',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        demaisMesFormatado,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),

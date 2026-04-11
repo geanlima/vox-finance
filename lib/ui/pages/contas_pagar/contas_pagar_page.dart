@@ -16,6 +16,7 @@ import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/service/ia_service.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
+import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 
 import 'conta_pagar_detalhe.dart';
 
@@ -292,7 +293,10 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       text: existente?.descricao ?? '',
     );
     final valorController = TextEditingController(
-      text: existente != null ? existente.valorTotal.toStringAsFixed(2) : '',
+      text:
+          existente != null
+              ? NumberFormat('#,##0.00', 'pt_BR').format(existente.valorTotal)
+              : '',
     );
     final parcelasController = TextEditingController(
       text: existente?.quantidadeParcelas.toString() ?? '1',
@@ -360,7 +364,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                   Text(
                                     existente == null
                                         ? 'Nova conta / compra parcelada'
-                                        : 'Editar (não altera parcelas antigas)',
+                                        : 'Editar contas a pagar',
                                     style:
                                         Theme.of(context).textTheme.titleMedium,
                                   ),
@@ -392,15 +396,36 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                               ),
                               const SizedBox(height: 12),
 
-                              TextField(
-                                controller: parcelasController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'Quantidade de parcelas',
-                                  hintText: 'Ex: 1, 6, 12...',
-                                  border: OutlineInputBorder(),
+                              if (existente != null) ...[
+                                InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Parcelas',
+                                    border: OutlineInputBorder(),
+                                    helperText:
+                                        'Quantidade fixa ao editar. Os lançamentos '
+                                        'vinculados não são alterados.',
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      '${existente.quantidadeParcelas} parcela'
+                                      '${existente.quantidadeParcelas == 1 ? '' : 's'}',
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ] else
+                                TextField(
+                                  controller: parcelasController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Quantidade de parcelas',
+                                    hintText: 'Ex: 1, 6, 12...',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
                               const SizedBox(height: 12),
 
                               InkWell(
@@ -472,18 +497,16 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                             ElevatedButton(
                               onPressed: () async {
                                 final desc = descricaoController.text.trim();
-                                final valorTotal =
-                                    double.tryParse(
-                                      valorController.text
-                                          .replaceAll('.', '')
-                                          .replaceAll(',', '.'),
-                                    ) ??
-                                    0;
+                                final valorTotal = CurrencyInputFormatter.parse(
+                                  valorController.text,
+                                );
                                 final qtdParcelas =
-                                    int.tryParse(
-                                      parcelasController.text.trim(),
-                                    ) ??
-                                    1;
+                                    existente != null
+                                        ? existente.quantidadeParcelas
+                                        : (int.tryParse(
+                                              parcelasController.text.trim(),
+                                            ) ??
+                                            1);
 
                                 if (desc.isEmpty ||
                                     valorTotal <= 0 ||
@@ -499,15 +522,21 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                   return;
                                 }
 
-                                if (qtdParcelas == 1) {
-                                  // conta simples
+                                if (existente != null) {
+                                  await _contaPagarLancamento
+                                      .atualizarGrupoContasPagarExistente(
+                                        grupoParcelas: existente.grupoParcelas,
+                                        descricao: desc,
+                                        valorTotal: valorTotal,
+                                        primeiraDataVencimento: dataVencimento,
+                                      );
+                                } else if (qtdParcelas == 1) {
                                   await _iaService.salvarContaSimples(
                                     descricao: desc,
                                     valor: valorTotal,
                                     dataVencimento: dataVencimento,
                                   );
                                 } else {
-                                  // compra parcelada -> cria contas + lançamentos
                                   await _iaService.salvarContasParceladas(
                                     descricao: desc,
                                     valorTotal: valorTotal,
@@ -520,10 +549,20 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
                                 if (context.mounted) {
                                   Navigator.pop(context);
+                                  if (existente != null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Contas a pagar atualizadas. '
+                                          'Lançamentos permanecem os mesmos.',
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                               child: Text(
-                                existente == null ? 'Salvar' : 'Gerar novas',
+                                existente == null ? 'Salvar' : 'Salvar alterações',
                               ),
                             ),
                           ],

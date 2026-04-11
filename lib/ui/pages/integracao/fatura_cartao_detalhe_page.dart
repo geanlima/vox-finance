@@ -151,9 +151,7 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                                   (_, __) => const SizedBox(height: 8),
                               itemBuilder: (ctx, i) {
                                 final l = _itens[i];
-                                final grupo = l.grupoParcelas;
-                                final temGrupo =
-                                    grupo != null && grupo.isNotEmpty;
+                                final linhaGrupo = l.linhaResumoParcelaCurta;
 
                                 return Card(
                                   elevation: 1,
@@ -203,10 +201,10 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                                                   color: cs.onSurfaceVariant,
                                                 ),
                                               ),
-                                              if (temGrupo) ...[
+                                              if (linhaGrupo != null) ...[
                                                 const SizedBox(height: 2),
                                                 Text(
-                                                  'Parcela ${l.parcelaNumero ?? 1}/${l.parcelaTotal ?? 1}',
+                                                  linhaGrupo,
                                                   style: TextStyle(
                                                     fontSize: 11,
                                                     color:
