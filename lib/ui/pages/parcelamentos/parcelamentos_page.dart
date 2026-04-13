@@ -118,6 +118,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   bool _carregando = false;
   ParcelamentosFiltro _filtro = ParcelamentosFiltro.emAberto;
   bool _aplicouFiltroDaRota = false;
+  DateTime _refFatura = DateTime.now();
 
   List<ParcelamentoResumo> _resumos = const [];
   /// Soma de todas as parcelas pendentes (parcelado, exc. FATURA_*).
@@ -140,6 +141,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   @override
   void initState() {
     super.initState();
+    final agora = DateTime.now();
+    _refFatura = DateTime(agora.year, agora.month, 1);
     _carregar();
   }
 
@@ -287,8 +290,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     // Total pendente por origem (cartão / forma / conta) para o detalhamento
     final abertoPorOrigem = <String, double>{};
     final agora = DateTime.now();
-    final inicioMes = DateTime(agora.year, agora.month, 1);
-    final inicioProximoMes = DateTime(agora.year, agora.month + 1, 1);
+    final inicioMes = DateTime(_refFatura.year, _refFatura.month, 1);
+    final inicioProximoMes = DateTime(_refFatura.year, _refFatura.month + 1, 1);
     final chaveMesAtual = _chaveAnoMes(inicioMes);
     final chaveProximoMes = _chaveAnoMes(inicioProximoMes);
 
@@ -321,16 +324,42 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       bucket[origem] = (bucket[origem] ?? 0.0) + c.valor;
     }
 
-    final nesteMes = totalPorMes[chaveMesAtual] ?? 0.0;
-    final proximoMes = totalPorMes[chaveProximoMes] ?? 0.0;
-    final nesteMesPorOrigem =
-        porOrigemPorMes[chaveMesAtual] ?? <String, double>{};
-    final proximoMesPorOrigem =
-        porOrigemPorMes[chaveProximoMes] ?? <String, double>{};
+    // Se a “fatura atual” ficou zerada (após pagar), avança automaticamente
+    // para a próxima fatura que ainda tenha pendência.
+    var chaveAtual = chaveMesAtual;
+    var chaveProx = chaveProximoMes;
+    var refAtual = inicioMes;
+    var refProx = inicioProximoMes;
+    if (totalPorMes.isNotEmpty) {
+      // máximo 24 avanços por segurança (2 anos)
+      for (var i = 0; i < 24; i++) {
+        final vAtual = totalPorMes[chaveAtual] ?? 0.0;
+        if (vAtual > 0.009) break;
+        // encontra próximo mês com valor > 0
+        final proximos =
+            totalPorMes.keys.where((k) => k > chaveAtual).toList()..sort();
+        final next = proximos.firstWhere(
+          (k) => (totalPorMes[k] ?? 0.0) > 0.009,
+          orElse: () => -1,
+        );
+        if (next == -1) break;
+        final y = next ~/ 100;
+        final m = next % 100;
+        refAtual = DateTime(y, m, 1);
+        refProx = DateTime(y, m + 1, 1);
+        chaveAtual = next;
+        chaveProx = _chaveAnoMes(refProx);
+      }
+    }
+
+    final nesteMes = totalPorMes[chaveAtual] ?? 0.0;
+    final proximoMes = totalPorMes[chaveProx] ?? 0.0;
+    final nesteMesPorOrigem = porOrigemPorMes[chaveAtual] ?? <String, double>{};
+    final proximoMesPorOrigem = porOrigemPorMes[chaveProx] ?? <String, double>{};
 
     final outrosMeses = <ParcelamentoMesPendente>[];
     for (final e in totalPorMes.entries) {
-      if (e.key == chaveMesAtual || e.key == chaveProximoMes) continue;
+      if (e.key == chaveAtual || e.key == chaveProx) continue;
       if (e.value <= 0.009) continue;
       final y = e.key ~/ 100;
       final m = e.key % 100;
@@ -427,6 +456,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       _outrosMeses = outrosMeses;
       _totalDemaisMeses = totalDemaisMeses;
       _demaisMesesExpandido = false;
+      _refFatura = refAtual;
       _carregando = false;
     });
   }
@@ -501,6 +531,9 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     BuildContext context, {
     required String titulo,
     required Map<String, double> valoresPorOrigem,
+    DateTime? inicio, // inclusivo (vencimento)
+    DateTime? fim, // exclusivo (vencimento)
+    Set<String>? somenteGrupos, // filtra por grupo_parcelas quando necessário
   }) async {
     if (valoresPorOrigem.isEmpty) return;
 
@@ -555,6 +588,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (ctx, i) {
                       final linha = linhas[i];
+                      final chave = entries[i].key;
                       return ListTile(
                         leading: Icon(linha.icon, color: cs.primary),
                         title: Text(linha.titulo),
@@ -569,6 +603,183 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                             color:
                                 linha.valor > 0 ? cs.error : cs.primary,
                           ),
+                        ),
+                        onTap: () async {
+                          if (_carregando || linha.valor <= 0) return;
+                          await _mostrarLancamentosDaOrigem(
+                            ctx,
+                            chaveOrigem: chave,
+                            titulo: linha.titulo,
+                            subtitulo: linha.subtitulo,
+                            inicio: inicio,
+                            fim: fim,
+                            somenteGrupos: somenteGrupos,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _mostrarLancamentosDaOrigem(
+    BuildContext context, {
+    required String chaveOrigem,
+    required String titulo,
+    String? subtitulo,
+    DateTime? inicio, // inclusivo (vencimento)
+    DateTime? fim, // exclusivo (vencimento)
+    Set<String>? somenteGrupos,
+  }) async {
+    // Recalcula a origem usando conta_pagar + lançamento (quando existir),
+    // e filtra pelas mesmas regras do totalizador.
+    final todas = await _contaRepo.getTodas();
+    final parcelas =
+        todas
+            .where((c) => (c.parcelaTotal ?? 0) > 1)
+            .where((c) => !_ehGrupoFatura(c.grupoParcelas))
+            .where((c) => !c.pago)
+            .toList();
+
+    final filtradas = <ContaPagar>[];
+    for (final c in parcelas) {
+      if (somenteGrupos != null && !somenteGrupos.contains(c.grupoParcelas)) {
+        continue;
+      }
+      if (inicio != null || fim != null) {
+        final v = c.dataVencimento;
+        if (inicio != null && v.isBefore(inicio)) continue;
+        if (fim != null && !v.isBefore(fim)) continue; // fim exclusivo
+      }
+      filtradas.add(c);
+    }
+
+    final ids =
+        filtradas
+            .where((c) => c.idLancamento != null)
+            .map((c) => c.idLancamento!)
+            .toSet();
+    final lancPorId = await _lancRepo.getByIds(ids);
+
+    // Itens que compõem esta origem. Mantemos uma lista “mista”:
+    // - quando há lançamento, mostramos o lançamento
+    // - quando não há, mostramos a própria parcela como fallback
+    final itensLanc = <Lancamento>[];
+    final itensSemLanc = <ContaPagar>[];
+    for (final c in filtradas) {
+      final idL = c.idLancamento;
+      final l = idL == null ? null : lancPorId[idL];
+      final origem = _chaveOrigem(c, l);
+      if (origem != chaveOrigem) continue;
+      if (l != null) {
+        itensLanc.add(l);
+      } else {
+        itensSemLanc.add(c);
+      }
+    }
+    itensLanc.sort((a, b) => a.dataHora.compareTo(b.dataHora));
+    itensSemLanc.sort((a, b) => a.dataVencimento.compareTo(b.dataVencimento));
+
+    if (!context.mounted) return;
+    if (itensLanc.isEmpty && itensSemLanc.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nenhum lançamento encontrado.')),
+      );
+      return;
+    }
+
+    final date = DateFormat('dd/MM/yyyy');
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final maxH = MediaQuery.sizeOf(ctx).height * 0.70;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            titulo,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (subtitulo != null)
+                            Text(
+                              subtitulo,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Fechar'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxH),
+                  child: ListView.separated(
+                    itemCount: itensLanc.length + itensSemLanc.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      if (i < itensLanc.length) {
+                        final l = itensLanc[i];
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                            l.descricao,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(date.format(l.dataHora)),
+                          trailing: Text(
+                            _currency.format(l.valor),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        );
+                      }
+                      final c = itensSemLanc[i - itensLanc.length];
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          c.descricao,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          'Sem lançamento • venc. ${date.format(c.dataVencimento)}',
+                        ),
+                        trailing: Text(
+                          _currency.format(c.valor),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       );
                     },
@@ -585,8 +796,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final ref = DateTime.now();
-    final proxMesRef = DateTime(ref.year, ref.month + 1, 1);
+    final ref = DateTime(_refFatura.year, _refFatura.month, 1);
+    final proxMesRef = DateTime(_refFatura.year, _refFatura.month + 1, 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -657,6 +868,10 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                             _filtro == ParcelamentosFiltro.finalizandoMes
                                 ? _finalizandoMesPorOrigemChave
                                 : _abertoPorOrigemChave,
+                        somenteGrupos:
+                            _filtro == ParcelamentosFiltro.finalizandoMes
+                                ? _resumos.map((r) => r.grupoParcelas).toSet()
+                                : null,
                       );
                     },
                     child: Padding(
@@ -741,12 +956,16 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                                 _totalNesteMes <= 0) {
                                               return;
                                             }
+                                            final inicio = ref;
+                                            final fim = proxMesRef;
                                             _mostrarResumoPorOrigem(
                                               context,
                                               titulo:
-                                                  'Mês atual por forma de pagamento',
+                                                  'Fatura atual por forma de pagamento',
                                               valoresPorOrigem:
                                                   _nesteMesPorOrigemChave,
+                                              inicio: inicio,
+                                              fim: fim,
                                             );
                                           },
                                           child: Padding(
@@ -755,7 +974,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                             ),
                                             child: _kv(
                                               label:
-                                                  'Mês atual (${DateFormat('MM/yyyy').format(ref)})',
+                                                  'Fatura atual (${DateFormat('MM/yyyy').format(ref)})',
                                               value: _currency.format(
                                                 _totalNesteMes,
                                               ),
@@ -777,12 +996,20 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                                 _totalProximoMes <= 0) {
                                               return;
                                             }
+                                            final inicio = proxMesRef;
+                                            final fim = DateTime(
+                                              proxMesRef.year,
+                                              proxMesRef.month + 1,
+                                              1,
+                                            );
                                             _mostrarResumoPorOrigem(
                                               context,
                                               titulo:
-                                                  'Próximo mês por forma de pagamento',
+                                                  'Próxima fatura por forma de pagamento',
                                               valoresPorOrigem:
                                                   _proximoMesPorOrigemChave,
+                                              inicio: inicio,
+                                              fim: fim,
                                             );
                                           },
                                           child: Padding(
@@ -791,7 +1018,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                             ),
                                             child: _kv(
                                               label:
-                                                  'Próximo mês (${DateFormat('MM/yyyy').format(proxMesRef)})',
+                                                  'Próxima fatura (${DateFormat('MM/yyyy').format(proxMesRef)})',
                                               value: _currency.format(
                                                 _totalProximoMes,
                                               ),
@@ -825,7 +1052,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                         children: [
                                           Tooltip(
                                             message:
-                                                'Demais meses (${_outrosMeses.length})',
+                                                'Demais faturas (${_outrosMeses.length})',
                                             child: InkWell(
                                               borderRadius:
                                                   BorderRadius.circular(12),
@@ -1012,12 +1239,28 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                                                       0) {
                                                                     return;
                                                                   }
+                                                                  final inicio =
+                                                                      DateTime(
+                                                                        item.ano,
+                                                                        item.mes,
+                                                                        1,
+                                                                      );
+                                                                  final fim =
+                                                                      DateTime(
+                                                                        item.ano,
+                                                                        item.mes +
+                                                                            1,
+                                                                        1,
+                                                                      );
                                                                   _mostrarResumoPorOrigem(
                                                                     context,
                                                                     titulo:
                                                                         'A pagar em $label',
                                                                     valoresPorOrigem:
                                                                         item.porOrigem,
+                                                                    inicio:
+                                                                        inicio,
+                                                                    fim: fim,
                                                                   );
                                                                 },
                                                               );

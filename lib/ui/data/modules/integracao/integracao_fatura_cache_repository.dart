@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
+import 'package:vox_finance/ui/core/utils/money_split.dart';
 import 'package:vox_finance/ui/data/models/fatura_api_dto.dart';
 import 'package:vox_finance/ui/data/models/integracao_fatura_cache.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
@@ -106,6 +107,44 @@ class IntegracaoFaturaCacheRepository {
     );
   }
 
+  Future<void> atualizarDataHoraItens({
+    required int idFaturaCache,
+    required Map<String, DateTime> dataPorItemApiId,
+  }) async {
+    if (dataPorItemApiId.isEmpty) return;
+    final db = await _db;
+
+    final rows = await db.query(
+      'integracao_faturas_cache_itens',
+      columns: ['id', 'item_api_id', 'data_hora'],
+      where: 'id_fatura_cache = ?',
+      whereArgs: [idFaturaCache],
+    );
+    if (rows.isEmpty) return;
+
+    final batch = db.batch();
+    var alterados = 0;
+    for (final r in rows) {
+      final id = (r['id'] as num?)?.toInt();
+      final apiId = r['item_api_id']?.toString();
+      if (id == null || apiId == null || apiId.trim().isEmpty) continue;
+      final nova = dataPorItemApiId[apiId];
+      if (nova == null) continue;
+      final atual = (r['data_hora'] as num?)?.toInt();
+      final ms = nova.millisecondsSinceEpoch;
+      if (atual != null && atual == ms) continue;
+      batch.update(
+        'integracao_faturas_cache_itens',
+        {'data_hora': ms},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      alterados += 1;
+    }
+    if (alterados == 0) return;
+    await batch.commit(noResult: true);
+  }
+
   Future<void> marcarFaturaComoFechada({
     required int idFaturaCache,
     required int idLancamentoFatura,
@@ -208,14 +247,15 @@ class IntegracaoFaturaCacheRepository {
     }
 
     int vinculados = 0;
-    const tol = 0.009;
 
     for (final it in itens) {
       if (it.id == null) continue;
       if (!overwrite && it.idLancamentoLocal != null) continue;
 
       final candidatos = lancs
-          .where((l) => (l.valor - it.valor).abs() <= tol && l.id != null)
+          .where(
+            (l) => coincideValorAssociacao(l.valor, it.valor) && l.id != null,
+          )
           .where((l) => !usados.contains(l.id!))
           .toList();
 
