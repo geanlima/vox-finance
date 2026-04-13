@@ -224,6 +224,53 @@ class IntegracaoFaturaCacheRepository {
     return lancRows.map((e) => Lancamento.fromMap(e)).toList();
   }
 
+  /// Lançamentos elegíveis para associação manual na fatura importada: mesmo cartão,
+  /// sem filtro de data (compras com conta a pagar ou lançamento de crédito no cartão).
+  Future<List<Lancamento>> listarLancamentosParaAssociacaoFatura({
+    required int idCartaoLocal,
+  }) async {
+    final db = await _db;
+
+    final rowsConta = await db.rawQuery(
+      '''
+      SELECT DISTINCT id_lancamento AS id
+      FROM conta_pagar
+      WHERE id_cartao = ?
+        AND id_lancamento IS NOT NULL
+        AND grupo_parcelas NOT LIKE 'FATURA_%'
+      ''',
+      [idCartaoLocal],
+    );
+
+    final idsFromConta = <int>{
+      for (final r in rowsConta) (r['id'] as num).toInt(),
+    };
+
+    final rowsLanc = await db.query(
+      'lancamentos',
+      columns: ['id'],
+      where: 'id_cartao = ? AND pagamento_fatura = 0',
+      whereArgs: [idCartaoLocal],
+    );
+    final idsDirect = <int>{
+      for (final r in rowsLanc)
+        if (r['id'] != null) (r['id'] as num).toInt(),
+    };
+
+    final allIds = {...idsFromConta, ...idsDirect};
+    if (allIds.isEmpty) return [];
+
+    final placeholders = List.filled(allIds.length, '?').join(',');
+    final lancRows = await db.query(
+      'lancamentos',
+      where: 'id IN ($placeholders)',
+      whereArgs: allIds.toList(),
+      orderBy: 'data_hora ASC',
+    );
+
+    return lancRows.map((e) => Lancamento.fromMap(e)).toList();
+  }
+
   /// Auto-match por valor (e proximidade de data, se houver).
   /// Não sobrescreve vínculos existentes a menos que [overwrite] = true.
   Future<int> autoAssociarItens({
