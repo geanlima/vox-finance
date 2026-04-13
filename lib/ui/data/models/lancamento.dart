@@ -126,8 +126,8 @@ class Lancamento {
     int? parcelaNumero,
     int? parcelaTotal,
     TipoMovimento? tipoMovimento,
-    int? idCategoriaPersonalizada,
-    int? idSubcategoriaPersonalizada,
+    Object? idCategoriaPersonalizada = _copyWithUnset,
+    Object? idSubcategoriaPersonalizada = _copyWithUnset,
     TipoDespesa? tipoDespesa, // ⭐ NOVO
   }) {
     return Lancamento(
@@ -153,9 +153,13 @@ class Lancamento {
       parcelaTotal: parcelaTotal ?? this.parcelaTotal,
       tipoMovimento: tipoMovimento ?? this.tipoMovimento,
       idCategoriaPersonalizada:
-          idCategoriaPersonalizada ?? this.idCategoriaPersonalizada,
+          identical(idCategoriaPersonalizada, _copyWithUnset)
+              ? this.idCategoriaPersonalizada
+              : idCategoriaPersonalizada as int?,
       idSubcategoriaPersonalizada:
-          idSubcategoriaPersonalizada ?? this.idSubcategoriaPersonalizada,
+          identical(idSubcategoriaPersonalizada, _copyWithUnset)
+              ? this.idSubcategoriaPersonalizada
+              : idSubcategoriaPersonalizada as int?,
       tipoDespesa: tipoDespesa ?? this.tipoDespesa, // ⭐ NOVO
     );
   }
