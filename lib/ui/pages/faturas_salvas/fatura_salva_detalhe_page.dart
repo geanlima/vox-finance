@@ -7,7 +7,9 @@ import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/integracao_fatura_cache.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
+import 'package:vox_finance/ui/core/utils/money_split.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/regra_cartao_parcelado_service.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
@@ -15,6 +17,7 @@ import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repo
 import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.dart';
+import 'package:vox_finance/ui/core/service/integracao_cartoes_api_service.dart';
 
 class FaturaSalvaDetalhePage extends StatefulWidget {
   final IntegracaoFaturaCache fatura;
@@ -38,6 +41,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
   final _contaRepo = ContaBancariaRepository();
   final _lancRepo = LancamentoRepository();
   final _contaPagarRepo = ContaPagarRepository();
+  final _api = IntegracaoCartoesApiService.instance;
   final _dbService = DbService.instance;
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateHora = DateFormat.yMMMd('pt_BR').add_Hm();
@@ -49,6 +53,13 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
   bool _mostrarSomenteNaoAssociados = false;
   IntegracaoFaturaCache? _faturaAtual;
   Lancamento? _lancamentoFaturaGerado;
+  final ScrollController _itensScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _itensScroll.dispose();
+    super.dispose();
+  }
 
   void _snack(String msg) {
     if (!mounted) return;
@@ -96,6 +107,17 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       final lid = l.id;
       if (lid != null) byId[lid] = l;
     }
+    // Vínculos já salvos podem apontar para lançamentos fora do filtro de candidatos
+    // (ex.: vencimento da parcela em outro recorte); ainda assim precisam aparecer no chip.
+    final idsVinculo = <int>{};
+    for (final it in itens) {
+      final v = it.idLancamentoLocal;
+      if (v != null && !byId.containsKey(v)) idsVinculo.add(v);
+    }
+    for (final idL in idsVinculo) {
+      final extra = await _lancRepo.getById(idL);
+      if (extra != null) byId[idL] = extra;
+    }
     if (!mounted) return;
     setState(() {
       _itens = itens;
@@ -106,6 +128,23 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       _faturaAtual = fat;
       _lancamentoFaturaGerado = lancFatura;
       _loading = false;
+    });
+  }
+
+  double? _scrollOffsetAtualItens() {
+    if (!_itensScroll.hasClients) return null;
+    return _itensScroll.offset;
+  }
+
+  Future<void> _restaurarScrollItens(double? offset) async {
+    if (offset == null) return;
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_itensScroll.hasClients) return;
+      final max = _itensScroll.position.maxScrollExtent;
+      final target = offset.clamp(0.0, max);
+      _itensScroll.jumpTo(target);
     });
   }
 
@@ -127,6 +166,64 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       _faturaAtual != null
           ? (_faturaAtual!.idLancamentoFatura != null)
           : (widget.fatura.idLancamentoFatura != null);
+
+  bool get _temItensSemData => _itens.any((i) => i.dataHora == null);
+
+  Future<void> _atualizarDatasDoCachePelaApi() async {
+    if (_bloquearAlteracoesSeFechada()) return;
+    final f = _faturaAtual ?? widget.fatura;
+    final idFaturaCache = f.id;
+    if (idFaturaCache == null) return;
+    final idApiCartao = f.codigoCartaoApi.trim();
+    if (idApiCartao.isEmpty) {
+      _snack('Cartão não está associado à API (codigoCartaoApi vazio).');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final faturasApi = await _api.listarFaturasPorCartaoMes(
+        idCartaoApi: idApiCartao,
+        ano: f.ano,
+        mes: f.mes,
+      );
+      if (faturasApi.isEmpty) {
+        _snack('Não encontrei fatura na API para este período.');
+        return;
+      }
+
+      // Preferência: bater pelo id da fatura na API (quando disponível)
+      final apiId = f.faturaApiId?.trim();
+      final alvo =
+          (apiId != null && apiId.isNotEmpty)
+              ? (faturasApi.firstWhere(
+                (x) => x.id?.toString() == apiId,
+                orElse: () => faturasApi.first,
+              ))
+              : faturasApi.first;
+
+      final map = <String, DateTime>{};
+      for (final it in alvo.lancamentos) {
+        final k = it.id?.toString();
+        final dt = it.dataHora;
+        if (k == null || k.isEmpty || dt == null) continue;
+        map[k] = dt;
+      }
+
+      await _repo.atualizarDataHoraItens(
+        idFaturaCache: idFaturaCache,
+        dataPorItemApiId: map,
+      );
+
+      if (!mounted) return;
+      await _load();
+      _snack('Datas atualizadas no cache.');
+    } catch (e) {
+      _snack('Erro ao atualizar datas: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   Future<void> _fecharFatura(BuildContext context) async {
     final f = _faturaAtual ?? widget.fatura;
@@ -339,6 +436,12 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       appBar: AppBar(
         title: const Text('Lançamentos'),
         actions: [
+          if (!_loading && !_faturaFechada && _temItensSemData)
+            IconButton(
+              tooltip: 'Atualizar datas',
+              icon: const Icon(Icons.event_repeat),
+              onPressed: _atualizarDatasDoCachePelaApi,
+            ),
           IconButton(
             tooltip:
                 _mostrarSomenteNaoAssociados
@@ -507,6 +610,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          controller: _itensScroll,
                           itemCount: itensVisiveis.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),
                           itemBuilder: (context, i) {
@@ -576,7 +680,11 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                                 ],
                               ),
                               child: ListTile(
-                                title: Text(l.descricao),
+                                title: Text(
+                                  l.dataHora == null
+                                      ? l.descricao
+                                      : '${DateFormat('dd/MM').format(l.dataHora!)} - ${l.descricao}',
+                                ),
                                 subtitle: Padding(
                                   padding: const EdgeInsets.only(top: 6),
                                   child: Column(
@@ -646,6 +754,48 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                                           ),
                                         ),
                                       ),
+                                      if (vinc == null && !_faturaFechada) ...[
+                                        const SizedBox(height: 8),
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: OutlinedButton.icon(
+                                            onPressed:
+                                                _loading
+                                                    ? null
+                                                    : () =>
+                                                        _gerarLancamentoEAssociar(
+                                                          l,
+                                                        ),
+                                            icon: const Icon(
+                                              Icons.add_card_outlined,
+                                              size: 20,
+                                            ),
+                                            label: const Text(
+                                              'Gerar lançamento',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: cs.primary,
+                                              backgroundColor: cs.surface,
+                                              side: BorderSide(
+                                                color: cs.primary
+                                                    .withOpacity(0.55),
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 14,
+                                                    vertical: 10,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -663,6 +813,145 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
               ],
             ),
     );
+  }
+
+  /// Cria 1 lançamento no crédito (com [conta_pagar] quando o cartão tem regras) e retorna o id.
+  Future<int?> _criarLancamentoApartirDoItem(IntegracaoFaturaCacheItem item) async {
+    final idCartao = widget.cartao?.id ?? widget.fatura.idCartaoLocal;
+    if (item.valor == 0) {
+      _snack('Valor do item inválido.');
+      return null;
+    }
+
+    final dataCompra =
+        item.dataHora ??
+        DateTime(widget.fatura.ano, widget.fatura.mes, 1, 12);
+    final dataCompraDia = DateTime(
+      dataCompra.year,
+      dataCompra.month,
+      dataCompra.day,
+      dataCompra.hour,
+      dataCompra.minute,
+    );
+
+    final desc = item.descricao.trim().isEmpty
+        ? 'Compra cartão (importada)'
+        : item.descricao.trim();
+
+    final grupo = 'FAT_API_${DateTime.now().microsecondsSinceEpoch}';
+
+    // Regra:
+    // - valor negativo no extrato/API => tratar como RECEITA (estorno/crédito)
+    // - lançamentos gerados aqui devem ficar como PAGO
+    final isReceita = item.valor < 0;
+    final valorAbs = item.valor.abs();
+
+    // Receita: não deve gerar conta a pagar.
+    if (isReceita) {
+      final lanc = Lancamento(
+        valor: valorAbs,
+        descricao: desc,
+        formaPagamento: FormaPagamento.credito,
+        dataHora: dataCompraDia,
+        pagamentoFatura: false,
+        pago: true,
+        dataPagamento: DateTime.now(),
+        categoria: Categoria.outros,
+        idCartao: idCartao,
+        tipoMovimento: TipoMovimento.receita,
+        tipoDespesa: TipoDespesa.variavel,
+        grupoParcelas: grupo,
+      );
+      final id = await _lancRepo.salvar(lanc);
+      return id;
+    }
+
+    final base = Lancamento(
+      valor: valorAbs,
+      descricao: desc,
+      formaPagamento: FormaPagamento.credito,
+      dataHora: dataCompraDia,
+      pagamentoFatura: false,
+      pago: true,
+      dataPagamento: DateTime.now(),
+      categoria: Categoria.outros,
+      idCartao: idCartao,
+      tipoMovimento: TipoMovimento.despesa,
+      tipoDespesa: TipoDespesa.variavel,
+      grupoParcelas: grupo,
+    );
+
+    final svc = RegraCartaoParceladoService(lancRepo: _lancRepo);
+    await svc.processarCompraParcelada(
+      compraBase: base,
+      qtdParcelas: 1,
+    );
+
+    final parcelasGrupo = await _lancRepo.getParcelasPorGrupo(grupo);
+    if (parcelasGrupo.isEmpty) return null;
+    final primeiro = parcelasGrupo.first;
+
+    // Garantia: o lançamento deve ficar na DATA DA COMPRA (item da API),
+    // mesmo que a conta a pagar use o vencimento do cartão.
+    final d = primeiro.dataHora;
+    final mesmaData =
+        d.year == dataCompraDia.year &&
+        d.month == dataCompraDia.month &&
+        d.day == dataCompraDia.day;
+    if (!mesmaData) {
+      await _lancRepo.salvar(primeiro.copyWith(dataHora: dataCompraDia));
+    }
+    return primeiro.id;
+  }
+
+  Future<void> _gerarLancamentoEAssociar(IntegracaoFaturaCacheItem item) async {
+    if (_bloquearAlteracoesSeFechada()) return;
+    final itemId = item.id;
+    if (itemId == null) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gerar lançamento'),
+        content: const Text(
+          'Será criado um lançamento no crédito (1×) com valor, descrição e data '
+          'deste item da fatura, e já associado a ele.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Gerar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final offsetAntes = _scrollOffsetAtualItens();
+    setState(() => _loading = true);
+    try {
+      final idLanc = await _criarLancamentoApartirDoItem(item);
+      if (idLanc == null) {
+        _snack('Não foi possível gerar o lançamento.');
+        return;
+      }
+      await _repo.vincularItemComLancamento(
+        idItem: itemId,
+        idLancamentoLocal: idLanc,
+      );
+      if (!mounted) return;
+      await _load();
+      await _restaurarScrollItens(offsetAntes);
+      _snack('Lançamento gerado e associado.');
+    } catch (e) {
+      _snack('Erro: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _autoAssociar(BuildContext context) async {
@@ -715,7 +1004,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
             .toSet();
 
     final candidatos = _lancamentosPeriodo
-        .where((l) => (l.valor - item.valor).abs() <= 0.009)
+        .where((l) => coincideValorAssociacao(l.valor, item.valor))
         .where((l) => l.id == null || !jaAssociados.contains(l.id!))
         .toList();
     final lista =
