@@ -288,6 +288,116 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
     }
   }
 
+  /// Lançamentos do mesmo `grupo_parcelas` ou, se vazio, via `id_lancamento` nas contas.
+  Future<void> _abrirLancamentosDoGrupo(ContaPagarResumo resumo) async {
+    var lancs = await _repositoryLancamento.getParcelasPorGrupo(
+      resumo.grupoParcelas,
+    );
+    if (lancs.isEmpty) {
+      final parcelas = await _contaPagarLancamento.getParcelasPorGrupo(
+        resumo.grupoParcelas,
+      );
+      final ids = <int>{};
+      for (final p in parcelas) {
+        if (p.idLancamento != null) ids.add(p.idLancamento!);
+      }
+      if (ids.isNotEmpty) {
+        final map = await _repositoryLancamento.getByIds(ids);
+        lancs = map.values.toList()
+          ..sort((a, b) => a.dataHora.compareTo(b.dataHora));
+      }
+    }
+
+    if (!mounted) return;
+    if (lancs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhum lançamento vinculado a este grupo.'),
+        ),
+      );
+      return;
+    }
+
+    final dateLinha = DateFormat('dd/MM/yyyy');
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        final maxH = MediaQuery.of(ctx).size.height * 0.55;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Lançamentos — ${resumo.descricao}',
+                        style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Fechar',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: maxH.clamp(180.0, 520.0),
+                  child: ListView.separated(
+                    itemCount: lancs.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final l = lancs[i];
+                      final ehParc =
+                          l.parcelaTotal != null && l.parcelaTotal! > 1;
+                      final rotuloParc =
+                          ehParc
+                              ? ' · ${l.parcelaNumero ?? '?'}/${l.parcelaTotal}'
+                              : '';
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                        title: Text(
+                          '${l.descricao}$rotuloParc',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '${dateLinha.format(l.dataHora)} · '
+                          '${l.pago ? 'Pago' : 'Pendente'}',
+                        ),
+                        trailing: Text(
+                          _currency.format(l.valor),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _abrirForm({ContaPagarResumo? existente}) async {
     final descricaoController = TextEditingController(
       text: existente?.descricao ?? '',
@@ -603,10 +713,27 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
           final theme = Theme.of(context);
           final primary = theme.colorScheme.primary;
+          final secondary = theme.colorScheme.secondary;
           final danger = Colors.red.shade400;
 
           return Slidable(
             key: ValueKey(resumo.grupoParcelas),
+            startActionPane: ActionPane(
+              motion: const DrawerMotion(),
+              extentRatio: 0.22,
+              children: [
+                CustomSlidableAction(
+                  onPressed: (_) => _abrirLancamentosDoGrupo(resumo),
+                  backgroundColor: secondary,
+                  borderRadius: BorderRadius.circular(12),
+                  child: const Icon(
+                    Icons.receipt_long,
+                    size: 28,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
             endActionPane: ActionPane(
               motion: const DrawerMotion(),
               extentRatio: 0.35,
@@ -639,15 +766,14 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                       : (vencida ? colors.error : colors.primary),
                 ),
                 title: Text(resumo.descricao),
-                isThreeLine: true,
+                isThreeLine: resumo.quantidadeParcelas == 1,
                 subtitle: Text(
-                  resumo.quantidadeParcelas > 1
-                      ? '${resumo.quantidadeParcelas} parcelas · '
-                          '1ª ${_dateFormat.format(resumo.primeiroVencimento)}'
-                          '${resumo.ultimoVencimento != null ? ' · última ${_dateFormat.format(resumo.ultimoVencimento!)}' : ''}\n'
+                  resumo.quantidadeParcelas == 1
+                      ? 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}\n'
                           '${resumo.valorPendente > 0 ? 'Pendente: ${_currency.format(resumo.valorPendente)}' : 'Tudo pago'}'
-                      : 'Vencimento: ${_dateFormat.format(resumo.primeiroVencimento)}\n'
-                          '${resumo.valorPendente > 0 ? 'Pendente: ${_currency.format(resumo.valorPendente)}' : 'Tudo pago'}',
+                      : (resumo.valorPendente > 0
+                          ? 'Pendente: ${_currency.format(resumo.valorPendente)}'
+                          : 'Tudo pago'),
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color:

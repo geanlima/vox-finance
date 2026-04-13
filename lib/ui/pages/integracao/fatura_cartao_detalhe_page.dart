@@ -22,7 +22,8 @@ class FaturaCartaoDetalhePage extends StatefulWidget {
 class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
   final _repo = CartaoCreditoRepository();
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
-  final _dateHora = DateFormat.yMMMd('pt_BR').add_Hm();
+  final _dateHora = DateFormat('dd/MM/yyyy HH:mm');
+  final _dateDia = DateFormat('dd/MM/yyyy');
 
   bool _loading = true;
   List<Lancamento> _itens = [];
@@ -185,13 +186,83 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                                                 ),
                                               ),
                                               const SizedBox(height: 4),
-                                              Text(
-                                                _dateHora.format(l.dataHora),
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color:
-                                                      cs.onSurfaceVariant,
-                                                ),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 6,
+                                                children: [
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 5,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: cs.primary
+                                                          .withValues(alpha: 0.08),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: cs.primary
+                                                            .withValues(alpha: 0.18),
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.event,
+                                                          size: 14,
+                                                          color: cs.primary,
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          _dateDia.format(
+                                                            l.dataHora,
+                                                          ),
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.w800,
+                                                            color: cs.primary,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  if (linhaGrupo != null)
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 10,
+                                                            vertical: 5,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: cs.onSurfaceVariant
+                                                            .withValues(alpha: 0.08),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              999,
+                                                            ),
+                                                        border: Border.all(
+                                                          color: cs.onSurfaceVariant
+                                                              .withValues(alpha: 0.18),
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        linhaGrupo,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          color:
+                                                              cs.onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
                                               const SizedBox(height: 4),
                                               Text(
@@ -201,17 +272,14 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                                                   color: cs.onSurfaceVariant,
                                                 ),
                                               ),
-                                              if (linhaGrupo != null) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  linhaGrupo,
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color:
-                                                        cs.onSurfaceVariant,
-                                                  ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                _dateHora.format(l.dataHora),
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: cs.onSurfaceVariant,
                                                 ),
-                                              ],
+                                              ),
                                             ],
                                           ),
                                         ),
