@@ -280,6 +280,26 @@ class ContaPagarRepository {
     return result.map((e) => ContaPagar.fromMap(e)).toList();
   }
 
+  /// Contas a pagar do cartão já ligadas a um lançamento, excluindo o grupo
+  /// sintético da fatura (`FATURA_%`), **sem filtro de data** (associação à fatura importada).
+  Future<List<ContaPagar>> listarParaAssociacaoFatura({
+    required int idCartaoLocal,
+  }) async {
+    final db = await _db;
+
+    final result = await db.query(
+      'conta_pagar',
+      where: '''
+        id_cartao = ?
+        AND id_lancamento IS NOT NULL
+        AND grupo_parcelas NOT LIKE ?
+      ''',
+      whereArgs: [idCartaoLocal, 'FATURA_%'],
+      orderBy: 'data_vencimento ASC',
+    );
+    return result.map((e) => ContaPagar.fromMap(e)).toList();
+  }
+
   // ============================================================
   //  D E L E T E
   // ============================================================

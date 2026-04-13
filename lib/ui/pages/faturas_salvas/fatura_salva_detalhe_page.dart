@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
+import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/integracao_fatura_cache.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
@@ -18,6 +19,8 @@ import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_r
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.dart';
 import 'package:vox_finance/ui/core/service/integracao_cartoes_api_service.dart';
+
+enum _ModoAssociarFaturaItem { lancamento, contaPagar }
 
 class FaturaSalvaDetalhePage extends StatefulWidget {
   final IntegracaoFaturaCache fatura;
@@ -49,6 +52,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
   bool _loading = true;
   List<IntegracaoFaturaCacheItem> _itens = const [];
   List<Lancamento> _lancamentosPeriodo = const [];
+  List<ContaPagar> _contasPagarPeriodo = const [];
   final Map<int, Lancamento> _lancById = {};
   bool _mostrarSomenteNaoAssociados = false;
   IntegracaoFaturaCache? _faturaAtual;
@@ -85,6 +89,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       setState(() {
         _itens = const [];
         _lancamentosPeriodo = const [];
+        _contasPagarPeriodo = const [];
         _lancById.clear();
         _faturaAtual = null;
         _lancamentoFaturaGerado = null;
@@ -93,10 +98,11 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
       return;
     }
     final itens = await _repo.listarItens(id);
-    final lancs = await _repo.listarLancamentosCandidatos(
+    final lancs = await _repo.listarLancamentosParaAssociacaoFatura(
       idCartaoLocal: widget.fatura.idCartaoLocal,
-      ano: widget.fatura.ano,
-      mes: widget.fatura.mes,
+    );
+    final contas = await _contaPagarRepo.listarParaAssociacaoFatura(
+      idCartaoLocal: widget.fatura.idCartaoLocal,
     );
     final fat = await _repo.getById(id);
     final int? idLancFatura = fat?.idLancamentoFatura;
@@ -122,6 +128,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
     setState(() {
       _itens = itens;
       _lancamentosPeriodo = lancs;
+      _contasPagarPeriodo = contas;
       _lancById
         ..clear()
         ..addAll(byId);
@@ -1003,55 +1010,198 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
             .map((i) => i.idLancamentoLocal!)
             .toSet();
 
-    final candidatos = _lancamentosPeriodo
+    final candidatosLanc = _lancamentosPeriodo
         .where((l) => coincideValorAssociacao(l.valor, item.valor))
         .where((l) => l.id == null || !jaAssociados.contains(l.id!))
         .toList();
-    final lista =
-        (candidatos.isEmpty
+    final listaLanc =
+        (candidatosLanc.isEmpty
             ? _lancamentosPeriodo
                 .where((l) => l.id == null || !jaAssociados.contains(l.id!))
                 .toList()
-            : candidatos);
+            : candidatosLanc);
 
-    final escolhido = await showModalBottomSheet<Lancamento?>(
+    bool contaUsavel(ContaPagar c) {
+      final idL = c.idLancamento;
+      if (idL == null) return false;
+      return !jaAssociados.contains(idL);
+    }
+
+    final candidatosConta = _contasPagarPeriodo
+        .where(contaUsavel)
+        .where((c) => coincideValorAssociacao(c.valor, item.valor))
+        .toList();
+    final listaContas =
+        (candidatosConta.isEmpty
+            ? _contasPagarPeriodo.where(contaUsavel).toList()
+            : candidatosConta);
+
+    var modo = _ModoAssociarFaturaItem.lancamento;
+
+    final idEscolhido = await showModalBottomSheet<int?>(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
-        final mq = MediaQuery.of(context);
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: mq.viewInsets.bottom + mq.viewPadding.bottom,
-            ),
-            child: ListView.builder(
-              itemCount: lista.length + 1,
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return ListTile(
-                    leading: const Icon(Icons.link_off),
-                    title: const Text('Remover associação'),
-                    onTap: () => Navigator.pop(context, null),
+      builder: (sheetCtx) {
+        final mq = MediaQuery.of(sheetCtx);
+        final bottomPad = mq.viewInsets.bottom + mq.viewPadding.bottom;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final usarContas = modo == _ModoAssociarFaturaItem.contaPagar;
+
+            final filhos = <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Text(
+                  'Associar item da fatura',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Builder(
+                  builder: (context) {
+                    final cs = Theme.of(context).colorScheme;
+                    return SegmentedButton<_ModoAssociarFaturaItem>(
+                      showSelectedIcon: false,
+                      style: ButtonStyle(
+                        side: WidgetStateProperty.all(
+                          BorderSide(color: cs.outline.withOpacity(0.35)),
+                        ),
+                        backgroundColor: WidgetStateProperty.resolveWith((
+                          states,
+                        ) {
+                          if (states.contains(WidgetState.selected)) {
+                            return cs.primaryContainer;
+                          }
+                          return cs.surfaceContainerHighest.withOpacity(0.65);
+                        }),
+                        foregroundColor: WidgetStateProperty.resolveWith((
+                          states,
+                        ) {
+                          if (states.contains(WidgetState.selected)) {
+                            return cs.onPrimaryContainer;
+                          }
+                          return cs.onSurface;
+                        }),
+                        iconColor: WidgetStateProperty.resolveWith((states) {
+                          if (states.contains(WidgetState.selected)) {
+                            return cs.onPrimaryContainer;
+                          }
+                          return cs.onSurfaceVariant;
+                        }),
+                      ),
+                      segments: const [
+                        ButtonSegment<_ModoAssociarFaturaItem>(
+                          value: _ModoAssociarFaturaItem.lancamento,
+                          label: Text('Lançamento'),
+                          icon: Icon(Icons.receipt_long_outlined, size: 18),
+                        ),
+                        ButtonSegment<_ModoAssociarFaturaItem>(
+                          value: _ModoAssociarFaturaItem.contaPagar,
+                          label: Text('Conta a pagar'),
+                          icon: Icon(Icons.request_quote_outlined, size: 18),
+                        ),
+                      ],
+                      selected: {modo},
+                      onSelectionChanged: (s) {
+                        setModalState(() {
+                          modo = s.first;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const Divider(height: 24),
+              ListTile(
+                leading: const Icon(Icons.link_off),
+                title: const Text('Remover associação'),
+                onTap: () => Navigator.pop(sheetCtx, null),
+              ),
+            ];
+
+            if (usarContas) {
+              if (listaContas.isEmpty) {
+                filhos.add(
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: Text(
+                      'Nenhuma conta a pagar para este cartão com lançamento '
+                      'vinculado (exceto fatura).',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                  ),
+                );
+              } else {
+                for (final c in listaContas) {
+                  final idL = c.idLancamento!;
+                  final lanc = _lancById[idL];
+                  final venc = DateFormat('dd/MM').format(c.dataVencimento);
+                  final parc =
+                      (c.parcelaTotal != null && c.parcelaTotal! > 1)
+                          ? ' • Parc. ${c.parcelaNumero}/${c.parcelaTotal}'
+                          : '';
+                  final sub =
+                      lanc == null
+                          ? '$venc • ${_money.format(c.valor)}$parc'
+                          : '$venc • ${_money.format(c.valor)}$parc • ${lanc.descricao}';
+                  filhos.add(
+                    ListTile(
+                      leading: const Icon(Icons.request_quote_outlined),
+                      title: Text(c.descricao),
+                      subtitle: Text(sub),
+                      onTap: () => Navigator.pop(sheetCtx, idL),
+                    ),
                   );
                 }
-                final l = lista[i - 1];
-                return ListTile(
-                  title: Text(l.descricao),
-                  subtitle: Text(
-                    '${DateFormat('dd/MM HH:mm').format(l.dataHora)} • ${_money.format(l.valor)}',
+              }
+            } else {
+              if (listaLanc.isEmpty) {
+                filhos.add(
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: Text(
+                      'Nenhum lançamento candidato para este cartão.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
                   ),
-                  onTap: () => Navigator.pop(context, l),
                 );
-              },
-            ),
-          ),
+              } else {
+                for (final l in listaLanc) {
+                  filhos.add(
+                    ListTile(
+                      title: Text(l.descricao),
+                      subtitle: Text(
+                        '${DateFormat('dd/MM HH:mm').format(l.dataHora)} • ${_money.format(l.valor)}',
+                      ),
+                      onTap: () => Navigator.pop(sheetCtx, l.id),
+                    ),
+                  );
+                }
+              }
+            }
+
+            return SafeArea(
+              child: ListView(
+                padding: EdgeInsets.only(bottom: bottomPad + 16),
+                children: filhos,
+              ),
+            );
+          },
         );
       },
     );
 
     await _repo.vincularItemComLancamento(
       idItem: itemId,
-      idLancamentoLocal: escolhido?.id,
+      idLancamentoLocal: idEscolhido,
     );
     if (!mounted) return;
     await _load();

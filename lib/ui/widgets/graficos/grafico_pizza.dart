@@ -99,6 +99,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   final _subcategoriaRepo = SubcategoriaPersonalizadaRepository();
   List<SubcategoriaPersonalizada> _subcategorias = [];
 
+  final _lancamentoRepo = LancamentoRepository();
+
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
     Color(0xFF2196F3),
@@ -251,6 +253,47 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Mesmo mapeamento usado ao salvar lançamento na home (enum legado).
+  Categoria _categoriaEnumFromNome(String nome) {
+    switch (nome) {
+      case 'Alimentação':
+        return Categoria.alimentacao;
+      case 'Educação':
+        return Categoria.educacao;
+      case 'Família':
+        return Categoria.familia;
+      case 'Finanças Pessoais':
+        return Categoria.financasPessoais;
+      case 'Impostos e Taxas':
+        return Categoria.impostosETaxas;
+      case 'Lazer e Entretenimento':
+        return Categoria.lazerEEntretenimento;
+      case 'Moradia':
+        return Categoria.moradia;
+      case 'Presentes e Doações':
+        return Categoria.presentesEDoacoes;
+      case 'Saúde':
+        return Categoria.saude;
+      case 'Seguros':
+        return Categoria.seguros;
+      case 'Tecnologia':
+        return Categoria.tecnologia;
+      case 'Transporte':
+        return Categoria.transporte;
+      case 'Vestuário':
+        return Categoria.vestuario;
+      case 'Outros':
+      default:
+        return Categoria.outros;
+    }
+  }
+
+  String _labelCategoriaExibicao(Lancamento l) {
+    final catPers = _categoriaPersPorId(l.idCategoriaPersonalizada);
+    if (catPers != null) return catPers.nome;
+    return CategoriaService.toName(l.categoria);
   }
 
   Color? _parseCorHex(String? corHex) {
@@ -523,10 +566,19 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       return;
     }
 
+    final diaSoData = DateTime(dia.year, dia.month, dia.day);
     _mostrarDetalheLancamentos(
       titulo: 'Detalhe do dia',
       subtitulo: _dateDiaFormat.format(dia),
       lancamentos: lancs,
+      manterNoGrupo: (atual) {
+        final d = DateTime(
+          atual.dataHora.year,
+          atual.dataHora.month,
+          atual.dataHora.day,
+        );
+        return d == diaSoData;
+      },
     );
   }
 
@@ -722,6 +774,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                               subtitulo:
                                   '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
                               lancamentos: lancs,
+                              manterNoGrupo: (atual) =>
+                                  _labelGrupoForma(atual) == grupo.label,
                             );
                           },
                           child: Container(
@@ -797,6 +851,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     required String titulo,
     required String subtitulo,
     required List<Lancamento> lancamentos,
+    required bool Function(Lancamento atualizado) manterNoGrupo,
   }) {
     if (lancamentos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -805,14 +860,14 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       return;
     }
 
-    final total = lancamentos.fold<double>(0.0, (a, b) => a + b.valor);
+    final itens = List<Lancamento>.from(lancamentos);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
-        final tema = Theme.of(context);
+      builder: (sheetContext) {
+        final tema = Theme.of(sheetContext);
         final corPrimaria = tema.colorScheme.primary;
 
         return DraggableScrollableSheet(
@@ -821,199 +876,256 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
           minChildSize: 0.45,
           maxChildSize: 0.92,
           builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: tema.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
-                    blurRadius: 18,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Container(
-                      width: 38,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade400,
-                        borderRadius: BorderRadius.circular(999),
+            return StatefulBuilder(
+              builder: (context, setSheetState) {
+                final total = itens.fold<double>(0.0, (a, b) => a + b.valor);
+
+                Future<void> abrirReclassificar(Lancamento l) async {
+                  if (l.id == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Não é possível reclassificar este lançamento.',
+                        ),
                       ),
+                    );
+                    return;
+                  }
+                  await showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (ctx) => _ReclassificarLancamentoSheet(
+                      lancamento: l,
+                      categoriaRepo: _categoriaRepo,
+                      subcategoriaRepo: _subcategoriaRepo,
+                      lancamentoRepo: _lancamentoRepo,
+                      categoriaEnumFromNome: _categoriaEnumFromNome,
+                      onSaved: (id) async {
+                        await _carregarDados();
+                        if (!mounted) return;
+                        final fresh = await _lancamentoRepo.getById(id);
+                        setSheetState(() {
+                          itens.removeWhere((x) => x.id == id);
+                          if (fresh != null && manterNoGrupo(fresh)) {
+                            itens.add(fresh);
+                            itens.sort(
+                              (a, b) => b.dataHora.compareTo(a.dataHora),
+                            );
+                          }
+                        });
+                      },
                     ),
+                  );
+                }
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: tema.colorScheme.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 18,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-
-                  // CABEÇALHO
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          titulo,
-                          style: tema.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitulo,
-                          style: tema.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Card com total
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 4,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            color: corPrimaria.withOpacity(0.06),
+                            color: Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(999),
                           ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: corPrimaria.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.pie_chart_rounded,
-                                  color: corPrimaria,
-                                  size: 22,
-                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              titulo,
+                              style: tema.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
                               ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitulo,
+                              style: tema.textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                color: corPrimaria.withOpacity(0.06),
+                              ),
+                              child: Row(
                                 children: [
-                                  const Text(
-                                    'Total',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black54,
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: corPrimaria.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(
+                                      Icons.pie_chart_rounded,
+                                      color: corPrimaria,
+                                      size: 22,
                                     ),
                                   ),
-                                  Text(
-                                    _currency.format(total),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Total',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                      Text(
+                                        _currency.format(total),
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Lançamentos',
-                          style: tema.textTheme.labelMedium?.copyWith(
-                            color: Colors.grey[700],
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  // LISTA
-                  Expanded(
-                    child: ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      itemCount: lancamentos.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final l = lancamentos[index];
-
-                        // label de categoria para o detalhe:
-                        final catPers = _categoriaPersPorId(
-                          l.idCategoriaPersonalizada,
-                        );
-                        final labelCategoria =
-                            catPers != null
-                                ? catPers.nome
-                                : CategoriaService.toName(l.categoria);
-
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tema.colorScheme.surfaceVariant.withOpacity(
-                              0.25,
                             ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: corPrimaria.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.receipt_long, size: 18),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Toque no lançamento para reclassificar',
+                              style: tema.textTheme.labelMedium?.copyWith(
+                                color: Colors.grey[700],
+                                letterSpacing: 0.3,
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      l.descricao,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      Expanded(
+                        child: ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          itemCount: itens.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final l = itens[index];
+                            final catPers = _categoriaPersPorId(
+                              l.idCategoriaPersonalizada,
+                            );
+                            final labelCategoria =
+                                catPers != null
+                                    ? catPers.nome
+                                    : CategoriaService.toName(l.categoria);
+                            final sub = _subcategoriaPorId(
+                              l.idSubcategoriaPersonalizada,
+                            );
+                            final linhaSub =
+                                sub != null ? ' · ${sub.nome}' : '';
+
+                            return Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => abrirReclassificar(l),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: tema.colorScheme.surfaceVariant
+                                        .withOpacity(0.25),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: corPrimaria.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit_outlined,
+                                          size: 18,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${_dateHoraFormat.format(l.dataHora)} • $labelCategoria',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey,
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              l.descricao,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${_dateHoraFormat.format(l.dataHora)} • $labelCategoria$linhaSub',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _currency.format(l.valor),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _currency.format(l.valor),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -1614,6 +1726,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                   subtitulo:
                       '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
                   lancamentos: lancs,
+                  manterNoGrupo: (atual) =>
+                      _labelCategoriaExibicao(atual) == grupo.label,
                 );
               }
             },
@@ -1785,6 +1899,18 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                               titulo: 'Detalhe por subcategoria',
                               subtitulo: '${g.label} • $tituloCategoria • $mesAno',
                               lancamentos: filtrados,
+                              manterNoGrupo: (atual) {
+                                if (atual.idCategoriaPersonalizada !=
+                                    categoriaId) {
+                                  return false;
+                                }
+                                if (g.subcategoriaId == null) {
+                                  return atual.idSubcategoriaPersonalizada ==
+                                      null;
+                                }
+                                return atual.idSubcategoriaPersonalizada ==
+                                    g.subcategoriaId;
+                              },
                             );
                           },
                           child: Container(
@@ -1876,6 +2002,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                 subtitulo:
                     '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
                 lancamentos: lancs,
+                manterNoGrupo: (atual) =>
+                    _labelGrupoForma(atual) == grupo.label,
               );
             },
             child: Container(
@@ -1954,10 +2082,19 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
             borderRadius: BorderRadius.circular(12),
             onTap: () {
               final lancs = dataLancs[dia] ?? const <Lancamento>[];
+              final diaSoData = DateTime(dia.year, dia.month, dia.day);
               _mostrarDetalheLancamentos(
                 titulo: 'Detalhe do dia',
                 subtitulo: _dateDiaFormat.format(dia),
                 lancamentos: lancs,
+                manterNoGrupo: (atual) {
+                  final d = DateTime(
+                    atual.dataHora.year,
+                    atual.dataHora.month,
+                    atual.dataHora.day,
+                  );
+                  return d == diaSoData;
+                },
               );
             },
             child: Container(
@@ -2090,6 +2227,261 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReclassificarLancamentoSheet extends StatefulWidget {
+  const _ReclassificarLancamentoSheet({
+    required this.lancamento,
+    required this.categoriaRepo,
+    required this.subcategoriaRepo,
+    required this.lancamentoRepo,
+    required this.categoriaEnumFromNome,
+    required this.onSaved,
+  });
+
+  final Lancamento lancamento;
+  final CategoriaPersonalizadaRepository categoriaRepo;
+  final SubcategoriaPersonalizadaRepository subcategoriaRepo;
+  final LancamentoRepository lancamentoRepo;
+  final Categoria Function(String nome) categoriaEnumFromNome;
+  final Future<void> Function(int idLancamento) onSaved;
+
+  @override
+  State<_ReclassificarLancamentoSheet> createState() =>
+      _ReclassificarLancamentoSheetState();
+}
+
+class _ReclassificarLancamentoSheetState
+    extends State<_ReclassificarLancamentoSheet> {
+  bool _loading = true;
+  bool _salvando = false;
+  List<CategoriaPersonalizada> _cats = [];
+  List<SubcategoriaPersonalizada> _subs = [];
+  CategoriaPersonalizada? _cat;
+  SubcategoriaPersonalizada? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  CategoriaPersonalizada? _categoriaCompatPorEnum(
+    List<CategoriaPersonalizada> cats,
+    Lancamento l,
+  ) {
+    if (cats.isEmpty) return null;
+    final nomeEnum = CategoriaService.toName(l.categoria);
+    try {
+      return cats.firstWhere((c) => c.nome == nomeEnum);
+    } catch (_) {
+      return cats.first;
+    }
+  }
+
+  Future<void> _load() async {
+    final l = widget.lancamento;
+    final cats = await widget.categoriaRepo.listarPorTipo(l.tipoMovimento);
+    if (!mounted) return;
+
+    CategoriaPersonalizada? cat;
+    if (l.idCategoriaPersonalizada != null) {
+      try {
+        cat = cats.firstWhere((c) => c.id == l.idCategoriaPersonalizada);
+      } catch (_) {
+        cat = null;
+      }
+    }
+    cat ??= _categoriaCompatPorEnum(cats, l);
+
+    List<SubcategoriaPersonalizada> subs = [];
+    if (cat?.id != null) {
+      subs = await widget.subcategoriaRepo.listarPorCategoria(cat!.id!);
+    }
+
+    if (!mounted) return;
+
+    SubcategoriaPersonalizada? sub;
+    if (l.idSubcategoriaPersonalizada != null) {
+      try {
+        sub = subs.firstWhere((s) => s.id == l.idSubcategoriaPersonalizada);
+      } catch (_) {
+        sub = null;
+      }
+    }
+
+    setState(() {
+      _cats = cats;
+      _subs = subs;
+      _cat = cat;
+      _sub = sub;
+      _loading = false;
+    });
+  }
+
+  Future<void> _onCatChanged(CategoriaPersonalizada? c) async {
+    if (c == null) return;
+    setState(() {
+      _cat = c;
+      _sub = null;
+      _subs = [];
+    });
+    if (c.id != null) {
+      final subs = await widget.subcategoriaRepo.listarPorCategoria(c.id!);
+      if (mounted) setState(() => _subs = subs);
+    }
+  }
+
+  CategoriaPersonalizada? get _catValid {
+    final c = _cat;
+    if (c?.id == null) return null;
+    try {
+      return _cats.firstWhere((x) => x.id == c!.id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _salvar() async {
+    final c = _catValid;
+    final idLanc = widget.lancamento.id;
+    if (c?.id == null || idLanc == null) return;
+
+    setState(() => _salvando = true);
+    try {
+      final atualizado = widget.lancamento.copyWith(
+        idCategoriaPersonalizada: c!.id,
+        idSubcategoriaPersonalizada: _sub?.id,
+        categoria: widget.categoriaEnumFromNome(c.nome),
+      );
+      await widget.lancamentoRepo.salvar(atualizado);
+      if (!mounted) return;
+      await widget.onSaved(idLanc);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lançamento reclassificado.')),
+      );
+      Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final padBottom = MediaQuery.viewInsetsOf(context).bottom;
+
+    if (_loading) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: padBottom),
+        child: const SafeArea(
+          child: SizedBox(
+            height: 200,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      );
+    }
+
+    if (_cats.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + padBottom),
+        child: const Text(
+          'Não há categorias cadastradas para este tipo de movimento.',
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + padBottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Reclassificar',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.lancamento.descricao,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<CategoriaPersonalizada>(
+              value: _catValid,
+              decoration: const InputDecoration(
+                labelText: 'Categoria',
+                border: OutlineInputBorder(),
+              ),
+              items:
+                  _cats
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(c.nome),
+                        ),
+                      )
+                      .toList(),
+              onChanged: _salvando ? null : _onCatChanged,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<SubcategoriaPersonalizada?>(
+              value: _sub,
+              decoration: const InputDecoration(
+                labelText: 'Subcategoria',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem<SubcategoriaPersonalizada?>(
+                  value: null,
+                  child: Text('Sem subcategoria'),
+                ),
+                ..._subs.map(
+                  (s) => DropdownMenuItem(
+                    value: s,
+                    child: Text(s.nome),
+                  ),
+                ),
+              ],
+              onChanged:
+                  _salvando
+                      ? null
+                      : (v) => setState(() => _sub = v),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: _salvando || _catValid == null ? null : _salvar,
+              child:
+                  _salvando
+                      ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : const Text('Salvar'),
             ),
           ],
         ),

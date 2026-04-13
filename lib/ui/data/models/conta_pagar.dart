@@ -46,7 +46,7 @@ class ContaPagar {
       'forma_pagamento': formaPagamento?.index,
       'id_cartao': idCartao,
       'id_conta': idConta,
-      'id_Lancamento': idLancamento,
+      'id_lancamento': idLancamento,
     };
   }
 
@@ -76,7 +76,8 @@ class ContaPagar {
               : null,
       idCartao: map['id_cartao'] as int?,
       idConta: map['id_conta'] as int?,
-      idLancamento: map['id_Lancamento'] as int?,
+      idLancamento:
+          (map['id_lancamento'] ?? map['id_Lancamento']) as int?,
     );
   }
 }

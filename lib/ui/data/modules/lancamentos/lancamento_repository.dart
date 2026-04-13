@@ -462,10 +462,11 @@ class LancamentoRepository {
     // Se o mês não tiver esse dia (ex.: 31 em fevereiro), ajusta para o último dia do mês.
     final dia = diaVencimento.clamp(1, 31);
 
-    // Regra do cartão:
-    // - Se a compra aconteceu APÓS o dia de fechamento, ela entra na próxima fatura,
-    //   então o 1º vencimento é no próximo mês.
-    // - Se aconteceu ATÉ o dia de fechamento, entra na fatura do mês e vence neste mês.
+    // Regra do cartão (fechamento + vencimento):
+    // - Compra até o dia de fechamento (inclusive) entra na fatura que **fecha** neste mês;
+    //   o pagamento (dia de vencimento) cai no **mês seguinte** (ex.: fecha 20/02 → vence 01/03).
+    // - Compra **depois** do fechamento entra na próxima fatura; o 1º vencimento fica
+    //   **dois** meses à frente do mês da compra no calendário (ex.: compra 25/02, fecha 20 →1º venc. 01/04).
     final fechamentoEsteMes = _garantirDataValida(
       dataCompra.year,
       dataCompra.month,
@@ -473,7 +474,7 @@ class LancamentoRepository {
     );
 
     final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMes);
-    final int baseOffset = aposFechamento ? 1 : 0;
+    final int baseOffset = aposFechamento ? 2 : 1;
     final int offsetMes = baseOffset + (numeroParcela - 1);
 
     return _garantirDataValida(
