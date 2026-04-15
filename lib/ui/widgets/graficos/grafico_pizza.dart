@@ -86,6 +86,18 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   DateTime _dataReferenciaSemana = DateTime.now();
 
+  @override
+  void didUpdateWidget(covariant GraficoPizzaComponent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.periodo != widget.periodo) {
+      // Ao alternar para semanal, já aponta para a semana atual.
+      if (widget.periodo == PeriodoResumoPizza.semanal) {
+        _dataReferenciaSemana = DateTime.now();
+      }
+      _carregarDados();
+    }
+  }
+
   TipoAgrupamentoPizza _tipo = TipoAgrupamentoPizza.categoria;
 
   bool _carregando = false;
@@ -698,25 +710,26 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     }
   }
 
-  // ======= RESUMO POR FORMA (MÊS) =======
-
-  // ======= RESUMO POR FORMA (MÊS) =======
-  void _mostrarResumoPorFormaPagamentoMes() {
-    if (_lancamentos.isEmpty) {
+  void _mostrarResumoPorFormaPagamento({
+    required String titulo,
+    required String subtitulo,
+    required List<Lancamento> baseLancamentos,
+  }) {
+    if (baseLancamentos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Não há lançamentos neste mês para detalhar.'),
+          content: Text('Não há lançamentos neste período para detalhar.'),
         ),
       );
       return;
     }
 
     // resumo e lançamentos por grupo
-    final totaisPorGrupo = _totaisPorFormaPagamentoAgrupado();
-    final lancsPorGrupo = _lancamentosPorGrupoFormaPagamento();
+    final totaisPorGrupo = _totaisPorFormaPagamentoAgrupadoFrom(baseLancamentos);
+    final lancsPorGrupo = _lancamentosPorGrupoFormaPagamentoFrom(baseLancamentos);
     final grupos = totaisPorGrupo.values.toList();
 
-    final mesAnoLabel = _labelPeriodoAtual;
+    final mesAnoLabel = subtitulo;
 
     showModalBottomSheet(
       context: context,
@@ -764,7 +777,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Gastos por forma de pagamento / cartão',
+                          titulo,
                           style: tema.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
@@ -870,6 +883,62 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
         );
       },
     );
+  }
+
+  void _mostrarResumoPorFormaPagamentoPeriodo() {
+    _mostrarResumoPorFormaPagamento(
+      titulo: 'Gastos por forma de pagamento / cartão',
+      subtitulo: _labelPeriodoAtual,
+      baseLancamentos: _lancamentos,
+    );
+  }
+
+  void _mostrarResumoParcelados() {
+    _mostrarResumoPorFormaPagamento(
+      titulo: 'Compras parceladas',
+      subtitulo: _labelPeriodoAtual,
+      baseLancamentos: _lancamentos.where(_ehCompraParcelada).toList(),
+    );
+  }
+
+  void _mostrarResumoDemais() {
+    _mostrarResumoPorFormaPagamento(
+      titulo: 'Demais gastos',
+      subtitulo: _labelPeriodoAtual,
+      baseLancamentos: _lancamentos.where((l) => !_ehCompraParcelada(l)).toList(),
+    );
+  }
+
+  Map<String, _GrupoFormaPagamento> _totaisPorFormaPagamentoAgrupadoFrom(
+    List<Lancamento> base,
+  ) {
+    final Map<String, _GrupoFormaPagamento> mapa = {};
+    for (final l in base) {
+      final label = _labelGrupoForma(l);
+      final bool isCredito = l.formaPagamento == FormaPagamento.credito;
+      final icon = isCredito ? Icons.credit_card : l.formaPagamento.icon;
+      if (mapa.containsKey(label)) {
+        mapa[label]!.total += l.valor;
+      } else {
+        mapa[label] = _GrupoFormaPagamento(
+          label: label,
+          icon: icon,
+          total: l.valor,
+        );
+      }
+    }
+    return mapa;
+  }
+
+  Map<String, List<Lancamento>> _lancamentosPorGrupoFormaPagamentoFrom(
+    List<Lancamento> base,
+  ) {
+    final Map<String, List<Lancamento>> mapa = {};
+    for (final l in base) {
+      final label = _labelGrupoForma(l);
+      mapa.putIfAbsent(label, () => []).add(l);
+    }
+    return mapa;
   }
 
   // ======= DETALHAMENTO (VISUAL NOVO) =======
@@ -1431,7 +1500,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
                 // ====== TOTAL GASTO NO MÊS (CLICÁVEL) ======
                 InkWell(
-                  onTap: _mostrarResumoPorFormaPagamentoMes,
+                  onTap: _mostrarResumoPorFormaPagamentoPeriodo,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -1452,8 +1521,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                           size: 20,
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Total gasto no mês:',
+                        Text(
+                          widget.periodo == PeriodoResumoPizza.mensal
+                              ? 'Total gasto no mês:'
+                              : 'Total gasto na semana:',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -1475,85 +1546,97 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                 const SizedBox(height: 8),
 
                 // Composição: parcelado x demais — dois cards (mesmo padrão do "Total gasto no mês")
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withOpacity(0.08),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.credit_card,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Compras parceladas',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                InkWell(
+                  onTap: _mostrarResumoParcelados,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.credit_card,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 20,
                         ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        parceladoMesFormatado,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.redAccent.shade700,
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.periodo == PeriodoResumoPizza.mensal
+                              ? 'Compras parceladas'
+                              : 'Compras parceladas (semana)',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    ],
+                        const Spacer(),
+                        Text(
+                          parceladoMesFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.redAccent.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withOpacity(0.08),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.receipt_long,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Demais gastos no mês',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        demaisMesFormatado,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                InkWell(
+                  onTap: _mostrarResumoDemais,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.receipt_long,
                           color: Theme.of(context).colorScheme.primary,
+                          size: 20,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.periodo == PeriodoResumoPizza.mensal
+                              ? 'Demais gastos no mês'
+                              : 'Demais gastos na semana',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          demaisMesFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
