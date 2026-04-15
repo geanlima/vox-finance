@@ -12,22 +12,24 @@ import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 // ⭐ NOVO: categorias personalizadas
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 
 enum TipoComparativoMes { categoria, formaPagamento }
 
-class _SerieMes {
-  final int ano;
-  final int mes;
+class _SerieSemana {
+  final DateTime inicio;
+  final DateTime fim;
   final Color cor;
-  final String label;
-  final Map<int, double> valoresPorDia; // dia -> total
+  final String label; // "S1", "S2"...
+  final Map<int, double> valoresPorDiaSemana; // weekday 1..7 (Seg..Dom)
 
-  _SerieMes({
-    required this.ano,
-    required this.mes,
+  _SerieSemana({
+    required this.inicio,
+    required this.fim,
     required this.cor,
     required this.label,
-    required this.valoresPorDia,
+    required this.valoresPorDiaSemana,
   });
 }
 
@@ -83,6 +85,57 @@ class _FiltroCategoria {
       Object.hash(idCategoriaPersonalizada, categoriaEnum, todas);
 }
 
+class _FiltroSubcategoria {
+  final int? idSubcategoriaPersonalizada;
+  final String label;
+  final bool todas;
+  final bool semSubcategoria;
+
+  const _FiltroSubcategoria({
+    required this.idSubcategoriaPersonalizada,
+    required this.label,
+    required this.todas,
+    required this.semSubcategoria,
+  });
+
+  factory _FiltroSubcategoria.todas() => const _FiltroSubcategoria(
+        idSubcategoriaPersonalizada: null,
+        label: 'Todas',
+        todas: true,
+        semSubcategoria: false,
+      );
+
+  factory _FiltroSubcategoria.semSubcategoria() => const _FiltroSubcategoria(
+        idSubcategoriaPersonalizada: null,
+        label: '— Sem subcategoria —',
+        todas: false,
+        semSubcategoria: true,
+      );
+
+  factory _FiltroSubcategoria.fromPersonalizada(SubcategoriaPersonalizada sub) =>
+      _FiltroSubcategoria(
+        idSubcategoriaPersonalizada: sub.id,
+        label: sub.nome,
+        todas: false,
+        semSubcategoria: false,
+      );
+
+  bool get eTodas => todas;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _FiltroSubcategoria &&
+        other.idSubcategoriaPersonalizada == idSubcategoriaPersonalizada &&
+        other.todas == todas &&
+        other.semSubcategoria == semSubcategoria;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(idSubcategoriaPersonalizada, todas, semSubcategoria);
+}
+
 class ComparativoMesPage extends StatefulWidget {
   const ComparativoMesPage({super.key});
 
@@ -93,46 +146,51 @@ class ComparativoMesPage extends StatefulWidget {
 class _ComparativoMesPageState extends State<ComparativoMesPage> {
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
-  // paleta simples para 3 linhas
-  final Color _corBase = const Color(0xFF1976D2); // azul
-  final Color _corComparacao = const Color(0xFFFBC02D); // amarelo
-  final Color _corComparacao2 = const Color(0xFF43A047); // verde
+  // paleta simples para semanas (até ~6)
+  final List<Color> _paletaSemanas = const [
+    Color(0xFF1976D2), // azul
+    Color(0xFF43A047), // verde
+    Color(0xFFFBC02D), // amarelo
+    Color(0xFF8E24AA), // roxo
+    Color(0xFFE53935), // vermelho
+    Color(0xFF00838F), // teal
+  ];
 
   final LancamentoRepository _repository = LancamentoRepository();
 
   // ⭐ NOVO: repo de categorias personalizadas
   final CategoriaPersonalizadaRepository _categoriaRepo =
       CategoriaPersonalizadaRepository();
+  final SubcategoriaPersonalizadaRepository _subcategoriaRepo =
+      SubcategoriaPersonalizadaRepository();
 
   TipoComparativoMes _tipo = TipoComparativoMes.categoria;
 
   // 🔹 AJUSTE: agora usamos um filtro genérico em vez de Categoria?
   _FiltroCategoria _filtroCategoriaSelecionado = _FiltroCategoria.todas();
+  _FiltroSubcategoria _filtroSubcategoriaSelecionado =
+      _FiltroSubcategoria.todas();
 
   FormaPagamento? _formaPagamentoSelecionada;
 
   late DateTime _mesBase;
-  DateTime? _mesComparacao;
-  DateTime? _mesComparacao2; // 🔹 já existia
 
   bool _carregando = false;
-  _SerieMes? _serieBase;
-  _SerieMes? _serieComparacao;
-  _SerieMes? _serieComparacao2; // 🔹 já existia
-  int _maxDia = 31;
+  List<_SerieSemana> _seriesSemanais = [];
+  int _maxX = 7;
 
   // ⭐ NOVO: cache de categorias personalizadas
   List<CategoriaPersonalizada> _categoriasPersonalizadas = [];
+  List<SubcategoriaPersonalizada> _subcategorias = [];
 
   @override
   void initState() {
     super.initState();
     final agora = DateTime.now();
     _mesBase = DateTime(agora.year, agora.month, 1);
-    _mesComparacao = null;
-    _mesComparacao2 = null;
 
     _carregarCategoriasPersonalizadas(); // ⭐
+    _carregarSubcategorias(); // ⭐
     _recarregarDados();
   }
 
@@ -149,15 +207,109 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     }
   }
 
+  Future<void> _carregarSubcategorias() async {
+    try {
+      final subs = await _subcategoriaRepo.listarTodasComCategoriaTipo();
+      if (!mounted) return;
+      setState(() {
+        _subcategorias = subs;
+        if (_filtroSubcategoriaSelecionado.idSubcategoriaPersonalizada != null) {
+          final existe = subs.any(
+            (s) => s.id == _filtroSubcategoriaSelecionado.idSubcategoriaPersonalizada,
+          );
+          if (!existe) _filtroSubcategoriaSelecionado = _FiltroSubcategoria.todas();
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _subcategorias = [];
+        _filtroSubcategoriaSelecionado = _FiltroSubcategoria.todas();
+      });
+    }
+  }
+
   String _nomeMes(int mes) {
     final dt = DateTime(2000, mes, 1);
     final nome = DateFormat.MMMM('pt_BR').format(dt);
     return nome[0].toUpperCase() + nome.substring(1);
   }
 
-  Future<_SerieMes> _carregarSerieMes({
+  DateTime _inicioSemana(DateTime base) {
+    final d = DateTime(base.year, base.month, base.day);
+    return d.subtract(Duration(days: d.weekday - DateTime.monday));
+  }
+
+  List<DateTime> _iniciosSemanasDoMes(DateTime mesRef) {
+    final inicioMes = DateTime(mesRef.year, mesRef.month, 1);
+    final fimMes = DateTime(mesRef.year, mesRef.month + 1, 0, 23, 59, 59);
+    final firstWeekStart = _inicioSemana(inicioMes);
+
+    final starts = <DateTime>[];
+    var cur = firstWeekStart;
+    while (cur.isBefore(fimMes) || cur.isAtSameMomentAs(fimMes)) {
+      starts.add(cur);
+      cur = cur.add(const Duration(days: 7));
+    }
+    return starts;
+  }
+
+  int _indiceSemanaNoMes(DateTime data, List<DateTime> weekStarts) {
+    final d = DateTime(data.year, data.month, data.day);
+    for (var i = 0; i < weekStarts.length; i++) {
+      final ini = weekStarts[i];
+      final fim = ini.add(const Duration(days: 7));
+      if (!d.isBefore(ini) && d.isBefore(fim)) return i + 1; // 1..n
+    }
+    return 1;
+  }
+
+  bool _passaFiltrosLancamento(l) {
+    if (l.pagamentoFatura) return false;
+
+    if (_tipo == TipoComparativoMes.categoria &&
+        !_filtroCategoriaSelecionado.eTodas) {
+      final filtro = _filtroCategoriaSelecionado;
+      if (filtro.idCategoriaPersonalizada != null) {
+        if (l.idCategoriaPersonalizada != filtro.idCategoriaPersonalizada) {
+          return false;
+        }
+
+        // filtro extra: subcategoria personalizada (apenas quando a categoria
+        // selecionada é personalizada)
+        if (!_filtroSubcategoriaSelecionado.eTodas) {
+          if (l.idSubcategoriaPersonalizada !=
+              _filtroSubcategoriaSelecionado.idSubcategoriaPersonalizada) {
+            return false;
+          }
+        }
+      } else if (filtro.categoriaEnum != null) {
+        if (l.categoria != filtro.categoriaEnum) return false;
+      }
+    }
+
+    if (!_filtroSubcategoriaSelecionado.eTodas) {
+      if (_filtroSubcategoriaSelecionado.semSubcategoria) {
+        if (l.idSubcategoriaPersonalizada != null) return false;
+      } else {
+        if (l.idSubcategoriaPersonalizada !=
+            _filtroSubcategoriaSelecionado.idSubcategoriaPersonalizada) {
+          return false;
+        }
+      }
+    }
+
+    if (_tipo == TipoComparativoMes.formaPagamento &&
+        _formaPagamentoSelecionada != null &&
+        l.formaPagamento != _formaPagamentoSelecionada) {
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<List<_SerieSemana>> _carregarSeriesSemanaisDoMes({
     required DateTime mesRef,
-    required Color cor,
   }) async {
     final ano = mesRef.year;
     final mes = mesRef.month;
@@ -166,148 +318,110 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final fimMes = DateTime(ano, mes + 1, 0, 23, 59, 59);
 
     final lancs = await _repository.getDespesasByPeriodo(inicioMes, fimMes);
+    final filtrados = lancs.where(_passaFiltrosLancamento).toList();
 
-    final filtrados =
-        lancs.where((l) {
-          if (!l.pago) return false;
-          if (l.pagamentoFatura) return false;
+    final weekStarts = _iniciosSemanasDoMes(mesRef);
+    final Map<int, Map<int, double>> porSemanaEDia = {};
 
-          // 🔹 FILTRO POR CATEGORIA (agora com enum + personalizada)
-          if (_tipo == TipoComparativoMes.categoria &&
-              !_filtroCategoriaSelecionado.eTodas) {
-            final filtro = _filtroCategoriaSelecionado;
-
-            // se filtro for categoria personalizada
-            if (filtro.idCategoriaPersonalizada != null) {
-              if (l.idCategoriaPersonalizada !=
-                  filtro.idCategoriaPersonalizada) {
-                return false;
-              }
-            }
-            // se filtro for categoria do enum
-            else if (filtro.categoriaEnum != null) {
-              // se lançamento está em categoria personalizada, não entra
-              if (l.idCategoriaPersonalizada != null) return false;
-              if (l.categoria != filtro.categoriaEnum) return false;
-            }
-          }
-
-          // 🔹 FILTRO POR FORMA PGTO (mantido)
-          if (_tipo == TipoComparativoMes.formaPagamento &&
-              _formaPagamentoSelecionada != null &&
-              l.formaPagamento != _formaPagamentoSelecionada) {
-            return false;
-          }
-
-          return true;
-        }).toList();
-
-    final Map<int, double> valoresPorDia = {};
     for (final l in filtrados) {
-      final dia = l.dataHora.day;
-      valoresPorDia.update(dia, (v) => v + l.valor, ifAbsent: () => l.valor);
+      final idxSemana = _indiceSemanaNoMes(l.dataHora, weekStarts); // 1..n
+      final weekday = l.dataHora.weekday; // 1..7 (seg..dom)
+      final mapaDia = porSemanaEDia.putIfAbsent(idxSemana, () => {});
+      mapaDia.update(weekday, (v) => v + l.valor, ifAbsent: () => l.valor);
     }
 
-    final label = '${_nomeMes(mes)} / $ano';
+    final series = <_SerieSemana>[];
+    for (var i = 0; i < weekStarts.length; i++) {
+      final idx = i + 1;
+      final inicio = weekStarts[i];
+      final fim = inicio.add(const Duration(days: 6));
+      final valores = porSemanaEDia[idx] ?? {};
+      final cor = _paletaSemanas[i % _paletaSemanas.length];
+      series.add(
+        _SerieSemana(
+          inicio: inicio,
+          fim: fim,
+          cor: cor,
+          label: 'S$idx',
+          valoresPorDiaSemana: valores,
+        ),
+      );
+    }
 
-    return _SerieMes(
-      ano: ano,
-      mes: mes,
-      cor: cor,
-      label: label,
-      valoresPorDia: valoresPorDia,
-    );
+    // remove semanas totalmente vazias
+    series.removeWhere((s) =>
+        s.valoresPorDiaSemana.values.fold<double>(0, (a, b) => a + b) == 0);
+
+    return series;
   }
 
   Future<void> _recarregarDados() async {
     setState(() {
       _carregando = true;
     });
-
-    int maxDia = 1;
-
-    final base = await _carregarSerieMes(mesRef: _mesBase, cor: _corBase);
-    for (final d in base.valoresPorDia.keys) {
-      if (d > maxDia) maxDia = d;
-    }
-
-    _SerieMes? comp;
-    if (_mesComparacao != null) {
-      comp = await _carregarSerieMes(
-        mesRef: _mesComparacao!,
-        cor: _corComparacao,
-      );
-      for (final d in comp.valoresPorDia.keys) {
-        if (d > maxDia) maxDia = d;
-      }
-    }
-
-    _SerieMes? comp2;
-    if (_mesComparacao2 != null) {
-      comp = await _carregarSerieMes(
-        mesRef: _mesComparacao2!,
-        cor: _corComparacao2,
-      );
-      for (final d in comp.valoresPorDia.keys) {
-        if (d > maxDia) maxDia = d;
-      }
-    }
-
     setState(() {
-      _serieBase = base;
-      _serieComparacao = comp;
-      _serieComparacao2 = comp2;
-      _maxDia = maxDia;
+      _seriesSemanais = [];
+      _maxX = 7;
       _carregando = false;
     });
+
+    try {
+      final series = await _carregarSeriesSemanaisDoMes(mesRef: _mesBase);
+      if (!mounted) return;
+      setState(() {
+        _seriesSemanais = series;
+        _maxX = 7;
+        _carregando = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _carregando = false);
+    }
   }
 
   // ============ GRÁFICO DE LINHAS ============
 
-  List<FlSpot> _spotsFromSerie(_SerieMes serie) {
+  List<FlSpot> _spotsFromSerieSemana(_SerieSemana serie) {
     final List<FlSpot> spots = [];
-    final diasOrdenados = serie.valoresPorDia.keys.toList()..sort();
-    for (final dia in diasOrdenados) {
-      final valor = serie.valoresPorDia[dia] ?? 0.0;
+    final diasOrdenados = serie.valoresPorDiaSemana.keys.toList()..sort();
+    for (final diaSemana in diasOrdenados) {
+      final valor = serie.valoresPorDiaSemana[diaSemana] ?? 0.0;
       if (valor == 0) continue;
-      spots.add(FlSpot(dia.toDouble(), valor));
+      spots.add(FlSpot(diaSemana.toDouble(), valor));
     }
     return spots;
+  }
+
+  String _labelDiaSemana(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return 'Seg';
+      case DateTime.tuesday:
+        return 'Ter';
+      case DateTime.wednesday:
+        return 'Qua';
+      case DateTime.thursday:
+        return 'Qui';
+      case DateTime.friday:
+        return 'Sex';
+      case DateTime.saturday:
+        return 'Sáb';
+      case DateTime.sunday:
+        return 'Dom';
+      default:
+        return '$weekday';
+    }
   }
 
   LineChartData _buildLineChartData() {
     final List<LineChartBarData> lines = [];
 
-    if (_serieBase != null) {
+    for (final s in _seriesSemanais) {
       lines.add(
         LineChartBarData(
-          spots: _spotsFromSerie(_serieBase!),
+          spots: _spotsFromSerieSemana(s),
           isCurved: true,
-          color: _serieBase!.cor,
-          barWidth: 3,
-          dotData: const FlDotData(show: false),
-        ),
-      );
-    }
-
-    if (_serieComparacao != null) {
-      lines.add(
-        LineChartBarData(
-          spots: _spotsFromSerie(_serieComparacao!),
-          isCurved: true,
-          color: _serieComparacao!.cor,
-          barWidth: 3,
-          dotData: const FlDotData(show: false),
-        ),
-      );
-    }
-
-    if (_serieComparacao2 != null) {
-      lines.add(
-        LineChartBarData(
-          spots: _spotsFromSerie(_serieComparacao2!),
-          isCurved: true,
-          color: _serieComparacao2!.cor,
+          color: s.cor,
           barWidth: 3,
           dotData: const FlDotData(show: false),
         ),
@@ -317,7 +431,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     return LineChartData(
       lineBarsData: lines,
       minX: 1,
-      maxX: _maxDia.toDouble(),
+      maxX: _maxX.toDouble(),
       gridData: FlGridData(show: true),
       borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
@@ -339,10 +453,12 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 22,
-            interval: (_maxDia > 15) ? 2 : 1,
+            interval: 1,
             getTitlesWidget: (value, meta) {
+              final v = value.toInt();
+              if (v < 1 || v > _maxX) return const SizedBox.shrink();
               return Text(
-                value.toInt().toString(),
+                _labelDiaSemana(v),
                 style: const TextStyle(fontSize: 10),
               );
             },
@@ -352,34 +468,19 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     );
   }
 
-  // ============ DETALHAMENTO DIA A DIA (BOTTOM SHEET) ============
+  // ============ DETALHAMENTO SEMANAL (BOTTOM SHEET) ============
 
-  void _mostrarDetalhamentoDiaADia() {
-    if (_serieBase == null &&
-        _serieComparacao == null &&
-        _serieComparacao2 == null) {
+  void _mostrarDetalhamentoSemanal() {
+    if (_seriesSemanais.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sem dados para detalhar com os filtros atuais.'),
-        ),
+        const SnackBar(content: Text('Sem dados para detalhar com os filtros atuais.')),
       );
       return;
     }
 
     final tema = Theme.of(context);
-    final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
-    final labelComp1 =
-        _mesComparacao == null
-            ? null
-            : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
-    final labelComp2 =
-        _mesComparacao2 == null
-            ? null
-            : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
-
-    final titulos = <String>[labelBase];
-    if (labelComp1 != null) titulos.add(labelComp1);
-    if (labelComp2 != null) titulos.add(labelComp2);
+    final header = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
+    final fmt = DateFormat('dd/MM');
 
     showModalBottomSheet(
       context: context,
@@ -388,16 +489,14 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
       builder: (context) {
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.75,
+          initialChildSize: 0.78,
           minChildSize: 0.55,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
             return Container(
               decoration: BoxDecoration(
                 color: tema.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.12),
@@ -427,14 +526,14 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Detalhamento dia a dia',
+                          'Detalhamento por semana (Seg–Dom)',
                           style: tema.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          titulos.join('  ×  '),
+                          header,
                           style: tema.textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),
@@ -447,153 +546,82 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                     child: ListView.builder(
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      itemCount: _maxDia,
+                      itemCount: _seriesSemanais.length,
                       itemBuilder: (context, index) {
-                        final dia = index + 1;
-                        final vBase = _serieBase?.valoresPorDia[dia] ?? 0.0;
-                        final vComp1 =
-                            _serieComparacao?.valoresPorDia[dia] ?? 0.0;
-                        final vComp2 =
-                            _serieComparacao2?.valoresPorDia[dia] ?? 0.0;
-
-                        if (vBase == 0 && vComp1 == 0 && vComp2 == 0) {
-                          return const SizedBox.shrink();
-                        }
-
+                        final s = _seriesSemanais[index];
+                        final totalSemana = s.valoresPorDiaSemana.values.fold<double>(
+                          0,
+                          (a, b) => a + b,
+                        );
                         return Container(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(14),
-                            color: tema.colorScheme.surfaceVariant.withOpacity(
-                              0.25,
-                            ),
+                            color: tema.colorScheme.surfaceVariant.withOpacity(0.25),
                           ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  dia.toString().padLeft(2, '0'),
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 12,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: s.cor,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${s.label} • ${fmt.format(s.inicio)}-${fmt.format(s.fim)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    _currency.format(totalSemana),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (vBase > 0) ...[
-                                      Row(
-                                        children: [
-                                          Container(
-                                            width: 10,
-                                            height: 10,
-                                            decoration: BoxDecoration(
-                                              color: _corBase,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 8,
+                                children: List.generate(7, (i) {
+                                  final wd = i + 1;
+                                  final v = s.valoresPorDiaSemana[wd] ?? 0.0;
+                                  return SizedBox(
+                                    width: 96,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _labelDiaSemana(wd),
+                                          style: tema.textTheme.bodySmall?.copyWith(
+                                            color: tema.colorScheme.onSurface.withOpacity(0.7),
                                           ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              _serieBase?.label ?? 'Mês base',
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                              ),
-                                            ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _currency.format(v),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
                                           ),
-                                          Text(
-                                            _currency.format(vBase),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                    ],
-                                    if (vComp1 > 0) ...[
-                                      Row(
-                                        children: [
-                                          Container(
-                                            width: 10,
-                                            height: 10,
-                                            decoration: BoxDecoration(
-                                              color: _corComparacao,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              _serieComparacao?.label ??
-                                                  'Mês comparação 1',
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            _currency.format(vComp1),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                    ],
-                                    if (vComp2 > 0)
-                                      Row(
-                                        children: [
-                                          Container(
-                                            width: 10,
-                                            height: 10,
-                                            decoration: BoxDecoration(
-                                              color: _corComparacao2,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              _serieComparacao2?.label ??
-                                                  'Mês comparação 2',
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            _currency.format(vComp2),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                  ],
-                                ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
                               ),
                             ],
                           ),
@@ -617,14 +645,6 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
     final tema = Theme.of(context);
 
     final labelBase = '${_nomeMes(_mesBase.month)} / ${_mesBase.year}';
-    final labelComparacao1 =
-        _mesComparacao == null
-            ? 'Nenhum'
-            : '${_nomeMes(_mesComparacao!.month)} / ${_mesComparacao!.year}';
-    final labelComparacao2 =
-        _mesComparacao2 == null
-            ? 'Nenhum'
-            : '${_nomeMes(_mesComparacao2!.month)} / ${_mesComparacao2!.year}';
 
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
@@ -632,7 +652,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Comparativo de meses'),
+        title: const Text('Comparativo semanal do mês'),
       ),
       drawer: const AppDrawer(currentRoute: '/comparativo-mes'),
       body: SingleChildScrollView(
@@ -689,269 +709,192 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
 
-            // ===== COMPARAR COM (1) =====
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _mesComparacao?.month,
-                    decoration: const InputDecoration(
-                      labelText: 'Comparar mês 1',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Nenhum'),
-                      ),
-                      ...List.generate(
-                        12,
-                        (i) => DropdownMenuItem(
-                          value: i + 1,
-                          child: Text(_nomeMes(i + 1)),
-                        ),
-                      ),
-                    ],
-                    onChanged: (novoMes) {
-                      setState(() {
-                        if (novoMes == null) {
-                          _mesComparacao = null;
-                        } else {
-                          _mesComparacao = DateTime(
-                            _mesComparacao?.year ?? _mesBase.year,
-                            novoMes,
-                            1,
-                          );
-                        }
-                      });
-                      _recarregarDados();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _mesComparacao?.year,
-                    decoration: const InputDecoration(
-                      labelText: 'Ano 1',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Nenhum'),
-                      ),
-                      ...List.generate(10, (i) {
-                        final ano = DateTime.now().year - 5 + i;
-                        return DropdownMenuItem(
-                          value: ano,
-                          child: Text('$ano'),
-                        );
-                      }),
-                    ],
-                    onChanged: (novoAno) {
-                      setState(() {
-                        if (novoAno == null) {
-                          _mesComparacao = null;
-                        } else {
-                          _mesComparacao = DateTime(
-                            novoAno,
-                            _mesComparacao?.month ?? _mesBase.month,
-                            1,
-                          );
-                        }
-                      });
-                      _recarregarDados();
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            // ===== COMPARAR COM (2) =====
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _mesComparacao2?.month,
-                    decoration: const InputDecoration(
-                      labelText: 'Comparar mês 2',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Nenhum'),
-                      ),
-                      ...List.generate(
-                        12,
-                        (i) => DropdownMenuItem(
-                          value: i + 1,
-                          child: Text(_nomeMes(i + 1)),
-                        ),
-                      ),
-                    ],
-                    onChanged: (novoMes) {
-                      setState(() {
-                        if (novoMes == null) {
-                          _mesComparacao2 = null;
-                        } else {
-                          _mesComparacao2 = DateTime(
-                            _mesComparacao2?.year ?? _mesBase.year,
-                            novoMes,
-                            1,
-                          );
-                        }
-                      });
-                      _recarregarDados();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _mesComparacao2?.year,
-                    decoration: const InputDecoration(
-                      labelText: 'Ano 2',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Nenhum'),
-                      ),
-                      ...List.generate(10, (i) {
-                        final ano = DateTime.now().year - 5 + i;
-                        return DropdownMenuItem(
-                          value: ano,
-                          child: Text('$ano'),
-                        );
-                      }),
-                    ],
-                    onChanged: (novoAno) {
-                      setState(() {
-                        if (novoAno == null) {
-                          _mesComparacao2 = null;
-                        } else {
-                          _mesComparacao2 = DateTime(
-                            novoAno,
-                            _mesComparacao2?.month ?? _mesBase.month,
-                            1,
-                          );
-                        }
-                      });
-                      _recarregarDados();
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ===== TIPO + FILTRO =====
-            DropdownButtonFormField<TipoComparativoMes>(
-              value: _tipo,
-              decoration: const InputDecoration(
-                labelText: 'Comparar por',
-                border: OutlineInputBorder(),
+            // ===== FILTROS (COMPACTO) =====
+            Card(
+              elevation: 0.5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              items: const [
-                DropdownMenuItem(
-                  value: TipoComparativoMes.categoria,
-                  child: Text('Categoria'),
+              child: Theme(
+                data: tema.copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                  childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  initiallyExpanded: false,
+                  title: const Text(
+                    'Filtros',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    _tipo == TipoComparativoMes.categoria
+                        ? 'Categoria/Subcategoria'
+                        : 'Forma de pagamento',
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.onSurface.withOpacity(0.65),
+                    ),
+                  ),
+                  children: [
+                    DropdownButtonFormField<TipoComparativoMes>(
+                      isDense: true,
+                      value: _tipo,
+                      decoration: const InputDecoration(
+                        labelText: 'Comparar por',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: TipoComparativoMes.categoria,
+                          child: Text('Categoria'),
+                        ),
+                        DropdownMenuItem(
+                          value: TipoComparativoMes.formaPagamento,
+                          child: Text('Forma de pagamento'),
+                        ),
+                      ],
+                      onChanged: (novo) {
+                        if (novo == null) return;
+                        setState(() {
+                          _tipo = novo;
+                          _filtroCategoriaSelecionado = _FiltroCategoria.todas();
+                          _filtroSubcategoriaSelecionado =
+                              _FiltroSubcategoria.todas();
+                          _formaPagamentoSelecionada = null;
+                        });
+                        _recarregarDados();
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    _tipo == TipoComparativoMes.categoria
+                        ? Column(
+                            children: [
+                              DropdownButtonFormField<_FiltroCategoria>(
+                                isDense: true,
+                                value: _filtroCategoriaSelecionado,
+                                decoration: const InputDecoration(
+                                  labelText: 'Categoria',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: _FiltroCategoria.todas(),
+                                    child: const Text('Todas'),
+                                  ),
+                                  ...Categoria.values.map(
+                                    (c) => DropdownMenuItem(
+                                      value: _FiltroCategoria.fromEnum(c),
+                                      child: Text(CategoriaService.toName(c)),
+                                    ),
+                                  ),
+                                  if (_categoriasPersonalizadas.isNotEmpty) ...[
+                                    const DropdownMenuItem(
+                                      enabled: false,
+                                      value: null,
+                                      child: Text(
+                                        '--- Personalizadas ---',
+                                        style: TextStyle(fontSize: 11),
+                                      ),
+                                    ),
+                                    ..._categoriasPersonalizadas.map(
+                                      (cat) => DropdownMenuItem(
+                                        value:
+                                            _FiltroCategoria.fromPersonalizada(
+                                          cat,
+                                        ),
+                                        child: Text(cat.nome),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                                onChanged: (novoFiltro) {
+                                  if (novoFiltro == null) return;
+                                  setState(() {
+                                    _filtroCategoriaSelecionado = novoFiltro;
+                                    _filtroSubcategoriaSelecionado =
+                                        _FiltroSubcategoria.todas();
+                                  });
+                                  _recarregarDados();
+                                },
+                              ),
+                              const SizedBox(height: 10),
+                              DropdownButtonFormField<_FiltroSubcategoria>(
+                                isDense: true,
+                                value: _filtroSubcategoriaSelecionado,
+                                decoration: const InputDecoration(
+                                  labelText: 'Subcategoria',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: _FiltroSubcategoria.todas(),
+                                    child: const Text('Todas'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _FiltroSubcategoria.semSubcategoria(),
+                                    child: const Text('— Sem subcategoria —'),
+                                  ),
+                                  ..._subcategorias.map(
+                                    (s) => DropdownMenuItem(
+                                      value:
+                                          _FiltroSubcategoria.fromPersonalizada(
+                                        s,
+                                      ),
+                                      child: Text(s.nome),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (novo) {
+                                  if (novo == null) return;
+                                  setState(
+                                    () =>
+                                        _filtroSubcategoriaSelecionado = novo,
+                                  );
+                                  _recarregarDados();
+                                },
+                              ),
+                            ],
+                          )
+                        : DropdownButtonFormField<FormaPagamento?>(
+                            isDense: true,
+                            value: _formaPagamentoSelecionada,
+                            decoration: const InputDecoration(
+                              labelText: 'Forma pgto',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('Todas'),
+                              ),
+                              ...FormaPagamento.values.map(
+                                (f) => DropdownMenuItem(
+                                  value: f,
+                                  child: Row(
+                                    children: [
+                                      Icon(f.icon, size: 16),
+                                      const SizedBox(width: 6),
+                                      Text(f.label),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (nova) {
+                              setState(() => _formaPagamentoSelecionada = nova);
+                              _recarregarDados();
+                            },
+                          ),
+                  ],
                 ),
-                DropdownMenuItem(
-                  value: TipoComparativoMes.formaPagamento,
-                  child: Text('Forma de pagamento'),
-                ),
-              ],
-              onChanged: (novo) {
-                if (novo == null) return;
-                setState(() {
-                  _tipo = novo;
-                  _filtroCategoriaSelecionado = _FiltroCategoria.todas();
-                  _formaPagamentoSelecionada = null;
-                });
-                _recarregarDados();
-              },
+              ),
             ),
-            const SizedBox(height: 8),
 
-            // 🔹 AJUSTE: dropdown de categoria agora mistura enum + personalizadas
-            _tipo == TipoComparativoMes.categoria
-                ? DropdownButtonFormField<_FiltroCategoria>(
-                  value: _filtroCategoriaSelecionado,
-                  decoration: const InputDecoration(
-                    labelText: 'Categoria',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: _FiltroCategoria.todas(),
-                      child: const Text('Todas'),
-                    ),
-                    ...Categoria.values.map(
-                      (c) => DropdownMenuItem(
-                        value: _FiltroCategoria.fromEnum(c),
-                        child: Text(CategoriaService.toName(c)),
-                      ),
-                    ),
-                    if (_categoriasPersonalizadas.isNotEmpty) ...[
-                      const DropdownMenuItem(
-                        enabled: false,
-                        value: null,
-                        child: Text(
-                          '--- Personalizadas ---',
-                          style: TextStyle(fontSize: 11),
-                        ),
-                      ),
-                      ..._categoriasPersonalizadas.map(
-                        (cat) => DropdownMenuItem(
-                          value: _FiltroCategoria.fromPersonalizada(cat),
-                          child: Text(cat.nome),
-                        ),
-                      ),
-                    ],
-                  ],
-                  onChanged: (novoFiltro) {
-                    if (novoFiltro == null) return;
-                    setState(() => _filtroCategoriaSelecionado = novoFiltro);
-                    _recarregarDados();
-                  },
-                )
-                : DropdownButtonFormField<FormaPagamento?>(
-                  value: _formaPagamentoSelecionada,
-                  decoration: const InputDecoration(
-                    labelText: 'Forma pgto',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Todas')),
-                    ...FormaPagamento.values.map(
-                      (f) => DropdownMenuItem(
-                        value: f,
-                        child: Row(
-                          children: [
-                            Icon(f.icon, size: 16),
-                            const SizedBox(width: 6),
-                            Text(f.label),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (nova) {
-                    setState(() => _formaPagamentoSelecionada = nova);
-                    _recarregarDados();
-                  },
-                ),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             if (_carregando)
               const Center(
@@ -960,9 +903,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   child: CircularProgressIndicator(),
                 ),
               )
-            else if (_serieBase == null &&
-                _serieComparacao == null &&
-                _serieComparacao2 == null)
+            else if (_seriesSemanais.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: Center(
@@ -983,7 +924,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   ),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: _mostrarDetalhamentoDiaADia,
+                    onTap: _mostrarDetalhamentoSemanal,
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: LineChart(_buildLineChartData()),
@@ -995,69 +936,42 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
-                  onPressed: _mostrarDetalhamentoDiaADia,
+                  onPressed: _mostrarDetalhamentoSemanal,
                   icon: const Icon(Icons.list_alt_outlined, size: 18),
-                  label: const Text(
-                    'Ver dia a dia',
-                    style: TextStyle(fontSize: 13),
-                  ),
+                  label: const Text('Ver semanas', style: TextStyle(fontSize: 13)),
                 ),
               ),
               const SizedBox(height: 4),
 
               // LEGENDA
-              Row(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: _corBase,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _serieBase?.label ?? labelBase,
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  const SizedBox(width: 12),
-                  if (_serieComparacao != null) ...[
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: _corComparacao,
-                        borderRadius: BorderRadius.circular(4),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: _seriesSemanais.map((s) {
+                  final fmt = DateFormat('dd/MM');
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: s.cor,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _serieComparacao!.label,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  if (_serieComparacao2 != null) ...[
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: _corComparacao2,
-                        borderRadius: BorderRadius.circular(4),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${s.label} (${fmt.format(s.inicio)}-${fmt.format(s.fim)})',
+                        style: const TextStyle(fontSize: 11),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _serieComparacao2!.label,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  ],
-                ],
+                    ],
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 4),
               Text(
-                'Base: $labelBase • Comp.1: $labelComparacao1 • Comp.2: $labelComparacao2',
+                labelBase,
                 style: tema.textTheme.bodySmall?.copyWith(
                   color: Colors.grey[600],
                 ),
