@@ -419,15 +419,18 @@ class _FormasPagamentoPageState extends State<FormasPagamentoPage>
       showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+        final mq = MediaQuery.of(ctx);
+        final bottom = mq.viewInsets.bottom + mq.padding.bottom;
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Text(
                     edit == null ? 'Nova forma de pagamento' : 'Editar forma',
                     style: const TextStyle(
@@ -509,7 +512,8 @@ class _FormasPagamentoPageState extends State<FormasPagamentoPage>
                       },
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -559,15 +563,18 @@ class _FormasPagamentoPageState extends State<FormasPagamentoPage>
       showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+        final mq = MediaQuery.of(ctx);
+        final bottom = mq.viewInsets.bottom + mq.padding.bottom;
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Text(
                     edit == null ? 'Novo cartão de crédito' : 'Editar cartão',
                     style: const TextStyle(
@@ -683,7 +690,8 @@ class _FormasPagamentoPageState extends State<FormasPagamentoPage>
                       },
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },
