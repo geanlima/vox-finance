@@ -146,16 +146,19 @@ class _CategoriasPageState extends State<CategoriasPage> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+        final mq = MediaQuery.of(ctx);
+        final bottom = mq.viewInsets.bottom + mq.padding.bottom;
 
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   const Text(
                     'Nova categoria',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
@@ -240,7 +243,8 @@ class _CategoriasPageState extends State<CategoriasPage> {
                       },
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -264,16 +268,19 @@ class _CategoriasPageState extends State<CategoriasPage> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) {
-        final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+        final mq = MediaQuery.of(ctx);
+        final bottom = mq.viewInsets.bottom + mq.padding.bottom;
 
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   const Text(
                     'Editar categoria',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
@@ -364,7 +371,8 @@ class _CategoriasPageState extends State<CategoriasPage> {
                       ),
                     ],
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },

@@ -493,21 +493,25 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
           minChildSize: 0.55,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: tema.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
-                    blurRadius: 18,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+            final safeBottom = MediaQuery.of(context).padding.bottom;
+            return SafeArea(
+              top: false,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: tema.colorScheme.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   const SizedBox(height: 8),
                   Center(
                     child: Container(
@@ -545,7 +549,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   Expanded(
                     child: ListView.builder(
                       controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
                       itemCount: _seriesSemanais.length,
                       itemBuilder: (context, index) {
                         final s = _seriesSemanais[index];
@@ -629,7 +633,8 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                       },
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },
