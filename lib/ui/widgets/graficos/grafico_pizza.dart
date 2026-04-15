@@ -22,6 +22,8 @@ import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizad
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
+enum PeriodoResumoPizza { mensal, semanal }
+
 /// Grupo para resumo por forma/cartão
 class _GrupoFormaPagamento {
   final String label;
@@ -61,10 +63,12 @@ class GraficoPizzaComponent extends StatefulWidget {
     super.key,
     this.considerarSomentePagos = true,
     this.ignorarPagamentoFatura = true,
+    this.periodo = PeriodoResumoPizza.mensal,
   });
 
   final bool considerarSomentePagos;
   final bool ignorarPagamentoFatura;
+  final PeriodoResumoPizza periodo;
 
   @override
   State<GraficoPizzaComponent> createState() => _GraficoPizzaComponentState();
@@ -79,6 +83,8 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   late int _anoSelecionado;
   int _mesSelecionado = DateTime.now().month;
   late final List<int> _anosDisponiveis;
+
+  DateTime _dataReferenciaSemana = DateTime.now();
 
   TipoAgrupamentoPizza _tipo = TipoAgrupamentoPizza.categoria;
 
@@ -146,6 +152,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     super.initState();
     final agora = DateTime.now();
     _anoSelecionado = agora.year;
+    _dataReferenciaSemana = agora;
 
     // 5 anos para trás + ano atual + 3 anos para frente = 9 anos
     const anosAtras = 5;
@@ -158,6 +165,27 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     _carregarDados();
   }
 
+  DateTime _inicioSemana(DateTime base) {
+    // Semana padrão pt_BR: segunda (1) → domingo (7)
+    final d = DateTime(base.year, base.month, base.day);
+    return d.subtract(Duration(days: d.weekday - DateTime.monday));
+  }
+
+  DateTime _fimSemana(DateTime base) {
+    final ini = _inicioSemana(base);
+    return DateTime(ini.year, ini.month, ini.day + 6, 23, 59, 59);
+  }
+
+  String get _labelPeriodoAtual {
+    if (widget.periodo == PeriodoResumoPizza.mensal) {
+      return '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+    }
+    final ini = _inicioSemana(_dataReferenciaSemana);
+    final fim = _fimSemana(_dataReferenciaSemana);
+    final fmt = DateFormat('dd/MM/yyyy');
+    return 'Semana ${fmt.format(ini)} - ${fmt.format(fim)}';
+  }
+
   String _nomeMes(int mes) {
     final dt = DateTime(2000, mes, 1);
     final nome = DateFormat.MMMM('pt_BR').format(dt);
@@ -167,21 +195,21 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   Future<void> _carregarDados() async {
     setState(() => _carregando = true);
 
-    final inicioMes = DateTime(_anoSelecionado, _mesSelecionado, 1);
-    final fimMes = DateTime(
-      _anoSelecionado,
-      _mesSelecionado + 1,
-      0,
-      23,
-      59,
-      59,
-    );
+    final DateTime inicio;
+    final DateTime fim;
+    if (widget.periodo == PeriodoResumoPizza.mensal) {
+      inicio = DateTime(_anoSelecionado, _mesSelecionado, 1);
+      fim = DateTime(_anoSelecionado, _mesSelecionado + 1, 0, 23, 59, 59);
+    } else {
+      inicio = _inicioSemana(_dataReferenciaSemana);
+      fim = _fimSemana(_dataReferenciaSemana);
+    }
 
     final LancamentoRepository _repositoryLancamento = LancamentoRepository();
     final CartaoCreditoRepository _repositoryCartao = CartaoCreditoRepository();
     final ContaBancariaRepository _repositoryConta = ContaBancariaRepository();
 
-    final lista = await _repositoryLancamento.getDespesasByPeriodo(inicioMes, fimMes);
+    final lista = await _repositoryLancamento.getDespesasByPeriodo(inicio, fim);
     final cards = await _repositoryCartao.getCartoesCredito();
     final contas = await _repositoryConta.getContasBancarias();
 
@@ -688,7 +716,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final lancsPorGrupo = _lancamentosPorGrupoFormaPagamento();
     final grupos = totaisPorGrupo.values.toList();
 
-    final mesAnoLabel = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+    final mesAnoLabel = _labelPeriodoAtual;
 
     showModalBottomSheet(
       context: context,
@@ -771,8 +799,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                           onTap: () {
                             _mostrarDetalheLancamentos(
                               titulo: 'Detalhe por forma / cartão',
-                              subtitulo:
-                                  '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                              subtitulo: '${grupo.label} • $_labelPeriodoAtual',
                               lancamentos: lancs,
                               manterNoGrupo: (atual) =>
                                   _labelGrupoForma(atual) == grupo.label,
@@ -1248,7 +1275,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   @override
   Widget build(BuildContext context) {
-    final labelMesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+    final labelMesAno = _labelPeriodoAtual;
     final totalMesFormatado = _currency.format(_totalMes);
     final parceladoMesFormatado = _currency.format(_totalMesParcelado);
     final demaisMesFormatado = _currency.format(_totalMesDemais);
@@ -1271,62 +1298,94 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ====== LINHA 1: MÊS + ANO ======
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        value: _mesSelecionado,
-                        decoration: const InputDecoration(
-                          labelText: 'Mês',
-                          border: OutlineInputBorder(),
-                          isDense: true,
+                // ====== LINHA 1: PERÍODO ======
+                if (widget.periodo == PeriodoResumoPizza.mensal)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: _mesSelecionado,
+                          decoration: const InputDecoration(
+                            labelText: 'Mês',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          items: List.generate(12, (i) {
+                            final mes = i + 1;
+                            return DropdownMenuItem(
+                              value: mes,
+                              child: Text(_nomeMes(mes)),
+                            );
+                          }),
+                          onChanged: (novoMes) {
+                            if (novoMes == null) return;
+                            setState(() {
+                              _mesSelecionado = novoMes;
+                            });
+                            _carregarDados();
+                          },
                         ),
-                        items: List.generate(12, (i) {
-                          final mes = i + 1;
-                          return DropdownMenuItem(
-                            value: mes,
-                            child: Text(_nomeMes(mes)),
-                          );
-                        }),
-                        onChanged: (novoMes) {
-                          if (novoMes == null) return;
-                          setState(() {
-                            _mesSelecionado = novoMes;
-                          });
-                          _carregarDados();
-                        },
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: _anoSelecionado,
+                          decoration: const InputDecoration(
+                            labelText: 'Ano',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          items:
+                              _anosDisponiveis
+                                  .map(
+                                    (ano) => DropdownMenuItem(
+                                      value: ano,
+                                      child: Text(ano.toString()),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (novoAno) {
+                            if (novoAno == null) return;
+                            setState(() {
+                              _anoSelecionado = novoAno;
+                            });
+                            _carregarDados();
+                          },
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Semana',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    child: InkWell(
+                      onTap: () async {
+                        final base = _dataReferenciaSemana;
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: base,
+                          firstDate: DateTime(base.year - 5),
+                          lastDate: DateTime(base.year + 5),
+                        );
+                        if (picked == null) return;
+                        setState(() => _dataReferenciaSemana = picked);
+                        _carregarDados();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Expanded(child: Text(_labelPeriodoAtual)),
+                            const Icon(Icons.calendar_today_outlined, size: 18),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        value: _anoSelecionado,
-                        decoration: const InputDecoration(
-                          labelText: 'Ano',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items:
-                            _anosDisponiveis
-                                .map(
-                                  (ano) => DropdownMenuItem(
-                                    value: ano,
-                                    child: Text(ano.toString()),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged: (novoAno) {
-                          if (novoAno == null) return;
-                          setState(() {
-                            _anoSelecionado = novoAno;
-                          });
-                          _carregarDados();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
                 const SizedBox(height: 8),
 
                 // ====== LINHA 2: TIPO (AGRUPAR POR) ======
@@ -1723,8 +1782,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
               } else {
                 _mostrarDetalheLancamentos(
                   titulo: 'Detalhe por categoria',
-                  subtitulo:
-                      '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                  subtitulo: '${grupo.label} • $_labelPeriodoAtual',
                   lancamentos: lancs,
                   manterNoGrupo: (atual) =>
                       _labelCategoriaExibicao(atual) == grupo.label,
@@ -1814,7 +1872,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       ..sort((a, b) => b.total.compareTo(a.total));
     final total = entries.fold<double>(0.0, (acc, g) => acc + g.total);
 
-    final mesAno = '${_nomeMes(_mesSelecionado)} / $_anoSelecionado';
+    final mesAno = _labelPeriodoAtual;
 
     showModalBottomSheet(
       context: context,
@@ -1999,8 +2057,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
               final lancs = dataLancs[grupo.label] ?? const <Lancamento>[];
               _mostrarDetalheLancamentos(
                 titulo: 'Detalhe por forma / cartão',
-                subtitulo:
-                    '${grupo.label} • ${_nomeMes(_mesSelecionado)} / $_anoSelecionado',
+                  subtitulo: '${grupo.label} • $_labelPeriodoAtual',
                 lancamentos: lancs,
                 manterNoGrupo: (atual) =>
                     _labelGrupoForma(atual) == grupo.label,

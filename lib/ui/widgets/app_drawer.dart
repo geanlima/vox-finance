@@ -420,15 +420,21 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
               ],
             ),
-            _menuItem(
-              icon: Icons.calendar_month,
-              label: 'Resumo do mês (Gastos)',
-              route: '/graficos',
-            ),
-            _menuItem(
-              icon: Icons.compare_arrows,
-              label: 'Comparativo de meses',
-              route: '/comparativo-mes',
+            _treeGroup(
+              icon: Icons.assessment_outlined,
+              title: 'Resumo e comparativos',
+              children: [
+                _subItem(
+                  icon: Icons.calendar_month,
+                  title: 'Resumo (Mensal/Semanal)',
+                  route: '/graficos',
+                ),
+                _subItem(
+                  icon: Icons.compare_arrows,
+                  title: 'Comparativo de meses',
+                  route: '/comparativo-mes',
+                ),
+              ],
             ),
             _treeGroup(
               icon: Icons.integration_instructions_outlined,
