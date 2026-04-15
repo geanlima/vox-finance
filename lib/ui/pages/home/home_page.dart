@@ -975,15 +975,18 @@ class _HomePageState extends State<HomePage> {
         return DraggableScrollableSheet(
           expand: false,
           builder: (ctx, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+            final safeBottom = MediaQuery.of(ctx).padding.bottom;
+            return SafeArea(
+              top: false,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
                 ),
-              ),
-              child: Column(
-                children: [
+                child: Column(
+                  children: [
                   const SizedBox(height: 8),
                   // “pegador” em cima
                   Container(
@@ -1011,6 +1014,7 @@ class _HomePageState extends State<HomePage> {
                   Expanded(
                     child: ListView.separated(
                       controller: scrollController,
+                      padding: EdgeInsets.fromLTRB(0, 0, 0, safeBottom),
                       itemCount: itens.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (ctx, index) {
@@ -1103,7 +1107,8 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             );
           },

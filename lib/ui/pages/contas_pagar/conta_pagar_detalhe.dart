@@ -114,13 +114,17 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       builder: (ctx) {
         final currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
         final dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
+        final mq = MediaQuery.of(ctx);
+        final bottom = mq.viewInsets.bottom + mq.padding.bottom;
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               Center(
                 child: Container(
                   width: 40,
@@ -172,7 +176,8 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                   ],
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         );
       },

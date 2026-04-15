@@ -146,23 +146,26 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
       minChildSize: 0.45,
       maxChildSize: 0.92,
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: tema.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 18,
-                offset: const Offset(0, -4),
+        final safeBottom = MediaQuery.of(context).padding.bottom;
+        return SafeArea(
+          top: false,
+          child: Container(
+            decoration: BoxDecoration(
+              color: tema.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
               ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 18,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               const SizedBox(height: 8),
               Center(
                 child: Container(
@@ -262,7 +265,7 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
               Expanded(
                 child: ListView(
                   controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
                   children: grupos.values.map((g) {
                     return ResumoGastosDiaItem(
                       icone: g.icon,
@@ -291,7 +294,8 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
                   }).toList(),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         );
       },

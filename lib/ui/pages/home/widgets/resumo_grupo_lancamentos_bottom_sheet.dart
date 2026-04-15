@@ -67,14 +67,17 @@ class ResumoGrupoLancamentosBottomSheet extends StatelessWidget {
       minChildSize: 0.35,
       maxChildSize: 0.92,
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: tema.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        final safeBottom = MediaQuery.of(context).padding.bottom;
+        return SafeArea(
+          top: false,
+          child: Container(
+            decoration: BoxDecoration(
+              color: tema.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               const SizedBox(height: 8),
               Center(
                 child: Container(
@@ -136,7 +139,7 @@ class ResumoGrupoLancamentosBottomSheet extends StatelessWidget {
               Expanded(
                 child: ListView.separated(
                   controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+                  padding: EdgeInsets.fromLTRB(8, 8, 8, 16 + safeBottom),
                   itemCount: lancamentos.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
@@ -177,7 +180,8 @@ class ResumoGrupoLancamentosBottomSheet extends StatelessWidget {
                   },
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         );
       },

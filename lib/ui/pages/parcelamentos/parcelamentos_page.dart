@@ -32,7 +32,8 @@ String _chaveOrigem(ContaPagar c, Lancamento? l) {
     return 'c:$idCartao';
   }
 
-  final idConta = c.idConta ?? l?.idConta;
+  // Prioriza a conta do lançamento (é o que o usuário edita).
+  final idConta = l?.idConta ?? c.idConta;
   if (idConta != null) {
     return 'f:${forma.index}@b:$idConta';
   }
@@ -128,11 +129,15 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   /// Parcelas pendentes com vencimento no mês seguinte.
   double _totalProximoMes = 0.0;
   /// Soma do pendente só dos grupos exibidos (no filtro "finalizando este mês").
-  double _totalPendenteLista = 0.0;
   Map<String, double> _abertoPorOrigemChave = const {};
   Map<String, double> _nesteMesPorOrigemChave = const {};
   Map<String, double> _proximoMesPorOrigemChave = const {};
-  Map<String, double> _finalizandoMesPorOrigemChave = const {};
+  /// Mapa do último vencimento por grupo (para filtrar "somente última parcela").
+  Map<String, DateTime> _ultimoVencimentoPorGrupo = const {};
+  /// Para "finalizando": soma somente a ÚLTIMA parcela de cada grupo por mês de término.
+  Map<int, double> _finalizandoUltimaParcelaPorMes = const {};
+  Map<int, Map<String, double>> _finalizandoUltimaParcelaPorMesPorOrigemChave =
+      const {};
   List<ParcelamentoMesPendente> _outrosMeses = const [];
   /// Soma do pendente com vencimento após o próximo mês.
   double _totalDemaisMeses = 0.0;
@@ -242,6 +247,130 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _cardParcelamento(
+    BuildContext context,
+    ColorScheme cs,
+    ParcelamentoResumo r,
+    double pct,
+  ) {
+    return Card(
+      elevation: 0,
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: cs.outlineVariant.withOpacity(0.55),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => ContaPagarDetalhePage(
+                grupoParcelas: r.grupoParcelas,
+              ),
+            ),
+          ).then((_) => _carregar());
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                r.descricao,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+              if (r.formaDescricao != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  r.formaDescricao!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _pill(
+                    icon: Icons.event_available_outlined,
+                    text: 'Início ${_dateFormat.format(r.primeiroVencimento)}',
+                    cs: cs,
+                    bg: cs.secondary.withOpacity(0.10),
+                    fg: cs.secondary,
+                  ),
+                  _pill(
+                    icon: Icons.event_outlined,
+                    text: 'Término ${_dateFormat.format(r.ultimoVencimento)}',
+                    cs: cs,
+                    bg: cs.tertiary.withOpacity(0.10),
+                    fg: cs.tertiary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _pill(
+                    icon: Icons.payments_outlined,
+                    text: '${r.qtdPagas}/${r.quantidadeParcelas} pagas',
+                    cs: cs,
+                    bg: cs.primary.withOpacity(0.10),
+                    fg: cs.primary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Em aberto',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    _currency.format(r.valorPendente),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      color: r.valorPendente > 0 ? cs.error : cs.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -385,6 +514,9 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
 
     final resumos = <ParcelamentoResumo>[];
     final finalizandoMesPorOrigem = <String, double>{};
+    final finalizandoUltimaParcelaPorMes = <int, double>{};
+    final finalizandoUltimaParcelaPorMesPorOrigem = <int, Map<String, double>>{};
+    final ultimoVencPorGrupo = <String, DateTime>{};
 
     for (final entry in mapa.entries) {
       final grupo = entry.key;
@@ -398,26 +530,44 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       final qtdParcelas = itens.map((c) => c.parcelaTotal ?? 0).fold<int>(0, (a, v) => v > a ? v : a);
       final primeiro = itens.first.dataVencimento;
       final ultimo = itens.last.dataVencimento;
+      ultimoVencPorGrupo[grupo] = ultimo;
 
       // Filtros (aplicados por GRUPO)
       if (_filtro == ParcelamentosFiltro.emAberto && pendente <= 0) continue;
       if (_filtro == ParcelamentosFiltro.finalizandoMes) {
-        final finalizaEsteMes = ultimo.year == agora.year && ultimo.month == agora.month;
-        final temPendente = pendente > 0;
-        if (!finalizaEsteMes || !temPendente) continue;
+        final chaveFinaliza = _chaveAnoMes(DateTime(ultimo.year, ultimo.month, 1));
+        final chaveAgora = _chaveAnoMes(DateTime(agora.year, agora.month, 1));
+        final temPendente = pendente > 0.009;
+        if (!temPendente) continue;
+        // inclui o mês atual e os próximos meses (para ver o que termina em cada mês)
+        if (chaveFinaliza < chaveAgora) continue;
       }
 
       // Se o filtro ativo for "finalizando este mês", o detalhamento por origem
       // precisa refletir somente os grupos exibidos.
       if (_filtro == ParcelamentosFiltro.finalizandoMes) {
-        for (final c in itens.where((x) => !x.pago)) {
-          final idL = c.idLancamento;
+        // "Finalizando" = somente a ÚLTIMA parcela do grupo no mês de término.
+        final ultimaParcela = itens.last;
+        if (!ultimaParcela.pago) {
+          final chaveFinaliza =
+              _chaveAnoMes(DateTime(ultimo.year, ultimo.month, 1));
+          final idL = ultimaParcela.idLancamento;
           final k = _chaveOrigem(
-            c,
+            ultimaParcela,
             idL != null ? lancPorId[idL] : null,
           );
           finalizandoMesPorOrigem[k] =
-              (finalizandoMesPorOrigem[k] ?? 0.0) + c.valor;
+              (finalizandoMesPorOrigem[k] ?? 0.0) + ultimaParcela.valor;
+
+          finalizandoUltimaParcelaPorMes[chaveFinaliza] =
+              (finalizandoUltimaParcelaPorMes[chaveFinaliza] ?? 0.0) +
+                  ultimaParcela.valor;
+          finalizandoUltimaParcelaPorMesPorOrigem.putIfAbsent(
+            chaveFinaliza,
+            () => <String, double>{},
+          );
+          final bucket = finalizandoUltimaParcelaPorMesPorOrigem[chaveFinaliza]!;
+          bucket[k] = (bucket[k] ?? 0.0) + ultimaParcela.valor;
         }
       }
 
@@ -439,20 +589,22 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
 
     resumos.sort((a, b) => b.valorPendente.compareTo(a.valorPendente));
 
-    final totalPendenteLista =
-        resumos.fold<double>(0.0, (a, r) => a + r.valorPendente);
-
     if (!mounted) return;
     setState(() {
       _resumos = resumos;
       _totalEmAbertoGeral = totalGeral;
       _totalNesteMes = nesteMes;
       _totalProximoMes = proximoMes;
-      _totalPendenteLista = totalPendenteLista;
       _abertoPorOrigemChave = abertoPorOrigem;
       _nesteMesPorOrigemChave = nesteMesPorOrigem;
       _proximoMesPorOrigemChave = proximoMesPorOrigem;
-      _finalizandoMesPorOrigemChave = finalizandoMesPorOrigem;
+      _ultimoVencimentoPorGrupo = Map<String, DateTime>.from(ultimoVencPorGrupo);
+      _finalizandoUltimaParcelaPorMes =
+          Map<int, double>.from(finalizandoUltimaParcelaPorMes);
+      _finalizandoUltimaParcelaPorMesPorOrigemChave = {
+        for (final e in finalizandoUltimaParcelaPorMesPorOrigem.entries)
+          e.key: Map<String, double>.from(e.value),
+      };
       _outrosMeses = outrosMeses;
       _totalDemaisMeses = totalDemaisMeses;
       _demaisMesesExpandido = false;
@@ -534,6 +686,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     DateTime? inicio, // inclusivo (vencimento)
     DateTime? fim, // exclusivo (vencimento)
     Set<String>? somenteGrupos, // filtra por grupo_parcelas quando necessário
+    bool somenteUltimaParcela = false,
   }) async {
     if (valoresPorOrigem.isEmpty) return;
 
@@ -614,6 +767,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                             inicio: inicio,
                             fim: fim,
                             somenteGrupos: somenteGrupos,
+                            somenteUltimaParcela: somenteUltimaParcela,
                           );
                         },
                       );
@@ -636,6 +790,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     DateTime? inicio, // inclusivo (vencimento)
     DateTime? fim, // exclusivo (vencimento)
     Set<String>? somenteGrupos,
+    bool somenteUltimaParcela = false,
   }) async {
     // Recalcula a origem usando conta_pagar + lançamento (quando existir),
     // e filtra pelas mesmas regras do totalizador.
@@ -651,6 +806,14 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     for (final c in parcelas) {
       if (somenteGrupos != null && !somenteGrupos.contains(c.grupoParcelas)) {
         continue;
+      }
+      if (somenteUltimaParcela) {
+        final ultimo = _ultimoVencimentoPorGrupo[c.grupoParcelas];
+        if (ultimo == null) continue;
+        if (c.dataVencimento.millisecondsSinceEpoch !=
+            ultimo.millisecondsSinceEpoch) {
+          continue;
+        }
       }
       if (inicio != null || fim != null) {
         final v = c.dataVencimento;
@@ -799,6 +962,23 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     final ref = DateTime(_refFatura.year, _refFatura.month, 1);
     final proxMesRef = DateTime(_refFatura.year, _refFatura.month + 1, 1);
 
+    // Totais por mês (para o card do topo) quando filtro = finalizando.
+    final agora = DateTime.now();
+    final refFinalizando = DateTime(agora.year, agora.month, 1);
+    final kFinalizandoAtual = _chaveAnoMes(refFinalizando);
+    // Para o card "finalizando", usamos o mês de TÉRMINO (último vencimento do grupo)
+    // e somamos SOMENTE a última parcela de cada compra parcelada.
+    final totalFinalizandoAtual =
+        _finalizandoUltimaParcelaPorMes[kFinalizandoAtual] ?? 0.0;
+    final demaisFinalizando = _finalizandoUltimaParcelaPorMes.keys
+        .where((k) => k != kFinalizandoAtual)
+        .where((k) => (_finalizandoUltimaParcelaPorMes[k] ?? 0.0) > 0.009)
+        .toList()
+      ..sort();
+
+    final proximos2 = demaisFinalizando.take(2).toList();
+    final restantes = demaisFinalizando.skip(2).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Parcelamentos'),
@@ -813,7 +993,8 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
             ),
             tooltip: switch (_filtro) {
               ParcelamentosFiltro.emAberto => 'Mostrando: em aberto',
-              ParcelamentosFiltro.finalizandoMes => 'Mostrando: finalizando este mês',
+              ParcelamentosFiltro.finalizandoMes =>
+                'Mostrando: finalizando (próximos meses)',
               ParcelamentosFiltro.todos => 'Mostrando: todos',
             },
             onPressed:
@@ -855,56 +1036,239 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                     onTap: () {
                       final t =
                           _filtro == ParcelamentosFiltro.finalizandoMes
-                              ? _totalPendenteLista
+                              ? totalFinalizandoAtual
                               : _totalEmAbertoGeral;
                       if (_carregando || t <= 0) return;
                       _mostrarResumoPorOrigem(
                         context,
                         titulo:
                             _filtro == ParcelamentosFiltro.finalizandoMes
-                                ? 'Finalizando este mês por forma de pagamento'
+                                ? 'Finalizando (${DateFormat('MM/yyyy').format(refFinalizando)}) por forma de pagamento'
                                 : 'Em aberto por forma de pagamento',
                         valoresPorOrigem:
                             _filtro == ParcelamentosFiltro.finalizandoMes
-                                ? _finalizandoMesPorOrigemChave
+                                ? (_finalizandoUltimaParcelaPorMesPorOrigemChave[
+                                        kFinalizandoAtual] ??
+                                    const <String, double>{})
                                 : _abertoPorOrigemChave,
-                        somenteGrupos:
-                            _filtro == ParcelamentosFiltro.finalizandoMes
-                                ? _resumos.map((r) => r.grupoParcelas).toSet()
-                                : null,
+                        inicio: refFinalizando,
+                        fim: DateTime(refFinalizando.year, refFinalizando.month + 1, 1),
+                        somenteUltimaParcela:
+                            _filtro == ParcelamentosFiltro.finalizandoMes,
                       );
                     },
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       child:
                           _filtro == ParcelamentosFiltro.finalizandoMes
-                              ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: cs.tertiary.withOpacity(0.12),
-                                      borderRadius: BorderRadius.circular(14),
+                              ? Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: cs.tertiary.withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Icon(
+                                            Icons.event_available_outlined,
+                                            color: cs.tertiary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _kv(
+                                            label:
+                                                'Total finalizando este mês (${DateFormat('MM/yyyy').format(refFinalizando)})',
+                                            value: _currency.format(
+                                              totalFinalizandoAtual,
+                                            ),
+                                            cs: cs,
+                                            valueColor: cs.primary,
+                                            labelFontSize: 10.5,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    child: Icon(
-                                      Icons.event_available_outlined,
-                                      color: cs.tertiary,
+                                    Divider(
+                                      height: 18,
+                                      color:
+                                          cs.outlineVariant.withOpacity(0.5),
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _kv(
-                                      label:
-                                          'Total finalizando este mês (${DateFormat('MM/yyyy').format(ref)})',
-                                      value: _currency.format(_totalPendenteLista),
-                                      cs: cs,
-                                      valueColor: cs.primary,
-                                    ),
-                                  ),
-                                ],
-                              )
+                                    if (proximos2.isNotEmpty || restantes.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      // Próximos 2 meses (sempre 2 colunas, como no card da imagem)
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          for (var i = 0; i < 2; i++) ...[
+                                            Expanded(
+                                              child: Builder(
+                                                builder: (context) {
+                                                  if (i >= proximos2.length) {
+                                                    return const SizedBox.shrink();
+                                                  }
+                                                  final k = proximos2[i];
+                                                  final y = k ~/ 100;
+                                                  final m = k % 100;
+                                                  final dt = DateTime(y, m, 1);
+                                                  final totalMes =
+                                                      _finalizandoUltimaParcelaPorMes[k] ??
+                                                          0.0;
+                                                  return InkWell(
+                                                    borderRadius:
+                                                        BorderRadius.circular(12),
+                                                    onTap: totalMes <= 0.009
+                                                        ? null
+                                                        : () {
+                                                            final vals =
+                                                                _finalizandoUltimaParcelaPorMesPorOrigemChave[
+                                                                        k] ??
+                                                                    const <String, double>{};
+                                                            _mostrarResumoPorOrigem(
+                                                              context,
+                                                              titulo:
+                                                                  'Finalizando (${DateFormat('MM/yyyy').format(dt)}) por forma de pagamento',
+                                                              valoresPorOrigem: vals,
+                                                              inicio: dt,
+                                                              fim: DateTime(y, m + 1, 1),
+                                                              somenteUltimaParcela: true,
+                                                            );
+                                                          },
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                        vertical: 4,
+                                                      ),
+                                                      child: _kv(
+                                                        label:
+                                                            'Finalizando (${DateFormat('MM/yyyy').format(dt)})',
+                                                        value: _currency.format(
+                                                          totalMes,
+                                                        ),
+                                                        cs: cs,
+                                                        valueColor: cs.primary,
+                                                        labelFontSize: 10.5,
+                                                        valueFontSize: 14,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                            if (i == 0) const SizedBox(width: 12),
+                                          ],
+                                        ],
+                                      ),
+
+                                      Divider(
+                                        height: 14,
+                                        color:
+                                            cs.outlineVariant.withOpacity(0.5),
+                                      ),
+                                      if (restantes.isNotEmpty) ...[
+                                        Align(
+                                          alignment: Alignment.center,
+                                          child: IconButton(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            iconSize: 22,
+                                            color: cs.onSurfaceVariant,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints.tightFor(
+                                              width: 34,
+                                              height: 34,
+                                            ),
+                                            onPressed: () => setState(() {
+                                              _demaisMesesExpandido =
+                                                  !_demaisMesesExpandido;
+                                            }),
+                                            icon: Icon(
+                                              _demaisMesesExpandido
+                                                  ? Icons.keyboard_arrow_up
+                                                  : Icons.keyboard_arrow_down,
+                                            ),
+                                          ),
+                                        ),
+                                        if (_demaisMesesExpandido) ...[
+                                          const SizedBox(height: 6),
+                                          const Divider(height: 1),
+                                          ...restantes.map((k) {
+                                            final y = k ~/ 100;
+                                            final m = k % 100;
+                                            final dt = DateTime(y, m, 1);
+                                            final totalMes =
+                                                _finalizandoUltimaParcelaPorMes[
+                                                        k] ??
+                                                    0.0;
+                                            return Column(
+                                              children: [
+                                                InkWell(
+                                                  onTap: totalMes <= 0.009
+                                                      ? null
+                                                      : () {
+                                                          final vals =
+                                                              _finalizandoUltimaParcelaPorMesPorOrigemChave[
+                                                                      k] ??
+                                                                  const <String, double>{};
+                                                          _mostrarResumoPorOrigem(
+                                                            context,
+                                                            titulo:
+                                                                'Finalizando (${DateFormat('MM/yyyy').format(dt)}) por forma de pagamento',
+                                                            valoresPorOrigem: vals,
+                                                            inicio: dt,
+                                                            fim: DateTime(y, m + 1, 1),
+                                                            somenteUltimaParcela: true,
+                                                          );
+                                                        },
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                      vertical: 10,
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(
+                                                            'Finalizando (${DateFormat('MM/yyyy').format(dt)})',
+                                                            style:
+                                                                const TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight.w700,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          _currency.format(
+                                                            totalMes,
+                                                          ),
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w900,
+                                                            color: cs.error,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const Divider(height: 1),
+                                              ],
+                                            );
+                                          }),
+                                        ],
+                                      ],
+                                    ],
+                                  ],
+                                )
                               : Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
@@ -1292,7 +1656,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                 ParcelamentosFiltro.emAberto =>
                                   'Nenhum parcelamento em aberto.',
                                 ParcelamentosFiltro.finalizandoMes =>
-                                  'Nenhuma compra finalizando este mês.',
+                                  'Nenhuma compra finalizando nos próximos meses.',
                                 ParcelamentosFiltro.todos =>
                                   'Nenhum parcelamento encontrado.',
                               },
@@ -1302,141 +1666,19 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          itemCount: _resumos.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder: (context, i) {
-                            final r = _resumos[i];
-                            final pct =
-                                r.quantidadeParcelas == 0
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              itemCount: _resumos.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, i) {
+                                final r = _resumos[i];
+                                final pct = r.quantidadeParcelas == 0
                                     ? 0.0
-                                    : (r.qtdPagas / r.quantidadeParcelas).clamp(0.0, 1.0);
-
-                            return Card(
-                              elevation: 0,
-                              color: cs.surface,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(
-                                  color: cs.outlineVariant.withOpacity(0.55),
-                                ),
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () {
-                                  Navigator.push<void>(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => ContaPagarDetalhePage(
-                                        grupoParcelas: r.grupoParcelas,
-                                      ),
-                                    ),
-                                  ).then((_) => _carregar());
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(14),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        r.descricao,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                      if (r.formaDescricao != null) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          r.formaDescricao!,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: cs.onSurfaceVariant,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 10),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          _pill(
-                                            icon: Icons.event_available_outlined,
-                                            text:
-                                                'Início ${_dateFormat.format(r.primeiroVencimento)}',
-                                            cs: cs,
-                                            bg: cs.secondary.withOpacity(0.10),
-                                            fg: cs.secondary,
-                                          ),
-                                          _pill(
-                                            icon: Icons.event_outlined,
-                                            text:
-                                                'Término ${_dateFormat.format(r.ultimoVencimento)}',
-                                            cs: cs,
-                                            bg: cs.tertiary.withOpacity(0.10),
-                                            fg: cs.tertiary,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(999),
-                                              child: LinearProgressIndicator(
-                                                value: pct,
-                                                minHeight: 10,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          _pill(
-                                            icon: Icons.payments_outlined,
-                                            text:
-                                                '${r.qtdPagas}/${r.quantidadeParcelas} pagas',
-                                            cs: cs,
-                                            bg: cs.primary.withOpacity(0.10),
-                                            fg: cs.primary,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            'Em aberto',
-                                            style: TextStyle(
-                                              color: cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          Text(
-                                            _currency.format(r.valorPendente),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 16,
-                                              color:
-                                                  r.valorPendente > 0
-                                                      ? cs.error
-                                                      : cs.primary,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                                    : (r.qtdPagas / r.quantidadeParcelas)
+                                        .clamp(0.0, 1.0);
+                                return _cardParcelamento(context, cs, r, pct);
+                              },
+                            ),
                 ),
               ],
             ),
