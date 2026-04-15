@@ -22,6 +22,7 @@ import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
 import 'package:vox_finance/ui/pages/faturas_salvas/faturas_salvas_page.dart';
 import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 import 'package:vox_finance/ui/pages/parcelamentos/parcelamentos_page.dart';
+import 'package:vox_finance/ui/pages/monitoramento_precos/monitoramento_precos_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -394,6 +395,17 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.receipt_long,
                   title: 'Contas a pagar',
                   route: '/contas-pagar',
+                ),
+              ],
+            ),
+            _treeGroup(
+              icon: Icons.build_outlined,
+              title: 'Manutenção',
+              children: [
+                _subItem(
+                  icon: Icons.local_offer_outlined,
+                  title: 'Monitoramento de preços',
+                  route: MonitoramentoPrecosPage.routeName,
                 ),
               ],
             ),
