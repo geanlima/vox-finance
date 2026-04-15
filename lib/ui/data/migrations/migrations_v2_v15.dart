@@ -797,6 +797,135 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V41: Monitoramento de preços
+    // =========================
+    if (oldVersion < 41) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS monitoramento_precos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          produto TEXT NOT NULL,
+          preco REAL NOT NULL,
+          loja TEXT,
+          url TEXT,
+          criado_em INTEGER NOT NULL,
+          atualizado_em INTEGER NOT NULL
+        );
+      ''');
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_monitoramento_precos_produto
+          ON monitoramento_precos (produto);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V42: Foto no monitoramento de preços
+    // =========================
+    if (oldVersion < 42) {
+      await _addColumnSafe(db, 'monitoramento_precos', 'foto_path', 'TEXT');
+    }
+
+    // =========================
+    // V43: Lojas/ofertas por produto (monitoramento)
+    // =========================
+    if (oldVersion < 43) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS monitoramento_precos_ofertas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_monitoramento INTEGER NOT NULL,
+          loja TEXT,
+          url TEXT,
+          preco REAL NOT NULL,
+          criado_em INTEGER NOT NULL,
+          atualizado_em INTEGER NOT NULL
+        );
+      ''');
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_monitoramento_precos_ofertas_monitoramento
+          ON monitoramento_precos_ofertas (id_monitoramento);
+        ''');
+      } catch (_) {}
+
+      // Migração leve: se já existir (da versão antiga) loja/url/preco no produto,
+      // cria 1 oferta inicial para não perder informação.
+      try {
+        final produtos = await db.query(
+          'monitoramento_precos',
+          columns: ['id', 'loja', 'url', 'preco', 'criado_em', 'atualizado_em'],
+        );
+        for (final p in produtos) {
+          final id = (p['id'] as num?)?.toInt();
+          if (id == null) continue;
+          final loja = (p['loja'] as String?)?.trim();
+          final url = (p['url'] as String?)?.trim();
+          final preco = (p['preco'] as num?)?.toDouble() ?? 0.0;
+          final temAlgumDado =
+              preco > 0 || (loja != null && loja.isNotEmpty) || (url != null && url.isNotEmpty);
+          if (!temAlgumDado) continue;
+
+          await db.insert(
+            'monitoramento_precos_ofertas',
+            {
+              'id_monitoramento': id,
+              'loja': (loja != null && loja.isNotEmpty) ? loja : null,
+              'url': (url != null && url.isNotEmpty) ? url : null,
+              'preco': preco > 0 ? preco : 0.0,
+              'criado_em': (p['criado_em'] as num?)?.toInt() ??
+                  DateTime.now().millisecondsSinceEpoch,
+              'atualizado_em': (p['atualizado_em'] as num?)?.toInt() ??
+                  DateTime.now().millisecondsSinceEpoch,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      } catch (_) {}
+    }
+
+    // =========================
+    // V44: Histórico de preços (por loja/oferta)
+    // =========================
+    if (oldVersion < 44) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS monitoramento_precos_ofertas_historico (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_oferta INTEGER NOT NULL,
+          preco REAL NOT NULL,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_monitoramento_precos_hist_oferta
+          ON monitoramento_precos_ofertas_historico (id_oferta, criado_em);
+        ''');
+      } catch (_) {}
+
+      // seed: cria um ponto inicial para cada oferta existente
+      try {
+        final ofertas = await db.query(
+          'monitoramento_precos_ofertas',
+          columns: ['id', 'preco', 'criado_em', 'atualizado_em'],
+        );
+        for (final o in ofertas) {
+          final idOferta = (o['id'] as num?)?.toInt();
+          if (idOferta == null) continue;
+          final preco = (o['preco'] as num?)?.toDouble() ?? 0.0;
+          final whenMs =
+              (o['atualizado_em'] as num?)?.toInt() ??
+              (o['criado_em'] as num?)?.toInt() ??
+              DateTime.now().millisecondsSinceEpoch;
+          await db.insert(
+            'monitoramento_precos_ofertas_historico',
+            {'id_oferta': idOferta, 'preco': preco, 'criado_em': whenMs},
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      } catch (_) {}
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -999,6 +1128,62 @@ class MigrationV2toV15 {
         criado_em INTEGER NOT NULL
       );
     ''');
+
+    // MONITORAMENTO DE PREÇOS
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS monitoramento_precos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        produto TEXT NOT NULL,
+        preco REAL NOT NULL,
+        loja TEXT,
+        url TEXT,
+        foto_path TEXT,
+        criado_em INTEGER NOT NULL,
+        atualizado_em INTEGER NOT NULL
+      );
+    ''');
+    await _addColumnSafe(db, 'monitoramento_precos', 'foto_path', 'TEXT');
+    try {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_monitoramento_precos_produto
+        ON monitoramento_precos (produto);
+      ''');
+    } catch (_) {}
+
+    // MONITORAMENTO — OFERTAS (lojas)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS monitoramento_precos_ofertas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_monitoramento INTEGER NOT NULL,
+        loja TEXT,
+        url TEXT,
+        preco REAL NOT NULL,
+        criado_em INTEGER NOT NULL,
+        atualizado_em INTEGER NOT NULL
+      );
+    ''');
+    try {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_monitoramento_precos_ofertas_monitoramento
+        ON monitoramento_precos_ofertas (id_monitoramento);
+      ''');
+    } catch (_) {}
+
+    // MONITORAMENTO — HISTÓRICO
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS monitoramento_precos_ofertas_historico (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_oferta INTEGER NOT NULL,
+        preco REAL NOT NULL,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+    try {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_monitoramento_precos_hist_oferta
+        ON monitoramento_precos_ofertas_historico (id_oferta, criado_em);
+      ''');
+    } catch (_) {}
 
     // INVESTIMENTO — CARTEIRAS (layout Bluminers, etc.)
     await db.execute('''
