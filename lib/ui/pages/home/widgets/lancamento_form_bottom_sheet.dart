@@ -43,6 +43,11 @@ class LancamentoFormBottomSheet extends StatefulWidget {
   /// Chamado depois de salvar (para a Home recarregar a tela)
   final Future<void> Function() onSaved;
 
+  /// ✅ Opcional: permite capturar o lançamento salvo (ex.: para vínculo externo).
+  /// Observação: quando o usuário salva como "parcelado", o fluxo cria múltiplos
+  /// lançamentos e pode não haver um `id` único para retornar aqui.
+  final void Function(Lancamento lanc)? onSavedLancamento;
+
   const LancamentoFormBottomSheet({
     super.key,
     this.existente,
@@ -57,6 +62,7 @@ class LancamentoFormBottomSheet extends StatefulWidget {
     required this.cartoes,
     required this.contas,
     required this.onSaved,
+    this.onSavedLancamento,
     this.tipoInicial,
   });
 
@@ -984,6 +990,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
     }
 
     // 8) Atualiza tela e fecha modal
+    widget.onSavedLancamento?.call(lanc);
     await widget.onSaved();
     Navigator.pop(context);
   }
