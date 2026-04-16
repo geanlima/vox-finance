@@ -4,17 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 
-import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
+import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/data/models/planejamento_despesa.dart';
 import 'package:vox_finance/ui/data/models/planejamento_despesa_item.dart';
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/modules/planejamentos/planejamento_despesa_repository.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.dart';
 
 class PlanejamentoDespesaDetalhePage extends StatefulWidget {
   const PlanejamentoDespesaDetalhePage({
@@ -369,143 +374,65 @@ class _PlanejamentoDespesaDetalhePageState
     final p = _planejamento;
     if (p == null) return;
 
-    FormaPagamento forma = FormaPagamento.outros;
-    var dataHora =
+    // Abre o MESMO formulário do cadastro de lançamento (Home)
+    final dbService = DbService();
+    final cartoesRepo = CartaoCreditoRepository(dbService: dbService);
+    final contasRepo = ContaBancariaRepository(dbService: dbService);
+
+    final List<CartaoCredito> cartoes = await cartoesRepo.getCartoesCredito();
+    final List<ContaBancaria> contas =
+        await contasRepo.getContasBancarias(apenasAtivas: true);
+
+    final dataBase =
         it.dataReferencia != null
             ? DateTime(
               it.dataReferencia!.year,
               it.dataReferencia!.month,
               it.dataReferencia!.day,
-              12,
             )
-            : DateTime(p.dataInicio.year, p.dataInicio.month, p.dataInicio.day, 12);
-    var marcarPago = false;
+            : DateTime(p.dataInicio.year, p.dataInicio.month, p.dataInicio.day);
 
-    final ok = await showDialog<bool>(
+    Lancamento? salvo;
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDlg) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.green.shade600,
-                    radius: 18,
-                    child: const Icon(
-                      Icons.post_add,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text('Gerar lançamento'),
-                  ),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '${it.descricao}\n${_currency.format(it.valor)}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<FormaPagamento>(
-                      key: ValueKey<int>(forma.index),
-                      initialValue: forma,
-                      decoration: const InputDecoration(
-                        labelText: 'Forma de pagamento',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      items:
-                          FormaPagamento.values
-                              .map(
-                                (f) => DropdownMenuItem(
-                                  value: f,
-                                  child: Text(f.label),
-                                ),
-                              )
-                              .toList(),
-                      onChanged: (v) {
-                        if (v != null) setDlg(() => forma = v);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: ctx,
-                          initialDate: dataHora,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (d != null) {
-                          setDlg(() {
-                            dataHora = DateTime(d.year, d.month, d.day, 12);
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                      label: Text('Data ${_df.format(dataHora)}'),
-                    ),
-                    CheckboxListTile(
-                      value: marcarPago,
-                      onChanged: (v) => setDlg(() => marcarPago = v ?? false),
-                      title: const Text('Marcar como pago'),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Gerar lançamento'),
-                ),
-              ],
-            );
-          },
+        return LancamentoFormBottomSheet(
+          valorInicial: it.valor,
+          descricaoInicial: '${p.titulo}: ${it.descricao}',
+          formaInicial: FormaPagamento.credito,
+          pagamentoFaturaInicial: false,
+          tipoInicial: TipoMovimento.despesa,
+          dataSelecionada: dataBase,
+          currency: _currency,
+          dateDiaFormat: _df,
+          dbService: dbService,
+          cartoes: cartoes,
+          contas: contas,
+          onSaved: () async {},
+          onSavedLancamento: (l) => salvo = l,
         );
       },
     );
 
-    if (ok != true || !mounted) return;
+    final idLanc = salvo?.id;
+    if (idLanc == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Lançamento salvo, mas não consegui vincular automaticamente (ex.: parcelado).',
+          ),
+        ),
+      );
+      await _carregar();
+      return;
+    }
 
-    final l = Lancamento(
-      valor: it.valor,
-      descricao: '${p.titulo}: ${it.descricao}',
-      formaPagamento: forma,
-      dataHora: dataHora,
-      tipoMovimento: TipoMovimento.despesa,
-      tipoDespesa: TipoDespesa.variavel,
-      categoria: Categoria.outros,
-      idCategoriaPersonalizada: it.idCategoriaPersonalizada,
-      idSubcategoriaPersonalizada: it.idSubcategoriaPersonalizada,
-      pago: marcarPago,
-      dataPagamento: marcarPago ? DateTime.now() : null,
-    );
-    await _lancRepo.salvar(l);
-    final newLid = l.id;
-    if (newLid == null) return;
-
-    await _repo.definirLancamentoDoItem(
-      itemId: itemId,
-      idLancamento: newLid,
-    );
+    await _repo.definirLancamentoDoItem(itemId: itemId, idLancamento: idLanc);
     await _carregar();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -528,35 +455,13 @@ class _PlanejamentoDespesaDetalhePageState
     final p = _planejamento;
     if (p == null) return;
 
-    final inicio = DateTime(p.dataInicio.year, p.dataInicio.month, p.dataInicio.day);
-    final fim = p.dataFim;
-
-    final despesas = await _lancRepo.getDespesasByPeriodo(inicio, fim);
-    final ocupados = <int>{};
-    for (final x in _itens) {
-      if (x.id == itemId) continue;
-      if (x.idLancamento != null) {
-        ocupados.add(x.idLancamento!);
-      }
-    }
-    final candidatos =
-        despesas
-            .where((l) => l.id != null && !ocupados.contains(l.id!))
-            .toList();
-
-    if (!mounted) return;
-    if (candidatos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            despesas.isEmpty
-                ? 'Nenhuma despesa entre ${_df.format(inicio)} e ${_df.format(fim)}.'
-                : 'Todas as despesas desse período já estão em outros itens.',
-          ),
-        ),
-      );
-      return;
-    }
+    final base = it.dataReferencia != null
+        ? DateTime(
+            it.dataReferencia!.year,
+            it.dataReferencia!.month,
+            it.dataReferencia!.day,
+          )
+        : DateTime(p.dataInicio.year, p.dataInicio.month, p.dataInicio.day);
 
     final escolhido = await showModalBottomSheet<Lancamento>(
       context: context,
@@ -568,67 +473,234 @@ class _PlanejamentoDespesaDetalhePageState
         final mq = MediaQuery.of(ctx);
         final bottom = mq.padding.bottom;
         final sec = Theme.of(ctx).colorScheme.secondary;
-        return SafeArea(
-          top: false,
-          child: SizedBox(
-            height: mq.size.height * 0.55,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: sec,
-                        radius: 20,
-                        child: const Icon(
-                          Icons.link,
-                          color: Colors.white,
-                          size: 22,
-                        ),
+
+        DateTime dia = DateTime(base.year, base.month, base.day);
+        var carregando = true;
+        var despesasDoDia = const <Lancamento>[];
+        var candidatos = const <Lancamento>[];
+        String? msgVazio;
+
+        Future<void> carregarDia(BuildContext ctx, StateSetter setModal) async {
+          if (!ctx.mounted) return;
+          setModal(() {
+            carregando = true;
+            msgVazio = null;
+          });
+          final despesas = await _lancRepo.getDespesasByDay(dia);
+
+          final ocupados = <int>{};
+          for (final x in _itens) {
+            if (x.id == itemId) continue;
+            if (x.idLancamento != null) {
+              ocupados.add(x.idLancamento!);
+            }
+          }
+          final cand =
+              despesas
+                  .where((l) => l.id != null && !ocupados.contains(l.id!))
+                  .toList();
+
+          if (!ctx.mounted) return;
+          setModal(() {
+            despesasDoDia = despesas;
+            candidatos = cand;
+            carregando = false;
+            if (cand.isEmpty) {
+              msgVazio =
+                  despesasDoDia.isEmpty
+                      ? 'Nenhuma despesa em ${_df.format(dia)}.'
+                      : 'Todas as despesas desse dia já estão em outros itens.';
+            }
+          });
+        }
+
+        var iniciou = false;
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            if (!iniciou) {
+              iniciou = true;
+              Future.microtask(() => carregarDia(ctx, setModal));
+            }
+
+            Future<void> selecionarData() async {
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: dia,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2100),
+                useRootNavigator: true,
+              );
+              if (picked == null) return;
+              if (!ctx.mounted) return;
+              setModal(() {
+                dia = DateTime(picked.year, picked.month, picked.day);
+              });
+              await carregarDia(ctx, setModal);
+            }
+
+            Future<void> mudarDia(int delta) async {
+              if (!ctx.mounted) return;
+              setModal(() {
+                dia = DateTime(dia.year, dia.month, dia.day + delta);
+              });
+              await carregarDia(ctx, setModal);
+            }
+
+            return SafeArea(
+              top: false,
+              child: SizedBox(
+                height: mq.size.height * 0.62,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: sec,
+                            radius: 20,
+                            child: const Icon(
+                              Icons.link,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Vincular lançamento',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Vincular lançamento',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .outlineVariant
+                                .withOpacity(0.55),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                onPressed:
+                                    carregando ? null : () => mudarDia(-1),
+                                icon: const Icon(Icons.chevron_left),
+                                tooltip: 'Dia anterior',
+                              ),
+                              Expanded(
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: carregando ? null : selecionarData,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 10,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(
+                                          Icons.calendar_today_outlined,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _df.format(dia),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed:
+                                    carregando ? null : () => mudarDia(1),
+                                icon: const Icon(Icons.chevron_right),
+                                tooltip: 'Próximo dia',
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    if (carregando)
+                      const LinearProgressIndicator(minHeight: 2),
+                    Expanded(
+                      child:
+                          msgVazio != null
+                              ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(
+                                    msgVazio!,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              )
+                              : ListView.separated(
+                                padding:
+                                    EdgeInsets.fromLTRB(16, 0, 16, 16 + bottom),
+                                itemCount: candidatos.length,
+                                separatorBuilder:
+                                    (_, __) => const SizedBox(height: 8),
+                                itemBuilder: (_, i) {
+                                  final l = candidatos[i];
+                                  return Card(
+                                    margin: EdgeInsets.zero,
+                                    elevation: 1.5,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: ListTile(
+                                      title: Text(
+                                        l.descricao,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        '${_df.format(l.dataHora)} · ${l.formaPagamento.label}',
+                                      ),
+                                      trailing: Text(
+                                        _currency.format(l.valor),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      onTap: () => Navigator.pop(ctx, l),
+                                    ),
+                                  );
+                                },
+                              ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottom),
-                    itemCount: candidatos.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final l = candidatos[i];
-                      return ListTile(
-                        title: Text(
-                          l.descricao,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          '${_df.format(l.dataHora)} · ${l.formaPagamento.label}',
-                        ),
-                        trailing: Text(
-                          _currency.format(l.valor),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        onTap: () => Navigator.pop(ctx, l),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
