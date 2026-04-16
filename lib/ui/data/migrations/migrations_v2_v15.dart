@@ -926,6 +926,56 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V45: Planejamento de gastos (viagem, evento, churrasco, etc.)
+    // =========================
+    if (oldVersion < 45) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS planejamentos_despesa (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          titulo TEXT NOT NULL,
+          local TEXT,
+          data_inicio INTEGER NOT NULL,
+          data_fim INTEGER NOT NULL,
+          notas TEXT,
+          criado_em INTEGER NOT NULL,
+          atualizado_em INTEGER NOT NULL
+        );
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS planejamentos_despesa_itens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          planejamento_id INTEGER NOT NULL,
+          descricao TEXT NOT NULL,
+          valor REAL NOT NULL DEFAULT 0,
+          id_categoria_personalizada INTEGER,
+          id_subcategoria_personalizada INTEGER,
+          data_referencia INTEGER,
+          ordem INTEGER NOT NULL DEFAULT 0,
+          criado_em INTEGER NOT NULL,
+          FOREIGN KEY (planejamento_id) REFERENCES planejamentos_despesa (id) ON DELETE CASCADE
+        );
+      ''');
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_planej_desp_itens_planejamento
+          ON planejamentos_despesa_itens (planejamento_id, ordem);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V46: Vínculo item planejamento → lançamento
+    // =========================
+    if (oldVersion < 46) {
+      await _addColumnSafe(
+        db,
+        'planejamentos_despesa_itens',
+        'id_lancamento',
+        'INTEGER',
+      );
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -1281,6 +1331,46 @@ class MigrationV2toV15 {
 
     // 🔹 POPULA CATEGORIAS PADRÃO (apenas se tabela estiver vazia)
     await _seedCategoriasPadrao(db);
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS planejamentos_despesa (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        titulo TEXT NOT NULL,
+        local TEXT,
+        data_inicio INTEGER NOT NULL,
+        data_fim INTEGER NOT NULL,
+        notas TEXT,
+        criado_em INTEGER NOT NULL,
+        atualizado_em INTEGER NOT NULL
+      );
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS planejamentos_despesa_itens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        planejamento_id INTEGER NOT NULL,
+        descricao TEXT NOT NULL,
+        valor REAL NOT NULL DEFAULT 0,
+        id_categoria_personalizada INTEGER,
+        id_subcategoria_personalizada INTEGER,
+        data_referencia INTEGER,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        criado_em INTEGER NOT NULL,
+        FOREIGN KEY (planejamento_id) REFERENCES planejamentos_despesa (id) ON DELETE CASCADE
+      );
+    ''');
+    try {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_planej_desp_itens_planejamento
+        ON planejamentos_despesa_itens (planejamento_id, ordem);
+      ''');
+    } catch (_) {}
+
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'id_lancamento',
+      'INTEGER',
+    );
 
     // INVESTIMENTOS - BLUMINERS
     await db.execute('''
