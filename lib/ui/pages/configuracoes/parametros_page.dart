@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/service/api_access_test_service.dart';
 import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
+import 'package:vox_finance/ui/core/service/backup_auto_cloud_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 class ParametrosPage extends StatefulWidget {
@@ -21,6 +22,12 @@ class _ParametrosPageState extends State<ParametrosPage> {
   final _apiCtrl = TextEditingController();
   bool _testandoApi = false;
 
+  bool _backupAutoEnabled = false;
+  TimeOfDay _backupAutoTime = const TimeOfDay(hour: 2, minute: 0);
+  DateTime? _backupAutoLastRun;
+  bool? _backupAutoLastOk;
+  String? _backupAutoLastError;
+
   @override
   void initState() {
     super.initState();
@@ -30,11 +37,22 @@ class _ParametrosPageState extends State<ParametrosPage> {
   Future<void> _load() async {
     final d = await AppParametrosService.instance.getDataInicioUso();
     final api = await AppParametrosService.instance.getApiBaseUrl();
+    final enabled = await BackupAutoCloudService.instance.isEnabled();
+    final mins = await BackupAutoCloudService.instance.timeMinutes();
+    final (lastRun, lastOk, lastErr) =
+        await BackupAutoCloudService.instance.lastRun();
     if (!mounted) return;
     setState(() {
       _dataInicio = d;
       _apiBaseUrl = api;
       _apiCtrl.text = api ?? '';
+      _backupAutoEnabled = enabled;
+      if (mins != null) {
+        _backupAutoTime = TimeOfDay(hour: mins ~/ 60, minute: mins % 60);
+      }
+      _backupAutoLastRun = lastRun;
+      _backupAutoLastOk = lastOk;
+      _backupAutoLastError = lastErr;
       _loading = false;
     });
   }
@@ -186,6 +204,119 @@ class _ParametrosPageState extends State<ParametrosPage> {
               : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Backup automático na nuvem',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Quando ativado, o app agenda um backup diário na nuvem no horário definido '
+                            '(o mesmo backup da tela “Backup na nuvem”).',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Ativar backup automático'),
+                            value: _backupAutoEnabled,
+                            onChanged: (v) async {
+                              setState(() => _backupAutoEnabled = v);
+                              await BackupAutoCloudService.instance.setEnabled(v);
+                              final (lastRun, lastOk, lastErr) =
+                                  await BackupAutoCloudService.instance.lastRun();
+                              if (!mounted) return;
+                              setState(() {
+                                _backupAutoLastRun = lastRun;
+                                _backupAutoLastOk = lastOk;
+                                _backupAutoLastError = lastErr;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    v
+                                        ? 'Backup automático ativado.'
+                                        : 'Backup automático desativado.',
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: !_backupAutoEnabled
+                                      ? null
+                                      : () async {
+                                          final picked = await showTimePicker(
+                                            context: context,
+                                            initialTime: _backupAutoTime,
+                                          );
+                                          if (picked == null || !mounted) return;
+                                          setState(() => _backupAutoTime = picked);
+                                          await BackupAutoCloudService.instance.setDailyTime(
+                                            hour: picked.hour,
+                                            minute: picked.minute,
+                                          );
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Horário salvo: ${picked.format(context)}',
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                  icon: const Icon(Icons.schedule, size: 20),
+                                  label: Text(
+                                    'Horário: ${_backupAutoTime.format(context)}',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_backupAutoLastRun != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Última execução: '
+                              '${DateFormat("dd/MM/yyyy 'às' HH:mm").format(_backupAutoLastRun!)}'
+                              '${_backupAutoLastOk == null ? '' : (_backupAutoLastOk! ? ' · OK' : ' · Falha')}',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (_backupAutoLastOk == false &&
+                                _backupAutoLastError != null &&
+                                _backupAutoLastError!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                _backupAutoLastError!,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
