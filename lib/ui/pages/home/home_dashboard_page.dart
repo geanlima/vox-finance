@@ -13,10 +13,57 @@ import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 import 'package:vox_finance/ui/core/service/despesas_fixas_aviso_service.dart';
 import 'package:vox_finance/ui/core/service/metrica_alerta_service.dart';
+import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
+import 'package:vox_finance/ui/data/models/metrica_limite.dart';
+import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
+import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/modules/metricas/metrica_limite_repository.dart';
 import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
+import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+
+class _OrcamentoMesLinha {
+  final MetricaLimite metrica;
+  final String titulo;
+  final ConsumoMetrica consumo;
+
+  const _OrcamentoMesLinha({
+    required this.metrica,
+    required this.titulo,
+    required this.consumo,
+  });
+}
+
+String _tituloMetricaDashboard(
+  MetricaLimite m,
+  List<CategoriaPersonalizada> cats,
+  Map<int, List<SubcategoriaPersonalizada>> subsByCat,
+) {
+  if (m.idCategoriaPersonalizada <= 0) {
+    return 'Todas as despesas';
+  }
+  CategoriaPersonalizada? cat;
+  try {
+    cat = cats.firstWhere((c) => c.id == m.idCategoriaPersonalizada);
+  } catch (_) {
+    cat = null;
+  }
+  if (m.idSubcategoriaPersonalizada != null) {
+    final subs = subsByCat[m.idCategoriaPersonalizada] ?? const [];
+    SubcategoriaPersonalizada? sub;
+    try {
+      sub = subs.firstWhere((s) => s.id == m.idSubcategoriaPersonalizada);
+    } catch (_) {
+      sub = null;
+    }
+    if (sub != null) {
+      return '${cat?.nome ?? 'Categoria'} • ${sub.nome}';
+    }
+  }
+  return cat?.nome ?? 'Categoria';
+}
 
 class HomeDashboardPage extends StatefulWidget {
   const HomeDashboardPage({super.key});
@@ -44,6 +91,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   List<Lembrete> _lembretesHoje = const [];
   List<Lembrete> _lembretesAtrasados = const [];
   List<AlertaMetricaItem> _alertasMetricas = const [];
+  List<_OrcamentoMesLinha> _orcamentoMesLinhas = const [];
   String? _msgMetrica;
   DateTime? _parcelamentosAte;
   String? _baseUltimaFaturaLabel;
@@ -181,6 +229,49 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         onHomeMessage: (m) => msg ??= m,
       );
 
+      var orcamentoLinhas = const <_OrcamentoMesLinha>[];
+      try {
+        final mensais = await _metricaRepo.listarPorPeriodo(
+          periodoTipo: 'mensal',
+          ano: agora.year,
+          mes: agora.month,
+          semana: null,
+        );
+        final ativos =
+            mensais.where((m) => m.ativo && m.id != null).toList();
+        if (ativos.isNotEmpty) {
+          final catRepo = CategoriaPersonalizadaRepository();
+          final subRepo = SubcategoriaPersonalizadaRepository();
+          final cats = await catRepo.listarTodas();
+          final subsByCat = <int, List<SubcategoriaPersonalizada>>{};
+          for (final c in cats) {
+            if (c.id == null) continue;
+            subsByCat[c.id!] = await subRepo.listarPorCategoria(c.id!);
+          }
+          final linhas = <_OrcamentoMesLinha>[];
+          for (final m in ativos) {
+            final consumo = await _metricaRepo.calcularConsumo(
+              metrica: m,
+              referenciaPeriodo: agora,
+            );
+            final titulo = _tituloMetricaDashboard(m, cats, subsByCat);
+            linhas.add(
+              _OrcamentoMesLinha(
+                metrica: m,
+                titulo: titulo,
+                consumo: consumo,
+              ),
+            );
+          }
+          linhas.sort(
+            (a, b) => b.consumo.percentual.compareTo(a.consumo.percentual),
+          );
+          orcamentoLinhas = linhas;
+        }
+      } catch (_) {
+        orcamentoLinhas = const [];
+      }
+
       if (!mounted) return;
       setState(() {
         _vencimentosHoje = deHoje;
@@ -192,6 +283,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _lembretesHoje = lembretesHoje;
         _lembretesAtrasados = lembretesAtrasados;
         _alertasMetricas = alertas;
+        _orcamentoMesLinhas = orcamentoLinhas;
         _msgMetrica = msg;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -220,6 +312,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _baseUltimaFaturaLabel = null;
         _lembretesHoje = const [];
         _lembretesAtrasados = const [];
+        _orcamentoMesLinhas = const [];
       });
     } finally {
       if (!mounted) return;
@@ -296,6 +389,175 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     final current = ModalRoute.of(context)?.settings.name;
     if (current == route) return;
     Navigator.pushNamed(context, route, arguments: args);
+  }
+
+  Widget _orcamentoMesCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final ref = DateTime.now();
+    final mesLabel = DateFormat('MM/yyyy').format(ref);
+    const maxLinhas = 4;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.55)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _goMain(MetricasPage.routeName),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(Icons.savings_outlined, color: cs.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Orçamento do mês ($mesLabel)',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _orcamentoMesLinhas.isEmpty
+                              ? 'Defina limites por categoria (ou geral) e acompanhe o quanto já gastou.'
+                              : '${_orcamentoMesLinhas.length} métrica(s) mensal(is) ativa(s). Toque para gerenciar.',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => _goMain(MetricasPage.routeName),
+                    child: const Text('Gerenciar'),
+                  ),
+                ],
+              ),
+              if (_orcamentoMesLinhas.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                ..._orcamentoMesLinhas.take(maxLinhas).map((linha) {
+                  final m = linha.metrica;
+                  final c = linha.consumo;
+                  final pctRaw = c.percentual;
+                  final pctBar = (pctRaw / 100.0).clamp(0.0, 1.0);
+                  Color barColor = cs.primary;
+                  if (pctRaw >= m.alertaPct2) {
+                    barColor = cs.error;
+                  } else if (pctRaw >= m.alertaPct1) {
+                    barColor = Colors.orange.shade800;
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                linha.titulo,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${pctRaw.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color:
+                                    pctRaw >= m.alertaPct2
+                                        ? cs.error
+                                        : cs.onSurfaceVariant,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: pctBar,
+                            minHeight: 6,
+                            backgroundColor: cs.surfaceContainerHighest
+                                .withOpacity(0.85),
+                            valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _currency.format(c.total),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.onSurface,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              'limite ${_currency.format(c.limite)}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                if (_orcamentoMesLinhas.length > maxLinhas)
+                  Text(
+                    '+ ${_orcamentoMesLinhas.length - maxLinhas} outra(s) em Métricas',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _actionCard({
@@ -419,6 +681,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
               : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  _orcamentoMesCard(context),
+                  const SizedBox(height: 12),
                   if (_alertasMetricas.isNotEmpty) ...[
                     _actionCard(
                       context: context,
@@ -435,9 +699,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                                     '${a.consumo.percentual.toStringAsFixed(0)}% do limite',
                               )
                               .join(' • '),
-                      onTap: () => _goMain('/metricas'),
+                      onTap: () => _goMain(MetricasPage.routeName),
                       ctaText: 'Ver',
-                      onCta: () => _goMain('/metricas'),
+                      onCta: () => _goMain(MetricasPage.routeName),
                       accent: Colors.orange.shade800,
                     ),
                     const SizedBox(height: 12),
