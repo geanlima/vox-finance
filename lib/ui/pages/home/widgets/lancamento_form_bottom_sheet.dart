@@ -418,34 +418,59 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            ChoiceChip(
-                              label: const Text('Despesa'),
-                              selected: _tipoMovimento == TipoMovimento.despesa,
-                              onSelected: (sel) {
-                                if (!sel) return;
+                        Builder(
+                          builder: (context) {
+                            final cs = Theme.of(context).colorScheme;
+                            return SegmentedButton<TipoMovimento>(
+                              showSelectedIcon: false,
+                              style: ButtonStyle(
+                                side: WidgetStateProperty.all(
+                                  BorderSide(color: cs.outline.withValues(alpha: 0.35)),
+                                ),
+                                backgroundColor: WidgetStateProperty.resolveWith((states) {
+                                  if (states.contains(WidgetState.selected)) {
+                                    return cs.primaryContainer;
+                                  }
+                                  return cs.surfaceContainerHighest.withValues(alpha: 0.65);
+                                }),
+                                foregroundColor: WidgetStateProperty.resolveWith((states) {
+                                  if (states.contains(WidgetState.selected)) {
+                                    return cs.onPrimaryContainer;
+                                  }
+                                  return cs.onSurface;
+                                }),
+                                iconColor: WidgetStateProperty.resolveWith((states) {
+                                  if (states.contains(WidgetState.selected)) {
+                                    return cs.onPrimaryContainer;
+                                  }
+                                  return cs.onSurfaceVariant;
+                                }),
+                              ),
+                              segments: const [
+                                ButtonSegment(
+                                  value: TipoMovimento.despesa,
+                                  label: Text('Despesa'),
+                                  icon: Icon(Icons.arrow_downward),
+                                ),
+                                ButtonSegment(
+                                  value: TipoMovimento.receita,
+                                  label: Text('Receita'),
+                                  icon: Icon(Icons.arrow_upward),
+                                ),
+                              ],
+                              selected: {_tipoMovimento},
+                              onSelectionChanged: (s) {
+                                final v = s.first;
+                                if (v == _tipoMovimento) return;
                                 setState(() {
-                                  _tipoMovimento = TipoMovimento.despesa;
+                                  _tipoMovimento = v;
                                   _categoriaSelecionada = null;
+                                  _subcategoriaSelecionada = null;
                                 });
                                 _carregarCategoriasPersonalizadas();
                               },
-                            ),
-                            const SizedBox(width: 8),
-                            ChoiceChip(
-                              label: const Text('Receita'),
-                              selected: _tipoMovimento == TipoMovimento.receita,
-                              onSelected: (sel) {
-                                if (!sel) return;
-                                setState(() {
-                                  _tipoMovimento = TipoMovimento.receita;
-                                  _categoriaSelecionada = null;
-                                });
-                                _carregarCategoriasPersonalizadas();
-                              },
-                            ),
-                          ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 16),
 
