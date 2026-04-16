@@ -237,9 +237,6 @@ class _PlanejamentosDespesaListPageState
     );
 
     await _repo.salvar(p);
-    tituloCtrl.dispose();
-    localCtrl.dispose();
-    notasCtrl.dispose();
     await _carregar();
   }
 
