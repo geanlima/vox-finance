@@ -23,7 +23,8 @@ class LancamentoRepository {
 
   // 🔒 PADRÃO DO BANCO (AJUSTE SE PRECISAR)
   static const int tipoDespesaDb = 1;
-  static const int tipoReceitaDb = 2;
+  /// Índice de [TipoMovimento.receita] no banco (0).
+  static const int tipoReceitaDb = 0;
 
   // ----------------- Helpers -----------------
 
