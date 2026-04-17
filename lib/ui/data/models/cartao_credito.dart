@@ -34,6 +34,7 @@ class CartaoCredito {
   String get label => '$descricao • **** $ultimos4Digitos';
 
   factory CartaoCredito.fromMap(Map<String, dynamic> map) {
+    final rawControla = map['controla_fatura'];
     return CartaoCredito(
       id: map['id'] as int?,
       descricao: (map['descricao'] ?? '') as String,
@@ -43,7 +44,9 @@ class CartaoCredito {
       diaVencimento: map['dia_vencimento'] as int?,
       diaFechamento: map['dia_fechamento'] as int?,
       tipo: TipoCartao.values[(map['tipo'] as int?) ?? 0],
-      controlaFatura: (map['controla_fatura'] as int?) == 1,
+      // Bases antigas podem ter NULL: por compatibilidade, considera "true".
+      controlaFatura:
+          rawControla == null ? true : ((rawControla as int?) == 1),
       limite: (map['limite'] as num?)?.toDouble(),
       codigoCartaoApi: map['codigo_cartao_api'] as String?,
     );

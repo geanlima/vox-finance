@@ -79,6 +79,9 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   double _totalPendente = 0;
   double get _totalPago => _totalGeral - _totalPendente;
 
+  // 🔢 Totalizadores (somente faturas de cartão)
+  double _totalFaturasGeral = 0;
+
   Widget _totChip(
     BuildContext context,
     String label,
@@ -171,13 +174,22 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
     // Agrupa por grupoParcelas
     final mapa = <String, List<ContaPagar>>{};
+    final mapaFaturas = <String, List<ContaPagar>>{};
 
     for (final conta in todasParcelas) {
       final grupo = conta.grupoParcelas; // agora é obrigatório (String)
+      // Não considerar "contas a pagar" geradas apenas para o lançamento de fatura do cartão.
+      // Elas existem para controle do vencimento da fatura, mas não devem entrar nos totais
+      // (nem na lista) de Contas a pagar.
+      if (grupo.startsWith('FATURA_')) {
+        mapaFaturas.putIfAbsent(grupo, () => []).add(conta);
+        continue;
+      }
       mapa.putIfAbsent(grupo, () => []).add(conta);
     }
 
     final resumos = <ContaPagarResumo>[];
+    final resumosFaturas = <ContaPagarResumo>[];
 
     for (final entry in mapa.entries) {
       final grupo = entry.key;
@@ -230,6 +242,47 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       );
     }
 
+    for (final entry in mapaFaturas.entries) {
+      final grupo = entry.key;
+      final parcelas = entry.value;
+
+      parcelas.sort((a, b) {
+        final pa = a.parcelaNumero ?? 0;
+        final pb = b.parcelaNumero ?? 0;
+        return pa.compareTo(pb);
+      });
+
+      final descricao = parcelas.first.descricao;
+      final qtd = parcelas.length;
+      final valorTotal = parcelas.fold<double>(0, (soma, c) => soma + c.valor);
+      final valorPendente =
+          parcelas.where((c) => !c.pago).fold<double>(0, (soma, c) => soma + c.valor);
+
+      final primeiroVencimento = parcelas
+          .map((c) => c.dataVencimento)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+      final ultimoVencimento = parcelas
+          .map((c) => c.dataVencimento)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+
+      final todasPagas = parcelas.every((c) => c.pago);
+      final formaDescricao = await _obterDescricaoFormaPagamento(grupo);
+
+      resumosFaturas.add(
+        ContaPagarResumo(
+          grupoParcelas: grupo,
+          descricao: descricao,
+          valorTotal: valorTotal,
+          valorPendente: valorPendente,
+          quantidadeParcelas: qtd,
+          primeiroVencimento: primeiroVencimento,
+          ultimoVencimento: qtd > 1 ? ultimoVencimento : null,
+          todasPagas: todasPagas,
+          formaDescricao: formaDescricao,
+        ),
+      );
+    }
+
     // 🔢 recalcula totalizadores
     double totalGeral = 0;
     double totalPendente = 0;
@@ -238,11 +291,17 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       totalPendente += r.valorPendente;
     }
 
+    double totalFaturasGeral = 0;
+    for (final r in resumosFaturas) {
+      totalFaturasGeral += r.valorTotal;
+    }
+
     setState(() {
       _resumos = resumos;
       _carregando = false;
       _totalGeral = totalGeral;
       _totalPendente = totalPendente;
+      _totalFaturasGeral = totalFaturasGeral;
     });
   }
 
@@ -885,12 +944,30 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      _totChip(
-                        context,
-                        'Total geral (pago + pendente)',
-                        _currency.format(_totalGeral),
-                        Theme.of(context).colorScheme.primary,
-                        fullWidth: true,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _totChip(
+                              context,
+                              'Total geral',
+                              _currency.format(_totalGeral),
+                              Theme.of(context).colorScheme.primary,
+                              fullWidth: true,
+                            ),
+                          ),
+                          if (_totalFaturasGeral > 0) ...[
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _totChip(
+                                context,
+                                'Faturas cartão',
+                                _currency.format(_totalFaturasGeral),
+                                Theme.of(context).colorScheme.primary,
+                                fullWidth: true,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),

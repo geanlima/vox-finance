@@ -223,7 +223,8 @@ class _HomePageState extends State<HomePage> {
       final diaVenc = c.diaVencimento;
       if (id == null || diaVenc == null) continue;
 
-      final dataVencimento = DateTime(diaSel.year, diaSel.month, diaVenc);
+      // Vencimento da fatura do mês de fechamento é no mês seguinte.
+      final dataVencimento = DateTime(diaSel.year, diaSel.month + 1, diaVenc);
       final rows = await db.query(
         'lancamentos',
         where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
@@ -965,12 +966,100 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    final parceladas = itens.where(_ehCompraParcelada).toList();
+    final doMes = itens.where((l) => !_ehCompraParcelada(l)).toList();
+    final totalParceladas =
+        parceladas.fold<double>(0.0, (t, l) => t + l.valor);
+    final totalDoMes = doMes.fold<double>(0.0, (t, l) => t + l.valor);
+    final totalGeral = totalParceladas + totalDoMes;
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final theme = Theme.of(ctx);
+        final cs = theme.colorScheme;
+
+        Widget cardLancamento(Lancamento lanc) {
+          final linhaGrupo = lanc.linhaDetalheGrupoParcela;
+          return Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            elevation: 1.5,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    child: Icon(
+                      lanc.formaPagamento.icon,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          lanc.descricao,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _dateHoraFormat.format(lanc.dataHora),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Forma de pagamento: '
+                          '${lanc.formaPagamento.label.toUpperCase()}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (linhaGrupo != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            linhaGrupo,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _currency.format(lanc.valor),
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
 
         return DraggableScrollableSheet(
           expand: false,
@@ -1012,99 +1101,129 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 8),
 
                   Expanded(
-                    child: ListView.separated(
+                    child: ListView(
                       controller: scrollController,
                       padding: EdgeInsets.fromLTRB(0, 0, 0, safeBottom),
-                      itemCount: itens.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (ctx, index) {
-                        final lanc = itens[index];
-                        final linhaGrupo = lanc.linhaDetalheGrupoParcela;
-
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          elevation: 1.5,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Ícone da forma de pagamento
-                                CircleAvatar(
-                                  radius: 18,
-                                  child: Icon(
-                                    lanc.formaPagamento.icon,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-
-                                // Descrição + data + forma + grupo/parcela
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                          child: Card(
+                            elevation: 0,
+                            color: cs.surfaceContainerHighest.withOpacity(0.5),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        lanc.descricao,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
+                                      const Text(
+                                        'Total da fatura',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
                                       Text(
-                                        _dateHoraFormat.format(lanc.dataHora),
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.black54,
+                                        _currency.format(totalGeral),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                          color: cs.primary,
+                                          fontSize: 16,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Forma de pagamento: '
-                                        '${lanc.formaPagamento.label.toUpperCase()}',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      if (linhaGrupo != null) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          linhaGrupo,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      ],
                                     ],
                                   ),
-                                ),
-
-                                const SizedBox(width: 8),
-
-                                // Valor à direita
-                                Text(
-                                  _currency.format(lanc.valor),
-                                  textAlign: TextAlign.right,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Parceladas (${parceladas.length})',
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      Text(
+                                        _currency.format(totalParceladas),
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Do mês / à vista (${doMes.length})',
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      Text(
+                                        _currency.format(totalDoMes),
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        );
-                      },
+                        ),
+                        if (parceladas.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                            child: Text(
+                              'Parceladas',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          ...parceladas.expand((l) sync* {
+                            yield Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              child: cardLancamento(l),
+                            );
+                          }),
+                        ],
+                        if (doMes.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                            child: Text(
+                              'Do mês / à vista',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          ...doMes.expand((l) sync* {
+                            yield Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              child: cardLancamento(l),
+                            );
+                          }),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
                     ),
                   ),
                   ],

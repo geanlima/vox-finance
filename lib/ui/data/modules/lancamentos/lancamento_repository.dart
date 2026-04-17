@@ -1,12 +1,13 @@
 // lib/ui/data/modules/lancamentos/lancamento_repository.dart
 import 'package:sqflite/sqflite.dart';
 
-import 'package:vox_finance/ui/data/database/database_initializer.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/renda_mensal_resumo.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/service/db_service.dart';
 
 class TotaisDia {
   final double totalDespesas;
@@ -16,7 +17,9 @@ class TotaisDia {
 }
 
 class LancamentoRepository {
-  Future<Database> get _db async => DatabaseInitializer.initialize();
+  final DbService _dbService = DbService.instance;
+  Future<Database> get _db async => _dbService.db;
+  final CartaoCreditoRepository _cartaoRepo = CartaoCreditoRepository();
 
   // 🔒 PADRÃO DO BANCO (AJUSTE SE PRECISAR)
   static const int tipoDespesaDb = 1;
@@ -58,11 +61,29 @@ class LancamentoRepository {
 
   Future<void> deletarPorGrupo(String grupoParcelas) async {
     final db = await _db;
+    final lancsAntes = await getParcelasPorGrupo(grupoParcelas);
     await db.delete(
       'lancamentos',
       where: 'grupo_parcelas = ?',
       whereArgs: [grupoParcelas],
     );
+
+    // Recalcula as faturas afetadas pelas parcelas removidas (se eram compras no crédito).
+    final vistos = <String>{};
+    for (final l in lancsAntes) {
+      if (l.pagamentoFatura) continue;
+      if (l.formaPagamento != FormaPagamento.credito) continue;
+      final idCartao = l.idCartao;
+      if (idCartao == null) continue;
+      final key =
+          '$idCartao:${l.dataHora.year}-${l.dataHora.month}-${l.dataHora.day}';
+      if (vistos.contains(key)) continue;
+      vistos.add(key);
+      await _cartaoRepo.gerarFaturaDoCartaoParaCompra(
+        idCartao: idCartao,
+        dataCompra: l.dataHora,
+      );
+    }
   }
 
   Future<Lancamento?> getById(int id) async {
@@ -106,15 +127,77 @@ class LancamentoRepository {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       lanc.id = id;
+      await _atualizarFaturaSeNecessario(lanc);
       return id;
     } else {
-      return db.update(
+      final antes = await getById(lanc.id!);
+      final rows = await db.update(
         'lancamentos',
         lanc.toMap(),
         where: 'id = ?',
         whereArgs: [lanc.id],
       );
+      await _sincronizarContaPagarVinculada(lanc);
+
+      // Se o lançamento era uma compra no crédito, recalcula a fatura do ciclo "antigo"
+      // (ex.: trocou cartão/forma/data/valor).
+      if (antes != null &&
+          !antes.pagamentoFatura &&
+          antes.formaPagamento == FormaPagamento.credito &&
+          antes.idCartao != null) {
+        await _cartaoRepo.gerarFaturaDoCartaoParaCompra(
+          idCartao: antes.idCartao!,
+          dataCompra: antes.dataHora,
+        );
+      }
+      await _atualizarFaturaSeNecessario(lanc);
+      return rows;
     }
+  }
+
+  Future<void> _sincronizarContaPagarVinculada(Lancamento lanc) async {
+    final id = lanc.id;
+    if (id == null) return;
+    final db = await _db;
+
+    // Atualiza a conta a pagar vinculada ao lançamento (se existir).
+    // Não mexe em data_vencimento aqui porque pode seguir regras do cartão.
+    await db.update(
+      'conta_pagar',
+      {
+        'descricao': lanc.descricao,
+        'valor': lanc.valor,
+        'forma_pagamento': lanc.formaPagamento.index,
+        'id_cartao': lanc.idCartao,
+        'id_conta': lanc.idConta,
+      },
+      where: 'id_lancamento = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> _atualizarFaturaSeNecessario(Lancamento lanc) async {
+    // Gera/atualiza fatura do cartão a cada compra no crédito.
+    // Evita loop: o próprio lançamento de "pagamento de fatura" não deve disparar recálculo.
+    if (lanc.pagamentoFatura) return;
+    if (lanc.formaPagamento != FormaPagamento.credito) return;
+    final idCartao = lanc.idCartao;
+    if (idCartao == null) return;
+
+    // Recalcula a fatura do ciclo correto (fechamento→fechamento) para esta compra.
+    // Ex.: fechamento dia 08. Compra em 03/05 pertence ao ciclo que começou em 08/04
+    // e vence em 15/05 (portanto precisa recalcular o "mês de fechamento" 04).
+    await _cartaoRepo.gerarFaturaDoCartaoParaCompra(
+      idCartao: idCartao,
+      dataCompra: lanc.dataHora,
+    );
+
+    // Também garante as faturas futuras (mesmo sem compras) para facilitar o planejamento.
+    await _cartaoRepo.garantirFaturasFuturasAPartirDaCompra(
+      idCartao: idCartao,
+      dataCompra: lanc.dataHora,
+      mesesFuturos: 12,
+    );
   }
 
   /// Salva o lançamento e replica forma/cartão/conta nos demais lançamentos
@@ -169,16 +252,31 @@ class LancamentoRepository {
         );
       }
     });
+
+    await _atualizarFaturaSeNecessario(lanc);
   }
 
   Future<void> deletar(int id) async {
     final db = await _db;
+
+    final antes = await getById(id);
 
     // 1) Apaga a parcela de contas a pagar vinculada a este lançamento
     await db.delete('conta_pagar', where: 'id_lancamento = ?', whereArgs: [id]);
 
     // 2) Apaga o lançamento em si
     await db.delete('lancamentos', where: 'id = ?', whereArgs: [id]);
+
+    // 3) Se era compra no crédito, recalcula a fatura do ciclo correspondente.
+    if (antes != null &&
+        !antes.pagamentoFatura &&
+        antes.formaPagamento == FormaPagamento.credito &&
+        antes.idCartao != null) {
+      await _cartaoRepo.gerarFaturaDoCartaoParaCompra(
+        idCartao: antes.idCartao!,
+        dataCompra: antes.dataHora,
+      );
+    }
   }
 
   // ----------------- Consultas por data -----------------
@@ -450,6 +548,27 @@ class LancamentoRepository {
         await txn.insert('conta_pagar', dadosConta);
       }
     });
+
+    // Após salvar parcelas no crédito, garante a fatura atualizada para TODOS os meses
+    // que receberam parcelas (cada parcela entra em um ciclo de fechamento diferente).
+    if (base.formaPagamento == FormaPagamento.credito &&
+        base.idCartao != null &&
+        grupo.isNotEmpty) {
+      final parcelas = await getParcelasPorGrupo(grupo);
+      for (final p in parcelas) {
+        if (p.pagamentoFatura) continue;
+        if (p.formaPagamento != FormaPagamento.credito) continue;
+        if (p.idCartao == null) continue;
+        await _cartaoRepo.gerarFaturaDoCartaoParaCompra(
+          idCartao: p.idCartao!,
+          dataCompra: p.dataHora,
+        );
+      }
+      return;
+    }
+
+    // Fallback: parcela única / outras formas
+    await _atualizarFaturaSeNecessario(base);
   }
 
   DateTime _calcularVencimentoCartaoParaConta({
