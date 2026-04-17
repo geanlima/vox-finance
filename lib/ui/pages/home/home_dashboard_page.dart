@@ -1,4 +1,4 @@
-// ignore_for_file: control_flow_in_finally
+// ignore_for_file: control_flow_in_finally, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,7 +6,9 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/models/lembrete.dart';
 import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
@@ -23,6 +25,22 @@ import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+
+class _FaturaCartaoHomeItem {
+  final int idCartao;
+  final String cartaoLabel;
+  final DateTime vencimento;
+  final double valor;
+  final bool pago;
+
+  const _FaturaCartaoHomeItem({
+    required this.idCartao,
+    required this.cartaoLabel,
+    required this.vencimento,
+    required this.valor,
+    required this.pago,
+  });
+}
 
 class _OrcamentoMesLinha {
   final MetricaLimite metrica;
@@ -78,6 +96,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   final _lembreteRepo = LembreteRepository();
   final _despesasFixasService = DespesasFixasService();
   final _metricaRepo = MetricaLimiteRepository();
+  final _cartaoRepo = CartaoCreditoRepository();
   late final MetricaAlertaService _metricaAlertaService =
       MetricaAlertaService(_metricaRepo);
   final _speech = stt.SpeechToText();
@@ -92,6 +111,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   List<Lembrete> _lembretesAtrasados = const [];
   List<AlertaMetricaItem> _alertasMetricas = const [];
   List<_OrcamentoMesLinha> _orcamentoMesLinhas = const [];
+  List<_FaturaCartaoHomeItem> _faturasCartao = const [];
   String? _msgMetrica;
   DateTime? _parcelamentosAte;
   String? _baseUltimaFaturaLabel;
@@ -214,6 +234,47 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         }
       }
 
+      // ✅ Faturas de cartão: próxima fatura por cartão (vencimento >= hoje)
+      final cartoes = await _cartaoRepo.getCartoesCredito();
+      final cartoesValidos =
+          cartoes
+              .where((c) => c.id != null)
+              .where(
+                (c) =>
+                    (c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos) &&
+                    c.controlaFatura &&
+                    c.diaVencimento != null &&
+                    c.diaFechamento != null,
+              )
+              .toList();
+      final inicioHojeMs = inicioHoje.millisecondsSinceEpoch;
+      final faturasCartao = <_FaturaCartaoHomeItem>[];
+      for (final c in cartoesValidos) {
+        final idCartao = c.id!;
+        final fatRows = await db.query(
+          'lancamentos',
+          columns: const ['data_hora', 'valor', 'pago'],
+          where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ?',
+          whereArgs: [idCartao, inicioHojeMs],
+          orderBy: 'data_hora ASC',
+          limit: 1,
+        );
+        if (fatRows.isEmpty) continue;
+        final ms = (fatRows.first['data_hora'] as num).toInt();
+        final valor = (fatRows.first['valor'] as num).toDouble();
+        final pago = (fatRows.first['pago'] as num?)?.toInt() == 1;
+        faturasCartao.add(
+          _FaturaCartaoHomeItem(
+            idCartao: idCartao,
+            cartaoLabel: c.label,
+            vencimento: DateTime.fromMillisecondsSinceEpoch(ms),
+            valor: valor,
+            pago: pago,
+          ),
+        );
+      }
+      faturasCartao.sort((a, b) => a.vencimento.compareTo(b.vencimento));
+
       final lembretesHoje = await _lembreteRepo.pendentesNoIntervalo(
         inicioHoje,
         fimHoje,
@@ -284,6 +345,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         _lembretesAtrasados = lembretesAtrasados;
         _alertasMetricas = alertas;
         _orcamentoMesLinhas = orcamentoLinhas;
+        _faturasCartao = faturasCartao;
         _msgMetrica = msg;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -318,6 +380,170 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Widget _faturasCartaoCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (_faturasCartao.isEmpty) {
+      return _actionCard(
+        context: context,
+        icon: Icons.credit_card_outlined,
+        title: 'Faturas do cartão',
+        subtitle: 'Nenhuma fatura futura encontrada para acompanhar.',
+        onTap: () => _goMain('/lancamentos'),
+        ctaText: 'Ver',
+        onCta: () => _goMain('/lancamentos'),
+        accent: cs.primary,
+      );
+    }
+
+    final prox = _faturasCartao.first;
+    final qtd = _faturasCartao.length;
+    final venc = DateFormat('dd/MM/yyyy').format(prox.vencimento);
+    final sub = '$qtd cartão(ões) · próxima em $venc';
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.55)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _goMainArgs('/lancamentos', prox.vencimento),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(Icons.receipt_long_outlined, color: cs.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Faturas do cartão',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          sub,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => _goMainArgs('/lancamentos', prox.vencimento),
+                    child: const Text('Ver'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Divider(height: 1),
+              const SizedBox(height: 10),
+              ..._faturasCartao.take(3).map((f) {
+                final v = DateFormat('dd/MM').format(f.vencimento);
+                final cor = f.pago ? Colors.green.shade700 : cs.error;
+                final status = f.pago ? 'Paga' : 'Em aberto';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: InkWell(
+                    onTap: () => _goMainArgs('/lancamentos', f.vencimento),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                f.cartaoLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: cs.onSurface.withOpacity(0.92),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Venc. $v · $status',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              _currency.format(f.valor),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: cor,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              f.pago ? 'OK' : 'Pendente',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              if (_faturasCartao.length > 3)
+                Text(
+                  '+ ${_faturasCartao.length - 3} cartão(ões)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _onMicPressed() async {
@@ -682,6 +908,8 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _orcamentoMesCard(context),
+                  const SizedBox(height: 12),
+                  _faturasCartaoCard(context),
                   const SizedBox(height: 12),
                   if (_alertasMetricas.isNotEmpty) ...[
                     _actionCard(

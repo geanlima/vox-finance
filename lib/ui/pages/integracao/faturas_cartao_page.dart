@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repos
 import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_repository.dart';
 import 'package:vox_finance/ui/pages/integracao/fatura_api_detalhe_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/pages/faturas_salvas/fatura_salva_detalhe_page.dart';
 
 /// Faturas por cartão cadastrado e período (código de integração no cartão).
 class FaturasCartaoPage extends StatefulWidget {
@@ -549,6 +550,12 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
     final codigoApi = cartao!.codigoCartaoApi?.trim() ?? '';
     if (codigoApi.isEmpty) return;
 
+    final existentePeriodo = await _cacheRepo.getUltimaPorCartaoPeriodo(
+      idCartaoLocal: cartao.id!,
+      ano: _ano,
+      mes: _mes,
+    );
+
     final sourceKey = _cacheRepo.buildSourceKey(
       idCartaoLocal: cartao.id!,
       ano: _ano,
@@ -556,6 +563,81 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
       f: f,
     );
     final existente = await _cacheRepo.getBySourceKey(sourceKey);
+
+    // Se já existe cache no período (mesmo que sourceKey tenha mudado),
+    // oferecemos atualizar mantendo associações e abrir para revisar.
+    if (existentePeriodo != null && existente == null) {
+      final escolha = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Fatura local já existe'),
+            content: const Text(
+              'Já existe uma fatura salva localmente para este cartão e período.\n\n'
+              'Você pode abrir a existente para associar itens, ou atualizar os dados '
+              'mantendo as associações já feitas (quando o item da API for o mesmo).',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'cancelar'),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'abrir'),
+                child: const Text('Abrir existente'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, 'atualizar'),
+                child: const Text('Atualizar'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (escolha == null || escolha == 'cancelar') return;
+
+      if (escolha == 'abrir') {
+        if (!context.mounted) return;
+        Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => FaturaSalvaDetalhePage(
+              fatura: existentePeriodo,
+              cartao: cartao,
+              periodoLabel: '$_periodoLabel de $_ano',
+            ),
+          ),
+        );
+        return;
+      }
+
+      // atualizar (mantendo vínculos por item_api_id quando possível)
+      final idCache = await _cacheRepo.salvarFaturaFromApi(
+        idCartaoLocal: cartao.id!,
+        codigoCartaoApi: codigoApi,
+        ano: _ano,
+        mes: _mes,
+        f: f,
+        overwrite: true,
+      );
+
+      final fat = await _cacheRepo.getById(idCache);
+      if (!context.mounted) return;
+      if (fat != null) {
+        Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => FaturaSalvaDetalhePage(
+              fatura: fat,
+              cartao: cartao,
+              periodoLabel: '$_periodoLabel de $_ano',
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     bool overwrite = false;
     if (existente != null) {
@@ -567,7 +649,7 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
                 title: const Text('Sobrescrever fatura salva?'),
                 content: const Text(
                   'Já existe uma fatura salva localmente para este cartão/período.\n\n'
-                  'Se continuar, os dados salvos serão substituídos.',
+                  'Se continuar, os dados salvos serão substituídos (mantendo associações quando possível).',
                 ),
                 actions: [
                   TextButton(
@@ -586,7 +668,7 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
       if (!overwrite) return;
     }
 
-    await _cacheRepo.salvarFaturaFromApi(
+    final idCache = await _cacheRepo.salvarFaturaFromApi(
       idCartaoLocal: cartao.id!,
       codigoCartaoApi: codigoApi,
       ano: _ano,
@@ -597,7 +679,26 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Fatura salva localmente.')),
+      SnackBar(
+        content: Text(
+          existente == null ? 'Fatura salva localmente.' : 'Fatura atualizada.',
+        ),
+      ),
     );
+
+    final fat = await _cacheRepo.getById(idCache);
+    if (!context.mounted) return;
+    if (fat != null) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => FaturaSalvaDetalhePage(
+            fatura: fat,
+            cartao: cartao,
+            periodoLabel: '$_periodoLabel de $_ano',
+          ),
+        ),
+      );
+    }
   }
 }

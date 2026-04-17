@@ -4,6 +4,8 @@ import 'package:vox_finance/ui/core/service/api_access_test_service.dart';
 import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
 import 'package:vox_finance/ui/core/service/backup_auto_cloud_service.dart';
 import 'package:vox_finance/ui/core/service/notifications_service.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/models/fatura_geracao_opcao.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 class ParametrosPage extends StatefulWidget {
@@ -17,6 +19,7 @@ class ParametrosPage extends StatefulWidget {
 
 class _ParametrosPageState extends State<ParametrosPage> {
   final _fmt = DateFormat('dd/MM/yyyy');
+  final _cartaoRepo = CartaoCreditoRepository();
   bool _loading = true;
   DateTime? _dataInicio;
   String? _apiBaseUrl;
@@ -28,6 +31,8 @@ class _ParametrosPageState extends State<ParametrosPage> {
   DateTime? _backupAutoLastRun;
   bool? _backupAutoLastOk;
   String? _backupAutoLastError;
+
+  bool _gerandoFaturas = false;
 
   @override
   void initState() {
@@ -192,6 +197,138 @@ class _ParametrosPageState extends State<ParametrosPage> {
     );
   }
 
+  Future<void> _gerarFaturasExistentes() async {
+    setState(() => _gerandoFaturas = true);
+    try {
+      final opcoes = await _cartaoRepo.listarOpcoesGeracaoFaturas();
+      if (!mounted) return;
+      if (opcoes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nenhuma fatura encontrada para gerar.')),
+        );
+        return;
+      }
+
+      final selecionadas = <String>{for (final o in opcoes) o.key};
+
+      final confirmar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setModal) {
+              return AlertDialog(
+                title: const Text('Gerar faturas por período'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => setModal(() {
+                                selecionadas
+                                  ..clear()
+                                  ..addAll(opcoes.map((e) => e.key));
+                              }),
+                              child: const Text('Marcar tudo'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => setModal(() {
+                                selecionadas.clear();
+                              }),
+                              child: const Text('Limpar'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: opcoes.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final o = opcoes[i];
+                            final checked = selecionadas.contains(o.key);
+                            return CheckboxListTile(
+                              value: checked,
+                              onChanged: (v) => setModal(() {
+                                if (v == true) {
+                                  selecionadas.add(o.key);
+                                } else {
+                                  selecionadas.remove(o.key);
+                                }
+                              }),
+                              title: Text('${o.referenciaLabel} · ${o.cartaoLabel}'),
+                              subtitle: Text('Vencimento: ${o.vencimentoLabel}'),
+                              controlAffinity: ListTileControlAffinity.leading,
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Se já existir fatura salva para o período, ela será apagada e gerada novamente.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed:
+                        selecionadas.isEmpty
+                            ? null
+                            : () => Navigator.pop(ctx, true),
+                    child: Text('Gerar (${selecionadas.length})'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (confirmar != true) return;
+
+      final selecionadasObjs = <FaturaGeracaoOpcao>[
+        for (final o in opcoes)
+          if (selecionadas.contains(o.key)) o,
+      ];
+
+      final qtd = await _cartaoRepo.gerarFaturasSelecionadas(
+        selecionadas: selecionadasObjs,
+        overwrite: true,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Faturas geradas/atualizadas: $qtd')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao gerar faturas: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _gerandoFaturas = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -205,6 +342,51 @@ class _ParametrosPageState extends State<ParametrosPage> {
               : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Faturas de cartão',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Cria/atualiza automaticamente o lançamento de fatura no vencimento '
+                            'conforme você lança compras no crédito. Se você já tem lançamentos antigos, '
+                            'use o botão abaixo para gerar as faturas retroativamente.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _gerandoFaturas ? null : _gerarFaturasExistentes,
+                              icon: _gerandoFaturas
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.receipt_long_outlined, size: 20),
+                              label: Text(
+                                _gerandoFaturas
+                                    ? 'Gerando...'
+                                    : 'Gerar faturas dos lançamentos existentes',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),

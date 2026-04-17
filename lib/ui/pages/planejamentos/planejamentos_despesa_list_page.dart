@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -272,7 +272,9 @@ class _PlanejamentosDespesaListPageState
     await Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => PlanejamentoDespesaDetalhePage(planejamentoId: planejamentoId),
+        builder:
+            (_) =>
+                PlanejamentoDespesaDetalhePage(planejamentoId: planejamentoId),
       ),
     );
     await _carregar();
@@ -287,10 +289,10 @@ class _PlanejamentosDespesaListPageState
     final danger = Colors.red.shade400;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Planejar gastos'),
+      appBar: AppBar(title: const Text('Planejar gastos')),
+      drawer: const AppDrawer(
+        currentRoute: PlanejamentosDespesaListPage.routeName,
       ),
-      drawer: const AppDrawer(currentRoute: PlanejamentosDespesaListPage.routeName),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _abrirForm(),
         icon: const Icon(Icons.add),
@@ -384,11 +386,7 @@ class _PlanejamentosDespesaListPageState
                             onPressed: (_) => _abrirForm(existente: p),
                             backgroundColor: cs.surface,
                             borderRadius: BorderRadius.circular(12),
-                            child: Icon(
-                              Icons.edit,
-                              size: 28,
-                              color: primary,
-                            ),
+                            child: Icon(Icons.edit, size: 28, color: primary),
                           ),
                           CustomSlidableAction(
                             onPressed: (_) => _confirmarExcluir(p),

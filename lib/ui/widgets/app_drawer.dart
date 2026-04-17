@@ -456,6 +456,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   title: 'Faturas de cartão',
                   route: FaturasCartaoPage.routeName,
                 ),
+                _subItem(
+                  icon: Icons.backup_outlined,
+                  title: 'Backup na nuvem',
+                  route: BackupRestoreCloudPage.routeName,
+                ),
               ],
             ),
             _treeGroup(
@@ -471,11 +476,6 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.tune_outlined,
                   title: 'Parâmetros',
                   route: ParametrosPage.routeName,
-                ),
-                _subItem(
-                  icon: Icons.backup_outlined,
-                  title: 'Backup na nuvem',
-                  route: BackupRestoreCloudPage.routeName,
                 ),
               ],
             ),

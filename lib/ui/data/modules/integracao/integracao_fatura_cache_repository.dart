@@ -55,6 +55,23 @@ class IntegracaoFaturaCacheRepository {
     return IntegracaoFaturaCache.fromMap(rows.first);
   }
 
+  Future<IntegracaoFaturaCache?> getUltimaPorCartaoPeriodo({
+    required int idCartaoLocal,
+    required int ano,
+    required int mes,
+  }) async {
+    final db = await _db;
+    final rows = await db.query(
+      'integracao_faturas_cache',
+      where: 'id_cartao_local = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartaoLocal, ano, mes],
+      orderBy: 'importado_em DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return IntegracaoFaturaCache.fromMap(rows.first);
+  }
+
   Future<List<IntegracaoFaturaCache>> listarPorCartaoPeriodo({
     required int idCartaoLocal,
     required int ano,
@@ -362,6 +379,12 @@ class IntegracaoFaturaCacheRepository {
         if (!overwrite) {
           return idCache;
         }
+        // Preserva associações quando possível (por item_api_id).
+        final vinculosAntigos = await _mapearVinculosItensPorApiId(
+          txn,
+          idCache,
+        );
+
         await txn.delete(
           'integracao_faturas_cache_itens',
           where: 'id_fatura_cache = ?',
@@ -370,6 +393,7 @@ class IntegracaoFaturaCacheRepository {
         await txn.update(
           'integracao_faturas_cache',
           {
+            'source_key': sourceKey,
             'codigo_cartao_api': codigoCartaoApi,
             'ano': ano,
             'mes': mes,
@@ -386,6 +410,13 @@ class IntegracaoFaturaCacheRepository {
           },
           where: 'id = ?',
           whereArgs: [idCache],
+        );
+
+        await _inserirItensFromApi(
+          txn,
+          idCache,
+          f,
+          vinculosAntigos: vinculosAntigos,
         );
       } else {
         idCache = await txn.insert(
@@ -408,27 +439,61 @@ class IntegracaoFaturaCacheRepository {
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
+        await _inserirItensFromApi(txn, idCache, f);
       }
-
-      final batch = txn.batch();
-      for (final it in f.lancamentos) {
-        batch.insert(
-          'integracao_faturas_cache_itens',
-          {
-            'id_fatura_cache': idCache,
-            'item_api_id': it.id,
-            'descricao': it.descricao,
-            'valor': it.valor,
-            'data_hora': it.dataHora?.millisecondsSinceEpoch,
-            'categoria': it.categoria,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-      await batch.commit(noResult: true);
 
       return idCache;
     });
+  }
+
+  Future<Map<String, int>> _mapearVinculosItensPorApiId(
+    DatabaseExecutor txn,
+    int idFaturaCache,
+  ) async {
+    final rows = await txn.query(
+      'integracao_faturas_cache_itens',
+      columns: ['item_api_id', 'id_lancamento_local'],
+      where: 'id_fatura_cache = ?',
+      whereArgs: [idFaturaCache],
+    );
+
+    final map = <String, int>{};
+    for (final r in rows) {
+      final apiId = r['item_api_id']?.toString().trim();
+      final idLanc = (r['id_lancamento_local'] as num?)?.toInt();
+      if (apiId == null || apiId.isEmpty) continue;
+      if (idLanc == null) continue;
+      map[apiId] = idLanc;
+    }
+    return map;
+  }
+
+  Future<void> _inserirItensFromApi(
+    DatabaseExecutor txn,
+    int idCache,
+    FaturaApiDto f, {
+    Map<String, int> vinculosAntigos = const {},
+  }) async {
+    final batch = txn.batch();
+    for (final it in f.lancamentos) {
+      final apiId = it.id?.toString().trim();
+      final idLancamentoLocal =
+          (apiId != null && apiId.isNotEmpty) ? vinculosAntigos[apiId] : null;
+      batch.insert(
+        'integracao_faturas_cache_itens',
+        {
+          'id_fatura_cache': idCache,
+          'id_lancamento_local': idLancamentoLocal,
+          'item_api_id': it.id,
+          'descricao': it.descricao,
+          'valor': it.valor,
+          'data_hora': it.dataHora?.millisecondsSinceEpoch,
+          'categoria': it.categoria,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<void> deletarFaturaCache(int idFaturaCache) async {
