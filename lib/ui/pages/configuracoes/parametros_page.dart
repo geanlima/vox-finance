@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/service/api_access_test_service.dart';
 import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
 import 'package:vox_finance/ui/core/service/backup_auto_cloud_service.dart';
+import 'package:vox_finance/ui/core/service/notifications_service.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 class ParametrosPage extends StatefulWidget {
@@ -231,6 +232,10 @@ class _ParametrosPageState extends State<ParametrosPage> {
                             title: const Text('Ativar backup automático'),
                             value: _backupAutoEnabled,
                             onChanged: (v) async {
+                              if (v) {
+                                await NotificationService
+                                    .requestAndroidPostNotificationsPermission();
+                              }
                               setState(() => _backupAutoEnabled = v);
                               await BackupAutoCloudService.instance.setEnabled(v);
                               final (lastRun, lastOk, lastErr) =

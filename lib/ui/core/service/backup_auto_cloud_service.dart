@@ -6,6 +6,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:workmanager/workmanager.dart';
 
 import 'package:vox_finance/bootstrap/firebase_bootstrap.dart';
+import 'package:vox_finance/ui/core/service/notifications_service.dart';
 import 'package:vox_finance/ui/data/service/backup/backup_manager.dart';
 
 /// Backup automático diário na nuvem (Android) via WorkManager.
@@ -62,7 +63,7 @@ class BackupAutoCloudService {
       final minutes = prefs.getInt(_kTimeMinutes) ?? (2 * 60);
       final uid = FirebaseAuth.instance.currentUser?.uid;
 
-      // Sempre reage nda o próximo, mesmo se não tiver usuário.
+      // Sempre reagenda o próximo, mesmo se não tiver usuário.
       _ensureTz();
       await _scheduleNextInternal(minutes: minutes);
 
@@ -70,18 +71,31 @@ class BackupAutoCloudService {
         await prefs.setInt(_kLastRunMs, DateTime.now().millisecondsSinceEpoch);
         await prefs.setBool(_kLastOk, false);
         await prefs.setString(_kLastError, 'Usuário não logado.');
+        await NotificationService.notifyBackupAutoSafe(
+          NotificationService.showBackupPendingLogin,
+        );
         return true;
       }
+
+      await NotificationService.notifyBackupAutoSafe(
+        NotificationService.showBackupInProgress,
+      );
 
       try {
         await BackupManager.instance.backup(userId: uid);
         await prefs.setInt(_kLastRunMs, DateTime.now().millisecondsSinceEpoch);
         await prefs.setBool(_kLastOk, true);
         await prefs.remove(_kLastError);
+        await NotificationService.notifyBackupAutoSafe(
+          NotificationService.showBackupSuccess,
+        );
       } catch (e) {
         await prefs.setInt(_kLastRunMs, DateTime.now().millisecondsSinceEpoch);
         await prefs.setBool(_kLastOk, false);
         await prefs.setString(_kLastError, e.toString());
+        await NotificationService.notifyBackupAutoSafe(
+          () => NotificationService.showBackupFailed(e),
+        );
       }
 
       return true;
