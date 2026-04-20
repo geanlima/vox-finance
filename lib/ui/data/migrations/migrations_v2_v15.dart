@@ -976,6 +976,23 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V47: Pessoas que me devem (empréstimos a receber)
+    // =========================
+    if (oldVersion < 47) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS pessoas_me_devem (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nome TEXT NOT NULL,
+          data_emprestimo INTEGER NOT NULL,
+          valor_total REAL NOT NULL,
+          valor_recebido REAL NOT NULL DEFAULT 0,
+          observacao TEXT,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -1371,6 +1388,18 @@ class MigrationV2toV15 {
       'id_lancamento',
       'INTEGER',
     );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pessoas_me_devem (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        data_emprestimo INTEGER NOT NULL,
+        valor_total REAL NOT NULL,
+        valor_recebido REAL NOT NULL DEFAULT 0,
+        observacao TEXT,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
 
     // INVESTIMENTOS - BLUMINERS
     await db.execute('''
