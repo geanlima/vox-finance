@@ -24,6 +24,7 @@ import 'package:vox_finance/ui/pages/settings/backup_restore_cloud_page.dart';
 import 'package:vox_finance/ui/pages/parcelamentos/parcelamentos_page.dart';
 import 'package:vox_finance/ui/pages/monitoramento_precos/monitoramento_precos_page.dart';
 import 'package:vox_finance/ui/pages/planejamentos/planejamentos_despesa_list_page.dart';
+import 'package:vox_finance/ui/pages/pessoas_me_devem/pessoas_me_devem_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -412,6 +413,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.event_note_outlined,
                   title: 'Planejar gastos (viagem/evento)',
                   route: PlanejamentosDespesaListPage.routeName,
+                ),
+                _subItem(
+                  icon: Icons.people_outline,
+                  title: 'Pessoas que me devem',
+                  route: PessoasMeDevemPage.routeName,
                 ),
               ],
             ),

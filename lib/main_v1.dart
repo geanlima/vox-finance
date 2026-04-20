@@ -31,6 +31,7 @@ import 'package:vox_finance/ui/pages/faturas_salvas/faturas_salvas_page.dart';
 import 'package:vox_finance/ui/pages/parcelamentos/parcelamentos_page.dart';
 import 'package:vox_finance/ui/pages/monitoramento_precos/monitoramento_precos_page.dart';
 import 'package:vox_finance/ui/pages/planejamentos/planejamentos_despesa_list_page.dart';
+import 'package:vox_finance/ui/pages/pessoas_me_devem/pessoas_me_devem_page.dart';
 
 class VoxFinanceApp extends StatelessWidget {
   const VoxFinanceApp({super.key});
@@ -107,6 +108,7 @@ class VoxFinanceApp extends StatelessWidget {
       MonitoramentoPrecosPage.routeName: (_) => const MonitoramentoPrecosPage(),
       PlanejamentosDespesaListPage.routeName: (_) =>
           const PlanejamentosDespesaListPage(),
+      PessoasMeDevemPage.routeName: (_) => const PessoasMeDevemPage(),
     };
   }
 }
