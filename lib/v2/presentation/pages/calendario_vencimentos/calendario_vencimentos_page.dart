@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/vencimentos_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class CalendarioVencimentosPage extends StatefulWidget {
   const CalendarioVencimentosPage({super.key});
@@ -96,7 +97,7 @@ class _CalendarioVencimentosPageState extends State<CalendarioVencimentosPage> {
           _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 16, 16, 16)),
                 children: [
                   Row(
                     children: [

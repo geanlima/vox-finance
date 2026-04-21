@@ -5,6 +5,7 @@ import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/pages/home/widgets/lancamento_list_tile.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class LancamentoListView extends StatelessWidget {
   final List<Lancamento> lancamentos;
@@ -40,7 +41,7 @@ class LancamentoListView extends StatelessWidget {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: listViewPaddingWithBottomInset(context, const EdgeInsets.only(bottom: 20)),
       itemCount: lancamentos.length,
       itemBuilder: (context, index) {
         final lanc = lancamentos[index];

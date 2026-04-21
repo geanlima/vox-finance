@@ -13,6 +13,7 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/lancamento_futuro_form.dart';
 import 'package:vox_finance/ui/pages/lancamento_futuro/widgets/lancamento_futuro_tile.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class LancamentosFuturosPage extends StatefulWidget {
   const LancamentosFuturosPage({super.key});
@@ -230,6 +231,7 @@ class _LancamentosFuturosPageState extends State<LancamentosFuturosPage> {
                 return RefreshIndicator(
                   onRefresh: _carregarDados,
                   child: ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                     itemCount: itens.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {

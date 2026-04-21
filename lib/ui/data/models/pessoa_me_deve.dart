@@ -5,6 +5,10 @@ class PessoaMeDeve {
   double valorTotal;
   double valorRecebido;
   String? observacao;
+  bool compraCartao;
+  int? idCartao;
+  int? parcelasTotal;
+  String? grupoReceitas;
   int criadoEm;
 
   PessoaMeDeve({
@@ -14,6 +18,10 @@ class PessoaMeDeve {
     required this.valorTotal,
     this.valorRecebido = 0,
     this.observacao,
+    this.compraCartao = false,
+    this.idCartao,
+    this.parcelasTotal,
+    this.grupoReceitas,
     required this.criadoEm,
   });
 
@@ -32,6 +40,10 @@ class PessoaMeDeve {
       'valor_total': valorTotal,
       'valor_recebido': valorRecebido,
       'observacao': observacao,
+      'compra_cartao': compraCartao ? 1 : 0,
+      'id_cartao': idCartao,
+      'parcelas_total': parcelasTotal,
+      'grupo_receitas': grupoReceitas,
       'criado_em': criadoEm,
     };
   }
@@ -46,6 +58,10 @@ class PessoaMeDeve {
       valorTotal: (map['valor_total'] as num).toDouble(),
       valorRecebido: (map['valor_recebido'] as num?)?.toDouble() ?? 0,
       observacao: map['observacao'] as String?,
+      compraCartao: (map['compra_cartao'] ?? 0) == 1,
+      idCartao: (map['id_cartao'] as num?)?.toInt(),
+      parcelasTotal: (map['parcelas_total'] as num?)?.toInt(),
+      grupoReceitas: map['grupo_receitas'] as String?,
       criadoEm: (map['criado_em'] as num).toInt(),
     );
   }

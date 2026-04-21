@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/fatura_api_dto.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Detalhe de uma fatura retornada pela API (lançamentos + totais).
 class FaturaApiDetalhePage extends StatelessWidget {
@@ -113,7 +114,7 @@ class FaturaApiDetalhePage extends StatelessWidget {
                       ),
                     )
                     : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
                       itemCount: fatura.lancamentos.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (ctx, i) {

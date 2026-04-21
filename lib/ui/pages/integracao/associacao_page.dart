@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:vox_finance/ui/pages/integracao/associar_cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/integracao/faturas_cartao_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Hub de integração: a partir daqui abrimos cada tipo de associação/configuração.
 class AssociacaoPage extends StatelessWidget {
@@ -19,7 +20,7 @@ class AssociacaoPage extends StatelessWidget {
       ),
       drawer: const AppDrawer(currentRoute: AssociacaoPage.routeName),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
         children: [
           Text(
             'Escolha o que deseja configurar. As associações são usadas na sincronização.',

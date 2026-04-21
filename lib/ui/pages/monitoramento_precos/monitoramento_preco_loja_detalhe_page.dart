@@ -5,6 +5,7 @@ import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 import 'package:vox_finance/ui/data/models/monitoramento_preco_oferta.dart';
 import 'package:vox_finance/ui/data/models/monitoramento_preco_oferta_historico.dart';
 import 'package:vox_finance/ui/data/modules/monitoramento_precos/monitoramento_preco_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MonitoramentoPrecoLojaDetalhePage extends StatefulWidget {
   const MonitoramentoPrecoLojaDetalhePage({
@@ -476,7 +477,7 @@ class _MonitoramentoPrecoLojaDetalhePageState
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 12, 16, 24)),
                   itemCount: _historico.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, i) {

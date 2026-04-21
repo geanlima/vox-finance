@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Lista os lançamentos que compõem um grupo do resumo (cartão, conta, etc.).
 class ResumoGrupoLancamentosBottomSheet extends StatelessWidget {
@@ -139,7 +140,12 @@ class ResumoGrupoLancamentosBottomSheet extends StatelessWidget {
               Expanded(
                 child: ListView.separated(
                   controller: scrollController,
-                  padding: EdgeInsets.fromLTRB(8, 8, 8, 16 + safeBottom),
+                  padding: EdgeInsets.fromLTRB(
+                    8,
+                    8,
+                    8,
+                    16 + safeBottom + listExtraScrollEndPadding(),
+                  ),
                   itemCount: lancamentos.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {

@@ -7,6 +7,7 @@ import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class CartaoCreditoPage extends StatefulWidget {
   const CartaoCreditoPage({super.key});
@@ -793,6 +794,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                 ),
                               )
                               : ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                                 itemCount: _cartoes.length,
                                 separatorBuilder:
                                     (_, __) => const SizedBox(height: 8),
@@ -875,8 +877,7 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                                         ),
                                                       ),
                                                       Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
+                                                        padding: const EdgeInsets.symmetric(
                                                               horizontal: 8,
                                                               vertical: 2,
                                                             ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:vox_finance/ui/core/enum/tipo_grafico.dart';
 import 'package:vox_finance/ui/core/service/grafico_preferencia_service.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class ConfigGraficoPage extends StatefulWidget {
   const ConfigGraficoPage({super.key});
@@ -55,6 +56,7 @@ class _ConfigGraficoPageState extends State<ConfigGraficoPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Configuração de Gráfico')),
       body: ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
         children: TipoGrafico.values.map((tipo) {
           return RadioListTile<TipoGrafico>(
             title: Text(tipo.label),

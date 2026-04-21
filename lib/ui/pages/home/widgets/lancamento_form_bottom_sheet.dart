@@ -48,6 +48,10 @@ class LancamentoFormBottomSheet extends StatefulWidget {
   /// lançamentos e pode não haver um `id` único para retornar aqui.
   final void Function(Lancamento lanc)? onSavedLancamento;
 
+  /// ✅ Opcional: força um grupo de parcelas (para vincular a fluxos externos).
+  /// Usado principalmente quando o lançamento é salvo como parcelado.
+  final String? grupoParcelasForcado;
+
   const LancamentoFormBottomSheet({
     super.key,
     this.existente,
@@ -64,6 +68,7 @@ class LancamentoFormBottomSheet extends StatefulWidget {
     required this.onSaved,
     this.onSavedLancamento,
     this.tipoInicial,
+    this.grupoParcelasForcado,
   });
 
   @override
@@ -985,7 +990,7 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
 
       // base SEM info de parcela; service completa e força NÃO pago
       final base = lanc.copyWith(
-        grupoParcelas: null,
+        grupoParcelas: widget.grupoParcelasForcado,
         parcelaNumero: null,
         parcelaTotal: null,
       );

@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/conta_pagar_detalhe.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 enum ParcelamentosFiltro { emAberto, finalizandoMes, todos }
 
@@ -735,6 +736,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                     maxHeight: MediaQuery.sizeOf(ctx).height * 0.55,
                   ),
                   child: ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                     shrinkWrap: true,
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: linhas.length,
@@ -910,6 +912,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxH),
                   child: ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                     itemCount: itensLanc.length + itensSemLanc.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (ctx, i) {
@@ -1543,6 +1546,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                                                 ),
                                                               ),
                                                           child: ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                                                             shrinkWrap: true,
                                                             physics:
                                                                 const ClampingScrollPhysics(),
@@ -1666,7 +1670,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                           ),
                         )
                       : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
                               itemCount: _resumos.length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 10),

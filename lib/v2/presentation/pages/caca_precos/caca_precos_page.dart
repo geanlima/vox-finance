@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/caca_precos_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Resultado do dialog (novo/editar)
 class _CacaPrecoEditResult {
@@ -460,7 +461,7 @@ class _CacaPrecosPageState extends State<CacaPrecosPage> {
           : _itens.isEmpty
               ? const Center(child: Text('Nenhuma pesquisa cadastrada'))
               : ListView(
-                  padding: const EdgeInsets.all(12),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                   children: _itens.map((item) {
                     final totalAVista = _totalAVista(item.precoAvista, item.frete);
                     final totalParcelado =

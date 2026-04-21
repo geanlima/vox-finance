@@ -14,6 +14,7 @@ import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 enum TipoComparativoMes { categoria, formaPagamento }
 
@@ -549,7 +550,7 @@ class _ComparativoMesPageState extends State<ComparativoMesPage> {
                   Expanded(
                     child: ListView.builder(
                       controller: scrollController,
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                      padding: listViewPaddingWithBottomInset(context, EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom)),
                       itemCount: _seriesSemanais.length,
                       itemBuilder: (context, index) {
                         final s = _seriesSemanais[index];

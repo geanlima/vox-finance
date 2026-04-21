@@ -1,13 +1,18 @@
 // ignore_for_file: control_flow_in_finally, deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/metrica_limite.dart';
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/modules/metricas/metrica_limite_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MetricasPage extends StatefulWidget {
   const MetricasPage({super.key});
@@ -22,6 +27,7 @@ class _MetricasPageState extends State<MetricasPage> {
   final _repo = MetricaLimiteRepository();
   final _catRepo = CategoriaPersonalizadaRepository();
   final _subRepo = SubcategoriaPersonalizadaRepository();
+  final _cartaoRepo = CartaoCreditoRepository();
 
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
 
@@ -33,6 +39,7 @@ class _MetricasPageState extends State<MetricasPage> {
   List<MetricaLimite> _metricas = const [];
   List<CategoriaPersonalizada> _cats = const [];
   final Map<int, List<SubcategoriaPersonalizada>> _subsByCat = {};
+  List<CartaoCredito> _cartoes = const [];
 
   @override
   void initState() {
@@ -44,6 +51,7 @@ class _MetricasPageState extends State<MetricasPage> {
     setState(() => _carregando = true);
     try {
       final cats = await _catRepo.listarTodas();
+      final cartoes = await _cartaoRepo.getCartoesCredito();
 
       _subsByCat.clear();
       for (final c in cats) {
@@ -62,6 +70,7 @@ class _MetricasPageState extends State<MetricasPage> {
       if (!mounted) return;
       setState(() {
         _cats = cats;
+        _cartoes = cartoes;
         _metricas = metricas;
       });
     } finally {
@@ -85,6 +94,35 @@ class _MetricasPageState extends State<MetricasPage> {
     } catch (_) {
       return null;
     }
+  }
+
+  String _cardTitle(MetricaLimite m, CategoriaPersonalizada? cat, SubcategoriaPersonalizada? sub) {
+    if (m.escopo == 'forma') {
+      final f =
+          (m.formaPagamento != null &&
+                  m.formaPagamento! >= 0 &&
+                  m.formaPagamento! < FormaPagamento.values.length)
+              ? FormaPagamento.values[m.formaPagamento!]
+              : null;
+      if (f == null) return 'Forma de pagamento';
+      if (f == FormaPagamento.credito && m.idCartao != null) {
+        try {
+          final c = _cartoes.firstWhere((e) => e.id == m.idCartao);
+          return '${f.label} • ${c.label}';
+        } catch (_) {
+          return '${f.label} • Cartão';
+        }
+      }
+      return f.label;
+    }
+
+    final base = cat?.nome ?? 'Categoria';
+    if (sub != null) return '$base • ${sub.nome}';
+    return base;
+  }
+
+  String _cardSubtitle(MetricaLimite m) {
+    return '${m.periodoTipo} • ${m.escopo == 'forma' ? 'forma' : 'categoria'}';
   }
 
   String get _periodoLabel {
@@ -116,8 +154,15 @@ class _MetricasPageState extends State<MetricasPage> {
     String periodoTipo = existente?.periodoTipo ?? _periodoTipo;
     DateTime referencia = _referencia;
 
-    int? categoriaId = existente?.idCategoriaPersonalizada;
-    int? subcategoriaId = existente?.idSubcategoriaPersonalizada;
+    String escopoAtual = existente?.escopo ?? 'categoria'; // 'categoria'|'forma'
+
+    int? categoriaId =
+        (escopoAtual == 'categoria') ? existente?.idCategoriaPersonalizada : null;
+    int? subcategoriaId =
+        (escopoAtual == 'categoria') ? existente?.idSubcategoriaPersonalizada : null;
+
+    int? formaPagamento = existente?.formaPagamento;
+    int? idCartao = existente?.idCartao;
 
     final limiteCtrl = TextEditingController(
       text: existente != null ? existente.limiteValor.toStringAsFixed(2) : '',
@@ -155,6 +200,8 @@ class _MetricasPageState extends State<MetricasPage> {
                     (categoriaId == null)
                         ? const <SubcategoriaPersonalizada>[]
                         : (_subsByCat[categoriaId!] ?? const []);
+                final cartoesComId =
+                    _cartoes.where((c) => c.id != null).toList();
 
                 return Container(
                   decoration: BoxDecoration(
@@ -190,25 +237,54 @@ class _MetricasPageState extends State<MetricasPage> {
                           ),
                           const SizedBox(height: 8),
 
-                          DropdownButtonFormField<String>(
-                            value: periodoTipo,
-                            decoration: const InputDecoration(
-                              labelText: 'Período',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'mensal',
-                                child: Text('Mensal'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'semanal',
-                                child: Text('Semanal'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              modalSetState(() => periodoTipo = v);
+                          // Período (Mensal/Semanal) no estilo "botões"
+                          Builder(
+                            builder: (context) {
+                              final cs = Theme.of(context).colorScheme;
+                              return SegmentedButton<String>(
+                                showSelectedIcon: false,
+                                style: ButtonStyle(
+                                  side: WidgetStateProperty.all(
+                                    BorderSide(
+                                      color: cs.outline.withValues(alpha: 0.35),
+                                    ),
+                                  ),
+                                  backgroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return cs.primaryContainer;
+                                    }
+                                    return cs.surfaceContainerHighest.withValues(
+                                      alpha: 0.65,
+                                    );
+                                  }),
+                                  foregroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return cs.onPrimaryContainer;
+                                    }
+                                    return cs.onSurface;
+                                  }),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'mensal',
+                                    label: Text('Mensal'),
+                                    icon: Icon(Icons.calendar_view_month),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'semanal',
+                                    label: Text('Semanal'),
+                                    icon: Icon(Icons.view_week_outlined),
+                                  ),
+                                ],
+                                selected: {periodoTipo},
+                                onSelectionChanged: (s) {
+                                  final v = s.first;
+                                  if (v == periodoTipo) return;
+                                  modalSetState(() => periodoTipo = v);
+                                },
+                              );
                             },
                           ),
                           const SizedBox(height: 10),
@@ -233,64 +309,204 @@ class _MetricasPageState extends State<MetricasPage> {
                           ),
                           const SizedBox(height: 10),
 
-                          DropdownButtonFormField<int>(
-                            value: categoriaId,
-                            decoration: const InputDecoration(
-                              labelText: 'Categoria',
-                              border: OutlineInputBorder(),
-                            ),
-                            items:
-                                catsComId
-                                    .map(
-                                      (c) => DropdownMenuItem<int>(
-                                        value: c.id!,
-                                        child: Text(c.nome),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) {
-                              modalSetState(() {
-                                categoriaId = v;
-                                subcategoriaId = null;
-                              });
+                          Text(
+                            'Base do limite',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final cs = Theme.of(context).colorScheme;
+                              return SegmentedButton<String>(
+                                showSelectedIcon: false,
+                                style: ButtonStyle(
+                                  side: WidgetStateProperty.all(
+                                    BorderSide(
+                                      color: cs.outline.withValues(alpha: 0.35),
+                                    ),
+                                  ),
+                                  backgroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return cs.primaryContainer;
+                                    }
+                                    return cs.surfaceContainerHighest.withValues(
+                                      alpha: 0.65,
+                                    );
+                                  }),
+                                  foregroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return cs.onPrimaryContainer;
+                                    }
+                                    return cs.onSurface;
+                                  }),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'categoria',
+                                    label: Text('Categoria'),
+                                    icon: Icon(Icons.category_outlined),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'forma',
+                                    label: Text('Forma'),
+                                    icon: Icon(Icons.credit_card_outlined),
+                                  ),
+                                ],
+                                selected: {escopoAtual},
+                                onSelectionChanged: (s) {
+                                  final v = s.first;
+                                  if (v == escopoAtual) return;
+                                  modalSetState(() {
+                                    escopoAtual = v;
+                                    if (escopoAtual == 'categoria') {
+                                      formaPagamento = null;
+                                      idCartao = null;
+                                    } else {
+                                      categoriaId = null;
+                                      subcategoriaId = null;
+                                    }
+                                  });
+                                },
+                              );
                             },
-                            validator:
-                                (v) =>
-                                    v == null ? 'Selecione a categoria.' : null,
                           ),
                           const SizedBox(height: 10),
 
-                          DropdownButtonFormField<int?>(
-                            value: subcategoriaId,
-                            decoration: InputDecoration(
-                              labelText: 'Subcategoria (opcional)',
-                              border: const OutlineInputBorder(),
-                              helperText:
-                                  categoriaId == null
-                                      ? 'Selecione uma categoria para ver as subcategorias.'
-                                      : (subs.isEmpty
-                                          ? 'Sem subcategorias para esta categoria.'
-                                          : null),
-                            ),
-                            items: [
-                              const DropdownMenuItem<int?>(
-                                value: null,
-                                child: Text('— Sem subcategoria —'),
+                          if (escopoAtual == 'forma') ...[
+                            DropdownButtonFormField<int?>(
+                              value: formaPagamento,
+                              decoration: const InputDecoration(
+                                labelText: 'Forma de pagamento',
+                                border: OutlineInputBorder(),
                               ),
-                              ...subs.map(
-                                (s) => DropdownMenuItem<int?>(
-                                  value: s.id,
-                                  child: Text(s.nome),
+                              items: [
+                                const DropdownMenuItem<int?>(
+                                  value: null,
+                                  child: Text('— Selecione —'),
                                 ),
-                              ),
-                            ],
-                            onChanged:
-                                (categoriaId == null || subs.isEmpty)
+                                ...FormaPagamento.values.map(
+                                  (f) => DropdownMenuItem<int?>(
+                                    value: f.index,
+                                    child: Text(f.label),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) {
+                                modalSetState(() {
+                                  formaPagamento = v;
+                                  if (formaPagamento !=
+                                      FormaPagamento.credito.index) {
+                                    idCartao = null;
+                                  }
+                                });
+                              },
+                              validator: (v) {
+                                if (escopoAtual == 'forma' && v == null) {
+                                  return 'Selecione a forma de pagamento.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 10),
+
+                            if (formaPagamento == FormaPagamento.credito.index)
+                              DropdownButtonFormField<int?>(
+                                value: idCartao,
+                                decoration: InputDecoration(
+                                  labelText: 'Cartão (opcional)',
+                                  border: const OutlineInputBorder(),
+                                  helperText:
+                                      cartoesComId.isEmpty
+                                          ? 'Nenhum cartão cadastrado.'
+                                          : 'Selecione um cartão para limitar apenas nele.',
+                                ),
+                                items: [
+                                  const DropdownMenuItem<int?>(
+                                    value: null,
+                                    child: Text('— Todos os cartões —'),
+                                  ),
+                                  ...cartoesComId.map(
+                                    (c) => DropdownMenuItem<int?>(
+                                      value: c.id,
+                                      child: Text(c.label),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: cartoesComId.isEmpty
                                     ? null
-                                    : (v) =>
-                                        modalSetState(() => subcategoriaId = v),
-                          ),
-                          const SizedBox(height: 10),
+                                    : (v) => modalSetState(() => idCartao = v),
+                              ),
+                            if (formaPagamento == FormaPagamento.credito.index)
+                              const SizedBox(height: 10),
+                          ],
+
+                          if (escopoAtual == 'categoria') ...[
+                            DropdownButtonFormField<int>(
+                              value: categoriaId,
+                              decoration: const InputDecoration(
+                                labelText: 'Categoria',
+                                border: OutlineInputBorder(),
+                              ),
+                              items:
+                                  catsComId
+                                      .map(
+                                        (c) => DropdownMenuItem<int>(
+                                          value: c.id!,
+                                          child: Text(c.nome),
+                                        ),
+                                      )
+                                      .toList(),
+                              onChanged: (v) {
+                                modalSetState(() {
+                                  categoriaId = v;
+                                  subcategoriaId = null;
+                                });
+                              },
+                              validator: (v) {
+                                if (escopoAtual == 'categoria' && v == null) {
+                                  return 'Selecione a categoria.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 10),
+
+                            DropdownButtonFormField<int?>(
+                              value: subcategoriaId,
+                              decoration: InputDecoration(
+                                labelText: 'Subcategoria (opcional)',
+                                border: const OutlineInputBorder(),
+                                helperText:
+                                    categoriaId == null
+                                        ? 'Selecione uma categoria para ver as subcategorias.'
+                                        : (subs.isEmpty
+                                            ? 'Sem subcategorias para esta categoria.'
+                                            : null),
+                              ),
+                              items: [
+                                const DropdownMenuItem<int?>(
+                                  value: null,
+                                  child: Text('— Sem subcategoria —'),
+                                ),
+                                ...subs.map(
+                                  (s) => DropdownMenuItem<int?>(
+                                    value: s.id,
+                                    child: Text(s.nome),
+                                  ),
+                                ),
+                              ],
+                              onChanged:
+                                  (categoriaId == null || subs.isEmpty)
+                                      ? null
+                                      : (v) => modalSetState(
+                                            () => subcategoriaId = v,
+                                          ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
 
                           TextFormField(
                             controller: limiteCtrl,
@@ -394,6 +610,7 @@ class _MetricasPageState extends State<MetricasPage> {
                               final m = MetricaLimite(
                                 id: existente?.id,
                                 ativo: true,
+                                escopo: escopoAtual,
                                 periodoTipo: periodoTipo,
                                 ano: referencia.year,
                                 mes:
@@ -404,8 +621,23 @@ class _MetricasPageState extends State<MetricasPage> {
                                     periodoTipo == 'semanal'
                                         ? _repo.semanaDoAno(referencia)
                                         : null,
-                                idCategoriaPersonalizada: categoriaId!,
-                                idSubcategoriaPersonalizada: subcategoriaId,
+                                idCategoriaPersonalizada:
+                                    escopoAtual == 'categoria'
+                                        ? (categoriaId ?? 0)
+                                        : 0,
+                                idSubcategoriaPersonalizada:
+                                    escopoAtual == 'categoria'
+                                        ? subcategoriaId
+                                        : null,
+                                formaPagamento:
+                                    escopoAtual == 'forma' ? formaPagamento : null,
+                                idCartao:
+                                    (escopoAtual == 'forma' &&
+                                            formaPagamento ==
+                                                FormaPagamento.credito.index)
+                                        ? idCartao
+                                        : null,
+                                idConta: null,
                                 limiteValor: lim,
                                 considerarSomentePagos: considerarSomentePagos,
                                 incluirFuturos: incluirFuturos,
@@ -541,6 +773,7 @@ class _MetricasPageState extends State<MetricasPage> {
                                 child: Text('Nenhuma métrica cadastrada.'),
                               )
                               : ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                                 itemCount: _metricas.length,
                                 separatorBuilder:
                                     (_, __) => const SizedBox(height: 10),
@@ -569,43 +802,81 @@ class _MetricasPageState extends State<MetricasPage> {
                                       final limite =
                                           consumo?.limite ?? m.limiteValor;
 
-                                      return Card(
-                                        child: ListTile(
-                                          title: Text(
-                                            sub != null
-                                                ? '${cat?.nome ?? 'Categoria'} • ${sub.nome}'
-                                                : (cat?.nome ?? 'Categoria'),
-                                          ),
-                                          subtitle: Text(
-                                            '${m.periodoTipo} • pagos:${m.considerarSomentePagos ? 'sim' : 'não'} • futuros:${m.incluirFuturos ? 'sim' : 'não'}',
-                                          ),
-                                          trailing: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                '${_money.format(total)} / ${_money.format(limite)}',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
+                                      final theme = Theme.of(context);
+                                      final primary = theme.colorScheme.primary;
+                                      final danger = Colors.red.shade400;
+
+                                      return Slidable(
+                                        key: ValueKey(m.id ?? idx),
+                                        groupTag: 'metricas_limites',
+                                        endActionPane: ActionPane(
+                                          motion: const DrawerMotion(),
+                                          extentRatio: 0.35,
+                                          children: [
+                                            CustomSlidableAction(
+                                              onPressed:
+                                                  (_) => _abrirForm(existente: m),
+                                              backgroundColor:
+                                                  theme.colorScheme.surface,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              child: Icon(
+                                                Icons.edit,
+                                                size: 28,
+                                                color: primary,
                                               ),
-                                              Text(
-                                                '${pct.toStringAsFixed(0)}%',
-                                                style: TextStyle(
-                                                  color:
-                                                      pct >= 100
-                                                          ? Theme.of(
-                                                            context,
-                                                          ).colorScheme.error
-                                                          : Colors.grey[700],
-                                                ),
+                                            ),
+                                            CustomSlidableAction(
+                                              onPressed: (_) => _excluir(m),
+                                              backgroundColor: danger,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              child: const Icon(
+                                                Icons.delete,
+                                                size: 28,
+                                                color: Colors.white,
                                               ),
-                                            ],
+                                            ),
+                                          ],
+                                        ),
+                                        child: Card(
+                                          child: ListTile(
+                                            title: Text(
+                                              _cardTitle(m, cat, sub),
+                                            ),
+                                            subtitle: Text(
+                                              _cardSubtitle(m),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            trailing: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  '${_money.format(total)} / ${_money.format(limite)}',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${pct.toStringAsFixed(0)}%',
+                                                  style: TextStyle(
+                                                    color:
+                                                        pct >= 100
+                                                            ? theme
+                                                                .colorScheme
+                                                                .error
+                                                            : Colors.grey[700],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            onTap:
+                                                () => _abrirForm(existente: m),
                                           ),
-                                          onTap: () => _abrirForm(existente: m),
-                                          onLongPress: () => _excluir(m),
                                         ),
                                       );
                                     },

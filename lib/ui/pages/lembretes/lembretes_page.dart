@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/data/models/lembrete.dart';
 import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class LembretesPage extends StatefulWidget {
   const LembretesPage({super.key});
@@ -200,7 +201,7 @@ class _LembretesPageState extends State<LembretesPage> {
           : _items.isEmpty
               ? const Center(child: Text('Nenhum lembrete.'))
               : ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                   itemCount: _items.length,
                   itemBuilder: (_, i) {
                     final it = _items[i];

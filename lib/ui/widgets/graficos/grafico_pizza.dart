@@ -19,6 +19,7 @@ import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
@@ -803,7 +804,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                   Expanded(
                     child: ListView.separated(
                       controller: scrollController,
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                      padding: listViewPaddingWithBottomInset(context, EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom)),
                       itemCount: grupos.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
@@ -1133,7 +1134,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                       Expanded(
                         child: ListView.separated(
                           controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
                           itemCount: itens.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 8),
@@ -1837,6 +1838,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final entries = data.values.toList();
 
     return ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,
@@ -2022,7 +2024,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                   Expanded(
                     child: ListView.separated(
                       controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
                       itemCount: entries.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
@@ -2128,6 +2130,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final entries = dataResumo.values.toList();
 
     return ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,
@@ -2211,6 +2214,7 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final entries = data.entries.toList();
 
     return ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: entries.length,

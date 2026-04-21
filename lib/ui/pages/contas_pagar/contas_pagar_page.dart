@@ -19,6 +19,10 @@ import 'package:vox_finance/ui/core/service/despesas_fixas_service.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 
 import 'conta_pagar_detalhe.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
+
+/// Modo ao editar um grupo em [ContasPagarPage]: só dados do grupo ou também quantidade de parcelas.
+enum _ModoEdicaoContasPagar { cabecalho, parcelas }
 
 class ContaPagarResumo {
   final String grupoParcelas;
@@ -38,6 +42,9 @@ class ContaPagarResumo {
   // descrição da forma de pagamento (ex: "Crédito - Nubank • ****1234")
   final String? formaDescricao;
 
+  /// Referência da compra (planejamento e filtros); se nula no banco, igual ao 1º vencimento.
+  final DateTime dataCabecalho;
+
   ContaPagarResumo({
     required this.grupoParcelas,
     required this.descricao,
@@ -47,6 +54,7 @@ class ContaPagarResumo {
     required this.primeiroVencimento,
     required this.ultimoVencimento,
     required this.todasPagas,
+    required this.dataCabecalho,
     this.formaDescricao,
   });
 }
@@ -224,6 +232,9 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
       final todasPagas = parcelas.every((c) => c.pago);
 
+      final dataCabecalho =
+          parcelas.first.dataCabecalho ?? primeiroVencimento;
+
       // pega a forma de pagamento através dos lançamentos (se existirem)
       final formaDescricao = await _obterDescricaoFormaPagamento(grupo);
 
@@ -237,6 +248,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
           primeiroVencimento: primeiroVencimento,
           ultimoVencimento: qtd > 1 ? ultimoVencimento : null,
           todasPagas: todasPagas,
+          dataCabecalho: dataCabecalho,
           formaDescricao: formaDescricao,
         ),
       );
@@ -267,6 +279,8 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
       final todasPagas = parcelas.every((c) => c.pago);
       final formaDescricao = await _obterDescricaoFormaPagamento(grupo);
+      final dataCabecalho =
+          parcelas.first.dataCabecalho ?? primeiroVencimento;
 
       resumosFaturas.add(
         ContaPagarResumo(
@@ -278,6 +292,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
           primeiroVencimento: primeiroVencimento,
           ultimoVencimento: qtd > 1 ? ultimoVencimento : null,
           todasPagas: todasPagas,
+          dataCabecalho: dataCabecalho,
           formaDescricao: formaDescricao,
         ),
       );
@@ -417,6 +432,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                 SizedBox(
                   height: maxH.clamp(180.0, 520.0),
                   child: ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                     itemCount: lancs.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, i) {
@@ -471,7 +487,11 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       text: existente?.quantidadeParcelas.toString() ?? '1',
     );
 
-    DateTime dataVencimento = existente?.primeiroVencimento ?? DateTime.now();
+    DateTime dataPrimeiroVencimento =
+        existente?.primeiroVencimento ?? DateTime.now();
+    DateTime dataCabecalho =
+        existente?.dataCabecalho ?? existente?.primeiroVencimento ?? DateTime.now();
+    var modoEdicao = _ModoEdicaoContasPagar.cabecalho;
 
     await showModalBottomSheet(
       context: context,
@@ -541,6 +561,100 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                               ),
                               const SizedBox(height: 16),
 
+                              if (existente != null) ...[
+                                Text(
+                                  'Modo de edição',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 8),
+                                Builder(
+                                  builder: (context) {
+                                    final cs = Theme.of(context).colorScheme;
+                                    return SegmentedButton<_ModoEdicaoContasPagar>(
+                                      showSelectedIcon: false,
+                                      style: ButtonStyle(
+                                        side: WidgetStateProperty.all(
+                                          BorderSide(
+                                            color: cs.outline
+                                                .withValues(alpha: 0.35),
+                                          ),
+                                        ),
+                                        backgroundColor:
+                                            WidgetStateProperty.resolveWith((
+                                          states,
+                                        ) {
+                                          if (states
+                                              .contains(WidgetState.selected)) {
+                                            return cs.primaryContainer;
+                                          }
+                                          return cs.surfaceContainerHighest
+                                              .withValues(alpha: 0.65);
+                                        }),
+                                        foregroundColor:
+                                            WidgetStateProperty.resolveWith((
+                                          states,
+                                        ) {
+                                          if (states
+                                              .contains(WidgetState.selected)) {
+                                            return cs.onPrimaryContainer;
+                                          }
+                                          return cs.onSurface;
+                                        }),
+                                        iconColor:
+                                            WidgetStateProperty.resolveWith((
+                                          states,
+                                        ) {
+                                          if (states
+                                              .contains(WidgetState.selected)) {
+                                            return cs.onPrimaryContainer;
+                                          }
+                                          return cs.onSurfaceVariant;
+                                        }),
+                                      ),
+                                      segments: const [
+                                        ButtonSegment(
+                                          value:
+                                              _ModoEdicaoContasPagar.cabecalho,
+                                          label: Text('Cabeçalho'),
+                                          icon: Icon(Icons.article_outlined),
+                                        ),
+                                        ButtonSegment(
+                                          value:
+                                              _ModoEdicaoContasPagar.parcelas,
+                                          label: Text('Parcelas'),
+                                          icon: Icon(Icons.view_list_outlined),
+                                        ),
+                                      ],
+                                      selected: {modoEdicao},
+                                      onSelectionChanged: (s) {
+                                        setModalState(() {
+                                          modoEdicao = s.first;
+                                        });
+                                      },
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  modoEdicao == _ModoEdicaoContasPagar.cabecalho
+                                      ? 'Cabeçalho: descrição, valor total e data da compra '
+                                          '(referência). Não altera vencimentos nem lançamentos.'
+                                      : 'Parcelas: quantidade e primeiro vencimento — '
+                                          'recalcula todas as parcelas e alinha lançamentos. '
+                                          'Não é possível excluir parcelas já pagas.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    height: 1.35,
+                                    color:
+                                        Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+
                               TextField(
                                 controller: descricaoController,
                                 decoration: const InputDecoration(
@@ -565,14 +679,26 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                               ),
                               const SizedBox(height: 12),
 
-                              if (existente != null) ...[
-                                InputDecorator(
+                              if (existente == null)
+                                TextField(
+                                  controller: parcelasController,
+                                  keyboardType: TextInputType.number,
                                   decoration: const InputDecoration(
-                                    labelText: 'Parcelas',
+                                    labelText: 'Quantidade de parcelas',
+                                    hintText: 'Ex: 1, 6, 12...',
                                     border: OutlineInputBorder(),
+                                  ),
+                                )
+                              else if (modoEdicao ==
+                                  _ModoEdicaoContasPagar.cabecalho)
+                                InputDecorator(
+                                  decoration: InputDecoration(
+                                    labelText: 'Parcelas',
+                                    border: const OutlineInputBorder(),
                                     helperText:
-                                        'Quantidade fixa ao editar. Os lançamentos '
-                                        'vinculados não são alterados.',
+                                        '${existente.quantidadeParcelas} parcela'
+                                        '${existente.quantidadeParcelas == 1 ? '' : 's'} '
+                                        '— para mudar a quantidade, use o modo Parcelas.',
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
@@ -584,8 +710,8 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                       style: const TextStyle(fontSize: 16),
                                     ),
                                   ),
-                                ),
-                              ] else
+                                )
+                              else
                                 TextField(
                                   controller: parcelasController,
                                   keyboardType: TextInputType.number,
@@ -593,52 +719,173 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                     labelText: 'Quantidade de parcelas',
                                     hintText: 'Ex: 1, 6, 12...',
                                     border: OutlineInputBorder(),
+                                    helperText:
+                                        'Parcelas a mais serão criadas; a mais no fim '
+                                        '(não pagas) serão excluídas com o lançamento.',
                                   ),
                                 ),
                               const SizedBox(height: 12),
 
-                              InkWell(
-                                onTap: () async {
-                                  final novaData = await showDatePicker(
-                                    context: context,
-                                    initialDate: dataVencimento,
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime(2100),
-                                  );
-                                  if (novaData != null) {
-                                    setModalState(() {
-                                      dataVencimento = DateTime(
-                                        novaData.year,
-                                        novaData.month,
-                                        novaData.day,
-                                      );
-                                    });
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: Colors.grey.shade400,
+                              if (existente == null)
+                                InkWell(
+                                  onTap: () async {
+                                    final novaData = await showDatePicker(
+                                      context: context,
+                                      initialDate: dataPrimeiroVencimento,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                    );
+                                    if (novaData != null) {
+                                      setModalState(() {
+                                        dataPrimeiroVencimento = DateTime(
+                                          novaData.year,
+                                          novaData.month,
+                                          novaData.day,
+                                        );
+                                      });
+                                    }
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.event, size: 18),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Primeiro vencimento: '
+                                            '${_dateFormat.format(dataPrimeiroVencimento)} '
+                                            '(data do cabeçalho será a mesma ao criar)',
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.event, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Primeiro vencimento: '
-                                        '${_dateFormat.format(dataVencimento)}',
+                                )
+                              else if (modoEdicao ==
+                                  _ModoEdicaoContasPagar.cabecalho) ...[
+                                InkWell(
+                                  onTap: () async {
+                                    final novaData = await showDatePicker(
+                                      context: context,
+                                      initialDate: dataCabecalho,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                    );
+                                    if (novaData != null) {
+                                      setModalState(() {
+                                        dataCabecalho = DateTime(
+                                          novaData.year,
+                                          novaData.month,
+                                          novaData.day,
+                                        );
+                                      });
+                                    }
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.grey.shade400,
                                       ),
-                                    ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.calendar_month_outlined,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Data do cabeçalho (compra/referência): '
+                                            '${_dateFormat.format(dataCabecalho)}',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ] else ...[
+                                InkWell(
+                                  onTap: () async {
+                                    final novaData = await showDatePicker(
+                                      context: context,
+                                      initialDate: dataPrimeiroVencimento,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                    );
+                                    if (novaData != null) {
+                                      setModalState(() {
+                                        dataPrimeiroVencimento = DateTime(
+                                          novaData.year,
+                                          novaData.month,
+                                          novaData.day,
+                                        );
+                                      });
+                                    }
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.event, size: 18),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Primeiro vencimento (recalcula parcelas e '
+                                            'lançamentos): '
+                                            '${_dateFormat.format(dataPrimeiroVencimento)}',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Data do cabeçalho (referência)',
+                                    border: OutlineInputBorder(),
+                                    helperText:
+                                        'Editada no modo Cabeçalho. Usada no planejamento para vincular o grupo.',
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      _dateFormat.format(existente.dataCabecalho),
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ),
+                                ),
+                              ],
 
                               const SizedBox(height: 8),
                             ],
@@ -670,12 +917,18 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                   valorController.text,
                                 );
                                 final qtdParcelas =
-                                    existente != null
+                                    existente == null
+                                        ? (int.tryParse(
+                                              parcelasController.text.trim(),
+                                            ) ??
+                                            1)
+                                        : modoEdicao ==
+                                            _ModoEdicaoContasPagar.cabecalho
                                         ? existente.quantidadeParcelas
                                         : (int.tryParse(
                                               parcelasController.text.trim(),
                                             ) ??
-                                            1);
+                                            existente.quantidadeParcelas);
 
                                 if (desc.isEmpty ||
                                     valorTotal <= 0 ||
@@ -692,25 +945,51 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                 }
 
                                 if (existente != null) {
-                                  await _contaPagarLancamento
-                                      .atualizarGrupoContasPagarExistente(
-                                        grupoParcelas: existente.grupoParcelas,
-                                        descricao: desc,
-                                        valorTotal: valorTotal,
-                                        primeiraDataVencimento: dataVencimento,
-                                      );
+                                  if (modoEdicao ==
+                                      _ModoEdicaoContasPagar.cabecalho) {
+                                    await _contaPagarLancamento
+                                        .atualizarCabecalhoGrupoContasPagar(
+                                          grupoParcelas:
+                                              existente.grupoParcelas,
+                                          descricao: desc,
+                                          valorTotal: valorTotal,
+                                          dataCabecalho: dataCabecalho,
+                                        );
+                                  } else {
+                                    final err = await _contaPagarLancamento
+                                        .redimensionarEAtualizarGrupoContasPagar(
+                                          grupoParcelas:
+                                              existente.grupoParcelas,
+                                          descricao: desc,
+                                          valorTotal: valorTotal,
+                                          primeiraDataVencimento:
+                                              dataPrimeiroVencimento,
+                                          novaQuantidadeParcelas: qtdParcelas,
+                                        );
+                                    if (err != null) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(content: Text(err)),
+                                        );
+                                      }
+                                      return;
+                                    }
+                                  }
                                 } else if (qtdParcelas == 1) {
                                   await _iaService.salvarContaSimples(
                                     descricao: desc,
                                     valor: valorTotal,
-                                    dataVencimento: dataVencimento,
+                                    dataVencimento: dataPrimeiroVencimento,
                                   );
                                 } else {
                                   await _iaService.salvarContasParceladas(
                                     descricao: desc,
                                     valorTotal: valorTotal,
                                     quantidadeParcelas: qtdParcelas,
-                                    primeiraDataVencimento: dataVencimento,
+                                    primeiraDataVencimento:
+                                        dataPrimeiroVencimento,
                                   );
                                 }
 
@@ -720,10 +999,17 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                                   Navigator.pop(context);
                                   if (existente != null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
+                                      SnackBar(
                                         content: Text(
-                                          'Contas a pagar atualizadas. '
-                                          'Lançamentos permanecem os mesmos.',
+                                          modoEdicao ==
+                                                  _ModoEdicaoContasPagar.cabecalho
+                                              ? 'Cabeçalho atualizado (descrição, '
+                                                  'valores e data de referência). '
+                                                  'Vencimentos e lançamentos não mudaram.'
+                                              : 'Parcelas atualizadas. Valores e '
+                                                  'vencimentos recalculados; '
+                                                  'lançamentos foram ajustados ou '
+                                                  'removidos conforme o novo tamanho.',
                                         ),
                                       ),
                                     );
@@ -762,6 +1048,7 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       }
 
       return ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
         itemCount: _resumos.length,
         itemBuilder: (context, index) {
           final resumo = _resumos[index];

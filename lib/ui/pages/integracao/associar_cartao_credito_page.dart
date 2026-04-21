@@ -4,6 +4,7 @@ import 'package:vox_finance/ui/data/models/cartao_api_dto.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/integracao/cartao_de_para_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Configuração: associa cartões da API aos cartões cadastrados no app.
 class AssociarCartaoCreditoPage extends StatefulWidget {
@@ -196,7 +197,7 @@ class _AssociarCartaoCreditoPageState extends State<AssociarCartaoCreditoPage> {
                   else
                     Expanded(
                       child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 24)),
                         itemCount: _api.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
