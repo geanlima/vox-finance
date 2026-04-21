@@ -9,6 +9,7 @@ import 'package:vox_finance/ui/data/models/bluminers_movimento.dart';
 import 'package:vox_finance/ui/data/models/bluminers_rentabilidade.dart';
 import 'package:vox_finance/ui/data/modules/investimentos/bluminers/bluminers_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class BluminersPage extends StatefulWidget {
   final int idCarteira;
@@ -1237,6 +1238,7 @@ class _BluminersPageState extends State<BluminersPage> {
                             child: Text('Nenhum percentual diário cadastrado.'),
                           )
                           : ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                             itemCount: _rents.length,
                             itemBuilder: (_, i) {
                               final r = _rents[i];
@@ -1665,7 +1667,7 @@ class _BluminersPageState extends State<BluminersPage> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(12, 0, 12, 12)),
       children: children,
     );
   }
@@ -1746,6 +1748,7 @@ class _BluminersPageState extends State<BluminersPage> {
                       ],
                     ),
                     ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                       children: [
                         _buildAnalises(),
                         _buildPizzaMesesRendimento(),

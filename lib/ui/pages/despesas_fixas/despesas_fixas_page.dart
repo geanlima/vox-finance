@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repo
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/despesas_fixas/despesa_fixa_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class DespesasFixasPage extends StatefulWidget {
   const DespesasFixasPage({super.key});
@@ -576,10 +577,6 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomSafe = MediaQuery.of(context).viewPadding.bottom;
-    // Espaço extra para não ficar atrás da barra de navegação e do FAB.
-    final listBottomPadding = bottomSafe + 88;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Despesas Fixas'),
@@ -651,7 +648,10 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                 ),
                 Expanded(
                   child: ListView.builder(
-              padding: EdgeInsets.fromLTRB(12, 12, 12, listBottomPadding),
+              padding: listViewPaddingWithBottomInset(
+                context,
+                const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              ),
               itemCount: _resumo!.linhas.length,
               itemBuilder: (_, i) {
                 final linha = _resumo!.linhas[i];

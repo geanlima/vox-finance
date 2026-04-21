@@ -5,6 +5,7 @@ import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class SubcategoriasPersonalizadasPage extends StatefulWidget {
   const SubcategoriasPersonalizadasPage({super.key});
@@ -265,7 +266,7 @@ class _SubcategoriasPersonalizadasPageState
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 12, 16, 96)),
                   itemCount: catIds.length,
                   itemBuilder: (context, idx) {
                     final catId = catIds[idx];

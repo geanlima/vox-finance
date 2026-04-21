@@ -80,6 +80,11 @@ class IAService {
     required double valor,
     required DateTime dataVencimento,
   }) async {
+    final cab = DateTime(
+      dataVencimento.year,
+      dataVencimento.month,
+      dataVencimento.day,
+    );
     final conta = ContaPagar(
       descricao: descricao,
       valor: valor,
@@ -89,6 +94,7 @@ class IAService {
       parcelaNumero: null,
       parcelaTotal: null,
       grupoParcelas: 'SIMP_${DateTime.now().microsecondsSinceEpoch}',
+      dataCabecalho: cab,
     );
 
     await _repository.salvar(conta);
@@ -102,6 +108,11 @@ class IAService {
   }) async {
     final grupo = 'PARC_${DateTime.now().microsecondsSinceEpoch}';
     final valoresParcela = splitTotalEmPartesIguais(valorTotal, quantidadeParcelas);
+    final cab = DateTime(
+      primeiraDataVencimento.year,
+      primeiraDataVencimento.month,
+      primeiraDataVencimento.day,
+    );
 
     for (var i = 0; i < quantidadeParcelas; i++) {
       final venc = DateTime(
@@ -119,6 +130,7 @@ class IAService {
         parcelaNumero: i + 1,
         parcelaTotal: quantidadeParcelas,
         grupoParcelas: grupo,
+        dataCabecalho: cab,
       );
 
       await _repository.salvar(conta);

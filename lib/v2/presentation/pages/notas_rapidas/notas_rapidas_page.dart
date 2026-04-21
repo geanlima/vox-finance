@@ -5,6 +5,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/notas_rapidas_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 enum NotasFiltro { pendentes, todas, concluidas }
 
@@ -188,7 +189,7 @@ class _NotasRapidasPageState extends State<NotasRapidasPage> {
               : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 16, 16, 28)),
                   children: [
                     // Card dica
                     Card(

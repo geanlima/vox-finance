@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/data/models/monitoramento_preco.dart';
 import 'package:vox_finance/ui/data/models/monitoramento_preco_oferta.dart';
 import 'package:vox_finance/ui/data/modules/monitoramento_precos/monitoramento_preco_repository.dart';
 import 'package:vox_finance/ui/pages/monitoramento_precos/monitoramento_preco_loja_detalhe_page.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MonitoramentoPrecoDetalhePage extends StatefulWidget {
   const MonitoramentoPrecoDetalhePage({super.key, required this.produto});
@@ -553,7 +554,7 @@ class _MonitoramentoPrecoDetalhePageState
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 12, 16, 24)),
               children: [
                 Card(
                   child: ListTile(

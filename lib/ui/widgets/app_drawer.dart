@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 import 'package:vox_finance/ui/core/nav/app_navigator.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
 import 'package:vox_finance/ui/core/service/app_version_service.dart';
@@ -260,7 +261,7 @@ class _AppDrawerState extends State<AppDrawer> {
     return Drawer(
       child: SafeArea(
         child: ListView(
-          padding: EdgeInsets.zero,
+          padding: EdgeInsets.only(bottom: listExtraScrollEndPadding()),
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: cs.primary),

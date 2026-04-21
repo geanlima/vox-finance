@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/core/service/conta_pagar_pagamento_service.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class ContaPagarDetalhePage extends StatefulWidget {
   final String grupoParcelas;
@@ -211,6 +212,7 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
               : _parcelas.isEmpty
               ? const Center(child: Text('Nenhuma parcela encontrada.'))
               : ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                 itemCount: _parcelas.length,
                 itemBuilder: (context, index) {
                   final p = _parcelas[index];

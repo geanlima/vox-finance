@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/parcelamentos_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class ParcelamentosPage extends StatefulWidget {
   const ParcelamentosPage({super.key});
@@ -79,7 +80,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
               : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                   children: [
                     Card(
                       child: ListTile(

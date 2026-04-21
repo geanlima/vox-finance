@@ -9,6 +9,7 @@ import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repos
 import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_repository.dart';
 import 'package:vox_finance/ui/pages/faturas_salvas/fatura_salva_detalhe_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class FaturasSalvasPage extends StatefulWidget {
   const FaturasSalvasPage({super.key});
@@ -252,6 +253,7 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
                                     ),
                                   )
                                 : ListView.builder(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                                     itemCount: _faturas.length,
                                     itemBuilder: (context, idx) {
                                       final f = _faturas[idx];
@@ -320,8 +322,7 @@ class _FaturasSalvasPageState extends State<FaturasSalvasPage> {
                                               );
                                             },
                                             child: Padding(
-                                              padding:
-                                                  const EdgeInsets.all(14),
+                                              padding: const EdgeInsets.all(14),
                                               child: Row(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,

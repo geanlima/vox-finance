@@ -6,6 +6,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class LancamentoList extends StatelessWidget {
   final List<Lancamento> lancamentos;
@@ -42,6 +43,7 @@ class LancamentoList extends StatelessWidget {
     final danger = Colors.red.shade400;
 
     return ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
       itemCount: lancamentos.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {

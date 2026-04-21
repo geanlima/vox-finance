@@ -37,10 +37,12 @@ class CategoriaPersonalizadaRepository {
   Future<List<CategoriaPersonalizada>> listarPorTipo(TipoMovimento tipo) async {
     final db = await _db;
 
+    // Receita/despesa no lançamento também listam categorias marcadas como "Ambos".
+    final idxAmbos = TipoMovimento.ambos.index;
     final result = await db.query(
       'categorias_personalizadas',
-      where: 'tipo_movimento = ?',
-      whereArgs: [tipo.index],
+      where: '(tipo_movimento = ? OR tipo_movimento = ?)',
+      whereArgs: [tipo.index, idxAmbos],
       orderBy: 'nome',
     );
 

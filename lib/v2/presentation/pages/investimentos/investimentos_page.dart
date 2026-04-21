@@ -5,6 +5,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/investimentos_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class InvestimentosPage extends StatefulWidget {
   const InvestimentosPage({super.key});
@@ -266,7 +267,7 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
                       child: Text('Nenhum investimento cadastrado'),
                     )
                     : ListView.builder(
-                      padding: const EdgeInsets.all(12),
+                      padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                       itemCount: _itens.length,
                       itemBuilder: (context, index) {
                         final item = _itens[index];

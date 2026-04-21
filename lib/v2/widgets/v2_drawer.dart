@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 import 'package:vox_finance/v2/app/router/app_router.dart';
 import 'package:vox_finance/ui/core/nav/app_navigator.dart';
 import 'package:vox_finance/ui/core/service/app_version_service.dart';
@@ -180,7 +181,7 @@ class _V2DrawerState extends State<V2Drawer> {
 
             Expanded(
               child: ListView(
-                padding: EdgeInsets.zero,
+                padding: EdgeInsets.only(bottom: listExtraScrollEndPadding()),
                 children: [
                   // ✅ HOME (com fonte maior se você quiser)
                   _subItem(

@@ -5,6 +5,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart'; // TipoMovimento
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class CategoriasPersonalizadasPage extends StatefulWidget {
   static const routeName = '/categorias-personalizadas';
@@ -70,6 +71,7 @@ class _CategoriasPersonalizadasPageState
                   viewInsets.bottom + 16,
                 ),
                 child: ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                   controller: scrollController,
                   children: [
                     Text(
@@ -230,7 +232,7 @@ class _CategoriasPersonalizadasPageState
               : RefreshIndicator(
                 onRefresh: _carregar,
                 child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                   itemCount: _categorias.length,
                   itemBuilder: (ctx, index) {
                     final cat = _categorias[index];

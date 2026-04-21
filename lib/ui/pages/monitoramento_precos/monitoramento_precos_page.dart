@@ -8,6 +8,7 @@ import 'package:vox_finance/ui/data/models/monitoramento_preco.dart';
 import 'package:vox_finance/ui/data/modules/monitoramento_precos/monitoramento_preco_repository.dart';
 import 'package:vox_finance/ui/pages/monitoramento_precos/monitoramento_preco_detalhe_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MonitoramentoPrecosPage extends StatefulWidget {
   const MonitoramentoPrecosPage({super.key});
@@ -393,7 +394,7 @@ class _MonitoramentoPrecosPageState extends State<MonitoramentoPrecosPage> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 12, 16, 24)),
                     itemCount: _items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {

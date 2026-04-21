@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/balanco_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class BalancoPage extends StatefulWidget {
   const BalancoPage({super.key});
@@ -257,7 +258,7 @@ class _BalancoPageState extends State<BalancoPage> {
           _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 16, 16, 16)),
                 children: [
                   Wrap(
                     spacing: 10,

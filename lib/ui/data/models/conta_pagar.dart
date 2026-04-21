@@ -16,6 +16,10 @@ class ContaPagar {
   int? idConta;
   int? idLancamento;
 
+  /// Data de referência da compra / cabeçalho do grupo (≠ vencimento das parcelas).
+  /// Usada no planejamento para vincular ao grupo; se nula, usa-se o 1º vencimento.
+  DateTime? dataCabecalho;
+
   ContaPagar({
     this.id,
     required this.descricao,
@@ -30,6 +34,7 @@ class ContaPagar {
     this.idCartao,
     this.idConta,
     this.idLancamento,
+    this.dataCabecalho,
   });
 
   Map<String, dynamic> toMap() {
@@ -47,10 +52,12 @@ class ContaPagar {
       'id_cartao': idCartao,
       'id_conta': idConta,
       'id_lancamento': idLancamento,
+      'data_cabecalho': dataCabecalho?.millisecondsSinceEpoch,
     };
   }
 
   factory ContaPagar.fromMap(Map<String, dynamic> map) {
+    final dc = map['data_cabecalho'];
     return ContaPagar(
       id: map['id'] as int?,
       descricao: map['descricao'] as String,
@@ -78,6 +85,29 @@ class ContaPagar {
       idConta: map['id_conta'] as int?,
       idLancamento:
           (map['id_lancamento'] ?? map['id_Lancamento']) as int?,
+      dataCabecalho:
+          dc == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(dc as int),
     );
   }
+}
+
+/// Grupo de contas a pagar para exibir no vínculo com planejamento (data cabeçalho + total).
+class ContaPagarGrupoPlanejamento {
+  ContaPagarGrupoPlanejamento({
+    required this.grupoParcelas,
+    required this.descricao,
+    required this.valorTotal,
+    required this.quantidadeParcelas,
+    required this.dataCabecalho,
+    required this.primeiroVencimento,
+  });
+
+  final String grupoParcelas;
+  final String descricao;
+  final double valorTotal;
+  final int quantidadeParcelas;
+  final DateTime dataCabecalho;
+  final DateTime primeiroVencimento;
 }

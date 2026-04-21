@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/despesas_fixas_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class DespesasFixasPage extends StatefulWidget {
   const DespesasFixasPage({super.key});
@@ -74,7 +75,7 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
               : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                   children: [
                     Card(
                       child: ListTile(

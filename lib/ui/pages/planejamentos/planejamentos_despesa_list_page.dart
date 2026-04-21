@@ -8,6 +8,7 @@ import 'package:vox_finance/ui/data/models/planejamento_despesa.dart';
 import 'package:vox_finance/ui/data/modules/planejamentos/planejamento_despesa_repository.dart';
 import 'package:vox_finance/ui/pages/planejamentos/planejamento_despesa_detalhe_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class PlanejamentosDespesaListPage extends StatefulWidget {
   const PlanejamentosDespesaListPage({super.key});
@@ -350,7 +351,10 @@ class _PlanejamentosDespesaListPageState
                 ),
               )
               : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                padding: listViewPaddingWithBottomInset(
+                  context,
+                  const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                ),
                 itemCount: _lista.length,
                 itemBuilder: (context, i) {
                   final p = _lista[i];

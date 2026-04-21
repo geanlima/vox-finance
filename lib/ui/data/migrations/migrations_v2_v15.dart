@@ -993,6 +993,158 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V48: Métricas por forma de pagamento/cartão
+    // =========================
+    if (oldVersion < 48) {
+      await _addColumnSafe(db, 'metricas_limites', 'forma_pagamento', 'INTEGER');
+      await _addColumnSafe(db, 'metricas_limites', 'id_cartao', 'INTEGER');
+      await _addColumnSafe(db, 'metricas_limites', 'id_conta', 'INTEGER');
+
+      // Recria índice único para permitir múltiplas métricas
+      // no mesmo período/categoria, mas com filtros diferentes (ex.: por cartão).
+      try {
+        await db.execute('DROP INDEX IF EXISTS uq_metricas_periodo_cat_sub;');
+      } catch (_) {}
+
+      try {
+        await db.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_metricas_periodo_cat_sub
+          ON metricas_limites (
+            periodo_tipo,
+            ano,
+            COALESCE(mes, -1),
+            COALESCE(semana, -1),
+            id_categoria_personalizada,
+            COALESCE(id_subcategoria_personalizada, -1),
+            COALESCE(forma_pagamento, -1),
+            COALESCE(id_cartao, -1),
+            COALESCE(id_conta, -1)
+          );
+        ''');
+      } catch (_) {}
+
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_metricas_forma_pagamento
+          ON metricas_limites (forma_pagamento);
+        ''');
+      } catch (_) {}
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_metricas_id_cartao
+          ON metricas_limites (id_cartao);
+        ''');
+      } catch (_) {}
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_metricas_id_conta
+          ON metricas_limites (id_conta);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V49: Métricas por tipo (despesa/receita) e base (categoria/forma)
+    // =========================
+    if (oldVersion < 49) {
+      await _addColumnSafe(
+        db,
+        'metricas_limites',
+        'tipo_movimento',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+      await _addColumnSafe(
+        db,
+        'metricas_limites',
+        'escopo',
+        "TEXT NOT NULL DEFAULT 'categoria'",
+      );
+
+      // Recria índice único incluindo tipo_movimento + escopo
+      try {
+        await db.execute('DROP INDEX IF EXISTS uq_metricas_periodo_cat_sub;');
+      } catch (_) {}
+
+      try {
+        await db.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_metricas_periodo_cat_sub
+          ON metricas_limites (
+            periodo_tipo,
+            ano,
+            COALESCE(mes, -1),
+            COALESCE(semana, -1),
+            tipo_movimento,
+            escopo,
+            id_categoria_personalizada,
+            COALESCE(id_subcategoria_personalizada, -1),
+            COALESCE(forma_pagamento, -1),
+            COALESCE(id_cartao, -1),
+            COALESCE(id_conta, -1)
+          );
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V50: Pessoas que me devem — compra no cartão (gera receitas parceladas)
+    // =========================
+    if (oldVersion < 50) {
+      await _addColumnSafe(
+        db,
+        'pessoas_me_devem',
+        'compra_cartao',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(db, 'pessoas_me_devem', 'id_cartao', 'INTEGER');
+      await _addColumnSafe(db, 'pessoas_me_devem', 'parcelas_total', 'INTEGER');
+      await _addColumnSafe(db, 'pessoas_me_devem', 'grupo_receitas', 'TEXT');
+    }
+
+    // =========================
+    // V51: Item de planejamento → conta a pagar (ex.: parcela)
+    // =========================
+    if (oldVersion < 51) {
+      await _addColumnSafe(
+        db,
+        'planejamentos_despesa_itens',
+        'id_conta_pagar',
+        'INTEGER',
+      );
+    }
+
+    // =========================
+    // V52: Planejamento item — data/valor para vincular contas a pagar
+    // =========================
+    if (oldVersion < 52) {
+      await _addColumnSafe(
+        db,
+        'planejamentos_despesa_itens',
+        'data_vinculo_contas_pagar',
+        'INTEGER',
+      );
+      await _addColumnSafe(
+        db,
+        'planejamentos_despesa_itens',
+        'valor_total',
+        'REAL',
+      );
+    }
+
+    // =========================
+    // V53: Conta a pagar — data do cabeçalho (referência da compra)
+    // =========================
+    if (oldVersion < 53) {
+      await _addColumnSafe(db, 'conta_pagar', 'data_cabecalho', 'INTEGER');
+    }
+
+    // =========================
+    // V54: categorias padrão de receita (seed antigo só criava despesas)
+    // =========================
+    if (oldVersion < 54) {
+      await _seedReceitasPadraoSeNecessario(db);
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -1020,6 +1172,31 @@ class MigrationV2toV15 {
     await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'data_cabecalho', 'INTEGER');
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'id_lancamento',
+      'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'id_conta_pagar',
+      'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'data_vinculo_contas_pagar',
+      'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'valor_total',
+      'REAL',
+    );
     await db.execute('''
       CREATE TABLE IF NOT EXISTS despesas_fixas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1339,6 +1516,7 @@ class MigrationV2toV15 {
     await _addColumnSafe(db, 'conta_pagar', 'forma_pagamento', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
+    await _addColumnSafe(db, 'conta_pagar', 'data_cabecalho', 'INTEGER');
     await _addColumnSafe(
       db,
       'lancamentos',
@@ -1387,6 +1565,24 @@ class MigrationV2toV15 {
       'planejamentos_despesa_itens',
       'id_lancamento',
       'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'id_conta_pagar',
+      'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'data_vinculo_contas_pagar',
+      'INTEGER',
+    );
+    await _addColumnSafe(
+      db,
+      'planejamentos_despesa_itens',
+      'valor_total',
+      'REAL',
     );
 
     await db.execute('''
@@ -1582,6 +1778,21 @@ class MigrationV2toV15 {
         });
       }
 
+      const receitas = [
+        'Salário',
+        'Freelance',
+        'Vendas e serviços',
+        'Investimentos',
+        'Outras receitas',
+      ];
+      for (final nome in receitas) {
+        batch.insert('categorias_personalizadas', {
+          'nome': nome,
+          'tipo_movimento': 0, // receita
+          'cor': null,
+        });
+      }
+
       await batch.commit(noResult: true);
 
       // ignore: avoid_print
@@ -1589,6 +1800,39 @@ class MigrationV2toV15 {
     } catch (e) {
       // ignore: avoid_print
       print('Erro ao inserir categorias padrão: $e');
+    }
+  }
+
+  /// Garante algumas categorias de receita quando o banco já tinha só despesas no seed.
+  static Future<void> _seedReceitasPadraoSeNecessario(Database db) async {
+    try {
+      final result = await db.rawQuery('''
+        SELECT COUNT(*) AS c
+        FROM categorias_personalizadas
+        WHERE tipo_movimento = 0
+      ''');
+      final count = (result.first['c'] as int?) ?? 0;
+      if (count > 0) return;
+
+      final batch = db.batch();
+      const receitas = [
+        'Salário',
+        'Freelance',
+        'Vendas e serviços',
+        'Investimentos',
+        'Outras receitas',
+      ];
+      for (final nome in receitas) {
+        batch.insert('categorias_personalizadas', {
+          'nome': nome,
+          'tipo_movimento': 0,
+          'cor': null,
+        });
+      }
+      await batch.commit(noResult: true);
+    } catch (e) {
+      // ignore: avoid_print
+      print('Erro ao inserir categorias padrão de receita: $e');
     }
   }
 }

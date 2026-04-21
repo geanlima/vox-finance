@@ -12,6 +12,7 @@ import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_r
 import 'package:vox_finance/ui/pages/integracao/fatura_api_detalhe_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/pages/faturas_salvas/fatura_salva_detalhe_page.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Faturas por cartão cadastrado e período (código de integração no cartão).
 class FaturasCartaoPage extends StatefulWidget {
@@ -244,7 +245,7 @@ class _FaturasCartaoPageState extends State<FaturasCartaoPage> {
                 ),
               )
               : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                 children: [
                   Text(
                     'Escolha o cartão cadastrado, o mês e o ano, depois toque em Buscar faturas.',

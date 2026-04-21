@@ -25,6 +25,7 @@ import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class _FaturaCartaoHomeItem {
   final int idCartao;
@@ -905,7 +906,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                 ),
               )
               : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                 children: [
                   _orcamentoMesCard(context),
                   const SizedBox(height: 12),

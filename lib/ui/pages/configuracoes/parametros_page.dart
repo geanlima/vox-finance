@@ -7,6 +7,7 @@ import 'package:vox_finance/ui/core/service/notifications_service.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/models/fatura_geracao_opcao.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class ParametrosPage extends StatefulWidget {
   const ParametrosPage({super.key});
@@ -249,6 +250,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
                       const SizedBox(height: 12),
                       Flexible(
                         child: ListView.separated(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                           shrinkWrap: true,
                           itemCount: opcoes.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),
@@ -340,7 +342,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
           _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                 children: [
                   Card(
                     child: Padding(
