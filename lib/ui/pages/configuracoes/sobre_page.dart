@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class SobrePage extends StatelessWidget {
   const SobrePage({super.key});
@@ -16,7 +17,7 @@ class SobrePage extends StatelessWidget {
       ),
       drawer: const AppDrawer(currentRoute: SobrePage.routeName),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(20)),
         children: [
           Icon(Icons.account_balance_wallet_outlined, size: 56, color: cs.primary),
           const SizedBox(height: 16),

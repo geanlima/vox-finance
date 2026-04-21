@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/categorias_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class CategoriasPage extends StatefulWidget {
   const CategoriasPage({super.key});
@@ -60,7 +61,7 @@ class _CategoriasPageState extends State<CategoriasPage> {
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 16, 16, 18)),
                 children: [
                   _categoriasCriadasCard(context, cs),
                   const SizedBox(height: 12),

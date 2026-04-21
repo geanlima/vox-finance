@@ -120,6 +120,9 @@ class MetricaLimiteRepository {
         'id_categoria_personalizada = ?',
       if (metrica.idSubcategoriaPersonalizada != null)
         'id_subcategoria_personalizada = ?',
+      if (metrica.formaPagamento != null) 'forma_pagamento = ?',
+      if (metrica.idCartao != null) 'id_cartao = ?',
+      if (metrica.idConta != null) 'id_conta = ?',
       if (metrica.ignorarPagamentoFatura) 'pagamento_fatura = 0',
       if (metrica.considerarSomentePagos) 'pago = 1',
       if (!metrica.incluirFuturos) 'data_hora <= ?',
@@ -128,19 +131,15 @@ class MetricaLimiteRepository {
     final args = <Object?>[
       inicio.millisecondsSinceEpoch,
       fim.millisecondsSinceEpoch,
-      1, // despesa
-      metrica.idCategoriaPersonalizada,
+      1, // despesa (mantém comportamento do V1)
+      if (metrica.idCategoriaPersonalizada > 0) metrica.idCategoriaPersonalizada,
       if (metrica.idSubcategoriaPersonalizada != null)
         metrica.idSubcategoriaPersonalizada,
+      if (metrica.formaPagamento != null) metrica.formaPagamento,
+      if (metrica.idCartao != null) metrica.idCartao,
+      if (metrica.idConta != null) metrica.idConta,
       if (!metrica.incluirFuturos) DateTime.now().millisecondsSinceEpoch,
     ];
-
-    // remove args extras se subcategoria null
-    final cleanedArgs = <Object?>[];
-    for (final a in args) {
-      if (a == null) continue;
-      cleanedArgs.add(a);
-    }
 
     final result = await db.rawQuery(
       '''
@@ -148,7 +147,7 @@ class MetricaLimiteRepository {
       FROM lancamentos
       WHERE ${where.join(' AND ')}
       ''',
-      cleanedArgs,
+      args,
     );
 
     final total = ((result.first['total'] as num?) ?? 0).toDouble();

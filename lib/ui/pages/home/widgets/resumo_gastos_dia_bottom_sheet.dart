@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/pages/home/models/grupo_resumo_dia.dart';
 import 'package:vox_finance/ui/pages/home/widgets/resumo_grupo_lancamentos_bottom_sheet.dart';
 import 'package:vox_finance/ui/pages/home/widgets/resumo_gastos_dia_item.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Lista já filtrada pelo chamador; aqui só agrupa por forma/cartão/conta.
 enum ModoListaResumoMovimento {
@@ -265,7 +266,12 @@ class ResumoGastosDiaBottomSheet extends StatelessWidget {
               Expanded(
                 child: ListView(
                   controller: scrollController,
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    0,
+                    16,
+                    16 + safeBottom + listExtraScrollEndPadding(),
+                  ),
                   children: grupos.values.map((g) {
                     return ResumoGastosDiaItem(
                       icone: g.icon,

@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/pages/lancamento/lancamento_form_result.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class LancamentoFormPage extends StatefulWidget {
   final Lancamento? lancamento;
@@ -244,6 +245,7 @@ class _LancamentoFormPageState extends State<LancamentoFormPage> {
         child: Form(
           key: _formKey,
           child: ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
             children: [
               TextFormField(
                 controller: _descricaoController,

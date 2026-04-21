@@ -9,6 +9,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:vox_finance/ui/data/models/fonte_renda.dart';
 import 'package:vox_finance/ui/data/modules/renda/renda_repository.dart';
 import 'package:vox_finance/ui/pages/renda/destinos_renda_page.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MinhaRendaPage extends StatefulWidget {
   static const routeName = '/minha-renda';
@@ -88,6 +89,7 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                   viewInsets.bottom + 16,
                 ),
                 child: ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
                   controller: scrollController,
                   children: [
                     Text(
@@ -287,10 +289,10 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
               : RefreshIndicator(
                 onRefresh: _carregarFontes,
                 child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
-                  ),
+                  )),
                   itemCount: _fontes.length,
                   itemBuilder: (context, index) {
                     final fonte = _fontes[index];

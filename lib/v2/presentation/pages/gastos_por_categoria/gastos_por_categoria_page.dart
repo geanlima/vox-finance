@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/categorias_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class GastosPorCategoriaPage extends StatefulWidget {
   const GastosPorCategoriaPage({super.key});
@@ -87,7 +88,7 @@ class _GastosPorCategoriaPageState extends State<GastosPorCategoriaPage> {
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 16, 16, 18)),
                 children: [
                   Row(
                     children: [
@@ -311,6 +312,7 @@ class _GastosPorCategoriaPageState extends State<GastosPorCategoriaPage> {
       context: context,
       showDragHandle: true,
       builder: (_) => ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
         shrinkWrap: true,
         children: [
           const ListTile(
@@ -334,6 +336,7 @@ class _GastosPorCategoriaPageState extends State<GastosPorCategoriaPage> {
       context: context,
       showDragHandle: true,
       builder: (_) => ListView(
+      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
         shrinkWrap: true,
         children: [
           const ListTile(

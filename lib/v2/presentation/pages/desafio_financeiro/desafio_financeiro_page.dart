@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/desafio_financeiro_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class DesafioFinanceiroPage extends StatefulWidget {
   const DesafioFinanceiroPage({super.key});
@@ -214,7 +215,7 @@ class _DesafioFinanceiroPageState extends State<DesafioFinanceiroPage> {
                 ),
               )
               : ListView.builder(
-                padding: const EdgeInsets.all(12),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                 itemCount: _itens.length,
                 itemBuilder: (_, i) {
                   final item = _itens[i];

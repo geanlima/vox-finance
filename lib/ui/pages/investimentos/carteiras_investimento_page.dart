@@ -6,6 +6,7 @@ import 'package:vox_finance/ui/data/models/investimento_layout_catalog.dart';
 import 'package:vox_finance/ui/data/modules/investimentos/carteira_investimento_repository.dart';
 import 'package:vox_finance/ui/pages/investimentos/bluminers/bluminers_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 /// Lista de carteiras; cada uma usa um layout (ex.: Bluminers).
 class CarteirasInvestimentoPage extends StatefulWidget {
@@ -236,7 +237,7 @@ class _CarteirasInvestimentoPageState extends State<CarteirasInvestimentoPage> {
               : _itens.isEmpty
               ? const Center(child: Text('Nenhuma carteira cadastrada.'))
               : ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                   itemCount: _itens.length,
                   itemBuilder: (_, i) {
                     final c = _itens[i];

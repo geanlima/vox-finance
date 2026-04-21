@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/dividas_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MinhasDividasPage extends StatefulWidget {
   const MinhasDividasPage({super.key});
@@ -163,7 +164,7 @@ class _MinhasDividasPageState extends State<MinhasDividasPage> {
               : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                   children: [
                     Card(
                       child: ListTile(

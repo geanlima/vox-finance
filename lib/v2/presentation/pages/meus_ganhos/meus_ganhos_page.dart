@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/ganhos_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MeusGanhosPage extends StatefulWidget {
   const MeusGanhosPage({super.key});
@@ -74,7 +75,7 @@ class _MeusGanhosPageState extends State<MeusGanhosPage> {
               : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                   children: [
                     Card(
                       child: ListTile(

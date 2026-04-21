@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MinhaRendaMensalDetalhePage extends StatefulWidget {
   final int ano;
@@ -69,7 +70,7 @@ class _MinhaRendaMensalDetalhePageState
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.all(16),
+            padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
             itemCount: itens.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {

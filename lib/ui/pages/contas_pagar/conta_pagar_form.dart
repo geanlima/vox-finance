@@ -79,6 +79,10 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
     // se for edição, reaproveita o objeto;
     // se for novo, cria um com todos os campos obrigatórios
     final bool ehEdicao = widget.contaExistente != null;
+    final ContaPagar? antesEdicao =
+        ehEdicao
+            ? ContaPagar.fromMap(widget.contaExistente!.toMap())
+            : null;
 
     ContaPagar conta;
     if (ehEdicao) {
@@ -104,6 +108,13 @@ class _ContaPagarFormState extends State<ContaPagarForm> {
     }
 
     await _repository.salvar(conta);
+
+    if (antesEdicao != null) {
+      await _repository.sincronizarDataHoraLancamentoAposEditarConta(
+        contaAtualizada: conta,
+        contaAntesEdicao: antesEdicao,
+      );
+    }
 
     if (!mounted) return;
     Navigator.pop(context, true);

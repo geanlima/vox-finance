@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/pessoas_devedoras_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class PessoasQueMeDevemPage extends StatefulWidget {
   const PessoasQueMeDevemPage({super.key});
@@ -67,7 +68,7 @@ class _PessoasQueMeDevemPageState extends State<PessoasQueMeDevemPage> {
               : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                   children: [
                     Card(
                       child: ListTile(

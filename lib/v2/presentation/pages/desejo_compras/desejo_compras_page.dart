@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
 import '../../../infrastructure/repositories/desejos_compras_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class _DesejoEditResult {
   final String produto;
@@ -307,7 +308,7 @@ class _DesejosComprasPageState extends State<DesejosComprasPage> {
               : _itens.isEmpty
               ? const Center(child: Text('Nenhum desejo cadastrado'))
               : ListView.builder(
-                padding: const EdgeInsets.all(12),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(12)),
                 itemCount: _itens.length,
                 itemBuilder: (context, i) {
                   final item = _itens[i];

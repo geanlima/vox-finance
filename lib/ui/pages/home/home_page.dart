@@ -28,6 +28,7 @@ import 'package:vox_finance/ui/pages/home/widgets/resumo_gastos_dia_bottom_sheet
 
 import 'home_ocr.dart';
 import 'home_voice.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -1103,7 +1104,12 @@ class _HomePageState extends State<HomePage> {
                   Expanded(
                     child: ListView(
                       controller: scrollController,
-                      padding: EdgeInsets.fromLTRB(0, 0, 0, safeBottom),
+                      padding: EdgeInsets.fromLTRB(
+                        0,
+                        0,
+                        0,
+                        safeBottom + listExtraScrollEndPadding(),
+                      ),
                       children: [
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),

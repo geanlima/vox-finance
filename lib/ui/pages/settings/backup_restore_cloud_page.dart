@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 // ✅ ajuste o path conforme seu projeto
 import 'package:vox_finance/ui/data/service/backup/backup_manager.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class BackupRestoreCloudPage extends StatefulWidget {
   const BackupRestoreCloudPage({super.key});
@@ -262,7 +263,7 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
       body: AbsorbPointer(
         absorbing: _loading,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
           children: [
             Card(
               child: ListTile(

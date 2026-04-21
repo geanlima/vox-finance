@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../app/di/injector.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class MetaCofrinhoEditPage extends StatefulWidget {
   final int ano;
@@ -85,7 +86,7 @@ class _MetaCofrinhoEditPageState extends State<MetaCofrinhoEditPage> {
           _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
                 children: [
                   Text(
                     'Ano ${widget.ano}',

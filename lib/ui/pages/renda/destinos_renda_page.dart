@@ -7,6 +7,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:vox_finance/ui/data/models/fonte_renda.dart';
 import 'package:vox_finance/ui/data/models/destino_renda.dart';
 import 'package:vox_finance/ui/data/modules/renda/renda_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class DestinosRendaPage extends StatefulWidget {
   final FonteRenda fonte;
@@ -266,10 +267,10 @@ class _DestinosRendaPageState extends State<DestinosRendaPage> {
                     : RefreshIndicator(
                       onRefresh: _carregar,
                       child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(
+                        padding: listViewPaddingWithBottomInset(context, const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
-                        ),
+                        )),
                         itemCount: _destinos.length,
                         itemBuilder: (context, index) {
                           final destino = _destinos[index];

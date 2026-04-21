@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:vox_finance/v2/widgets/v2_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class HomePageV2 extends StatefulWidget {
   const HomePageV2({super.key});
@@ -116,7 +117,7 @@ class _HomePageV2State extends State<HomePageV2> {
                       onCriar: _criarNotificacao,
                     )
                     : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 8, 16, 16)),
                       itemCount: _view.length,
                       itemBuilder: (_, i) {
                         final n = _view[i];
@@ -389,7 +390,7 @@ class _CriarNotificacaoPageState extends State<_CriarNotificacaoPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: listViewPaddingWithBottomInset(context, const EdgeInsets.all(16)),
         children: [
           Form(
             key: _formKey,

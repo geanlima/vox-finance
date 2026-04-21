@@ -129,9 +129,40 @@ class PlanejamentoDespesaRepository {
     int? idLancamento,
   }) async {
     final db = await _db;
+    final patch = <String, Object?>{'id_lancamento': idLancamento};
+    if (idLancamento != null) {
+      patch['id_conta_pagar'] = null;
+    }
     await db.update(
       'planejamentos_despesa_itens',
-      {'id_lancamento': idLancamento},
+      patch,
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
+  }
+
+  Future<void> definirContaPagarDoItem({
+    required int itemId,
+    int? idContaPagar,
+  }) async {
+    final db = await _db;
+    final patch = <String, Object?>{'id_conta_pagar': idContaPagar};
+    if (idContaPagar != null) {
+      patch['id_lancamento'] = null;
+    }
+    await db.update(
+      'planejamentos_despesa_itens',
+      patch,
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
+  }
+
+  Future<void> limparVinculosDoItem(int itemId) async {
+    final db = await _db;
+    await db.update(
+      'planejamentos_despesa_itens',
+      {'id_lancamento': null, 'id_conta_pagar': null},
       where: 'id = ?',
       whereArgs: [itemId],
     );
@@ -152,6 +183,31 @@ class PlanejamentoDespesaRepository {
         excetoItemId == null
             ? [planejamentoId, idLancamento]
             : [planejamentoId, idLancamento, excetoItemId];
+    final rows = await db.query(
+      'planejamentos_despesa_itens',
+      columns: ['id'],
+      where: where,
+      whereArgs: args,
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Outro item do mesmo planejamento já referencia essa conta a pagar.
+  Future<bool> outroItemDoPlanejamentoUsaContaPagar({
+    required int planejamentoId,
+    required int idContaPagar,
+    int? excetoItemId,
+  }) async {
+    final db = await _db;
+    final where =
+        excetoItemId == null
+            ? 'planejamento_id = ? AND id_conta_pagar = ?'
+            : 'planejamento_id = ? AND id_conta_pagar = ? AND id != ?';
+    final args =
+        excetoItemId == null
+            ? [planejamentoId, idContaPagar]
+            : [planejamentoId, idContaPagar, excetoItemId];
     final rows = await db.query(
       'planejamentos_despesa_itens',
       columns: ['id'],

@@ -19,6 +19,7 @@ import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_r
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.dart';
 import 'package:vox_finance/ui/core/service/integracao_cartoes_api_service.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 enum _ModoAssociarFaturaItem { lancamento, contaPagar }
 
@@ -616,7 +617,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
                           controller: _itensScroll,
                           itemCount: itensVisiveis.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),
@@ -790,8 +791,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                                                 color: cs.primary
                                                     .withOpacity(0.55),
                                               ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
+                                              padding: const EdgeInsets.symmetric(
                                                     horizontal: 14,
                                                     vertical: 10,
                                                   ),
@@ -1190,7 +1190,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
 
             return SafeArea(
               child: ListView(
-                padding: EdgeInsets.only(bottom: bottomPad + 16),
+                padding: listViewPaddingWithBottomInset(context, EdgeInsets.only(bottom: bottomPad + 16)),
                 children: filhos,
               ),
             );

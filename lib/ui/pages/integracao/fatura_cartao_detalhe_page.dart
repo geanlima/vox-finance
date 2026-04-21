@@ -5,6 +5,7 @@ import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/models/fatura_cartao.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class FaturaCartaoDetalhePage extends StatefulWidget {
   final FaturaCartao fatura;
@@ -141,12 +142,12 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                               ),
                             )
                             : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(
+                              padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(
                                 16,
                                 0,
                                 16,
                                 16,
-                              ),
+                              )),
                               itemCount: _itens.length,
                               separatorBuilder:
                                   (_, __) => const SizedBox(height: 8),
@@ -191,8 +192,7 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                                                 runSpacing: 6,
                                                 children: [
                                                   Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
+                                                    padding: const EdgeInsets.symmetric(
                                                           horizontal: 10,
                                                           vertical: 5,
                                                         ),
@@ -234,8 +234,7 @@ class _FaturaCartaoDetalhePageState extends State<FaturaCartaoDetalhePage> {
                                                   ),
                                                   if (linhaGrupo != null)
                                                     Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
+                                                      padding: const EdgeInsets.symmetric(
                                                             horizontal: 10,
                                                             vertical: 5,
                                                           ),

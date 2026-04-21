@@ -5,11 +5,18 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/data/models/pessoa_me_deve.dart';
+import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/modules/pessoas_me_devem/pessoa_me_deve_repository.dart';
+import 'package:vox_finance/ui/data/models/lancamento.dart' show TipoMovimento;
+import 'package:vox_finance/ui/data/service/db_service.dart';
+import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 class PessoasMeDevemPage extends StatefulWidget {
   const PessoasMeDevemPage({super.key});
@@ -23,6 +30,8 @@ class PessoasMeDevemPage extends StatefulWidget {
 class _PessoasMeDevemPageState extends State<PessoasMeDevemPage> {
   final _repo = PessoaMeDeveRepository();
   final _contaRepo = ContaBancariaRepository();
+  final _cartaoRepo = CartaoCreditoRepository();
+  final _lancRepo = LancamentoRepository();
 
   final _fmtMoney = NumberFormat.currency(locale: 'pt_BR', symbol: r'R$');
   final _fmtData = DateFormat('dd/MM/yyyy');
@@ -119,6 +128,95 @@ class _PessoasMeDevemPageState extends State<PessoasMeDevemPage> {
     }
   }
 
+  Future<void> _registrarCompraNoCartao(PessoaMeDeve p) async {
+    // 1) Carrega combos do form de lançamento (igual ao fluxo da Home)
+    final cartoes = await _cartaoRepo.getCartoesCredito();
+    final contas = await _contaRepo.getContasBancarias(apenasAtivas: true);
+
+    final grupoDespesa = 'PMD_COMPRA_${DateTime.now().millisecondsSinceEpoch}';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) {
+        return LancamentoFormBottomSheet(
+          dataSelecionada: DateTime.now(),
+          currency: _fmtMoney,
+          dateDiaFormat: _fmtData,
+          dbService: DbService.instance,
+          cartoes: cartoes,
+          contas: contas,
+          tipoInicial: TipoMovimento.despesa,
+          formaInicial: FormaPagamento.credito,
+          pagamentoFaturaInicial: false,
+          descricaoInicial: 'Compra para ${p.nome}',
+          grupoParcelasForcado: grupoDespesa,
+          onSaved: () async {
+            // nada aqui; o repo do form já salva
+          },
+          onSavedLancamento: (_) {},
+        );
+      },
+    );
+
+    // 2) Depois do fechamento do sheet, tenta localizar as parcelas criadas pelo grupo
+    final parcelas = await _lancRepo.getParcelasPorGrupo(grupoDespesa);
+    if (parcelas.isEmpty) return;
+
+    // pega base do grupo
+    final base = parcelas.first;
+    final qtd = parcelas.length;
+    final total = parcelas.fold<double>(0, (s, e) => s + e.valor);
+    final idCartao = base.idCartao;
+    if (idCartao == null) return;
+
+    final cartao = await _cartaoRepo.getCartaoCreditoById(idCartao);
+    if (cartao == null || cartao.diaFechamento == null || cartao.diaVencimento == null) {
+      return;
+    }
+
+    // 3) Gera receitas parceladas (previstas) no vencimento do cartão
+    final grupoReceitas = 'PMD_RECEITA_$grupoDespesa';
+    await _repo.gerarReceitasParceladasCompraCartao(
+      nomePessoa: p.nome,
+      observacao: base.descricao,
+      valorTotal: double.parse(total.toStringAsFixed(2)),
+      dataCompra: base.dataHora,
+      parcelasTotal: qtd,
+      diaFechamento: cartao.diaFechamento!,
+      diaVencimento: cartao.diaVencimento!,
+      grupoParcelas: grupoReceitas,
+    );
+
+    await _repo.gerarDespesasParceladasNoVencimentoCartao(
+      nomePessoa: p.nome,
+      observacao: base.descricao,
+      valorTotal: double.parse(total.toStringAsFixed(2)),
+      dataCompra: base.dataHora,
+      parcelasTotal: qtd,
+      idCartao: idCartao,
+      diaFechamento: cartao.diaFechamento!,
+      diaVencimento: cartao.diaVencimento!,
+      grupoParcelasPrefixo: grupoReceitas,
+    );
+
+    // 4) Registra um item em "pessoas que me devem" como controle desse parcelado
+    await _repo.inserir(
+      nome: p.nome,
+      dataEmprestimo: base.dataHora,
+      valorTotal: double.parse(total.toStringAsFixed(2)),
+      observacao: base.descricao,
+      compraCartao: true,
+      idCartao: idCartao,
+      parcelasTotal: qtd,
+      grupoReceitas: grupoReceitas,
+    );
+
+    await _load();
+    _snack('Compra registrada e receitas parceladas geradas.');
+  }
+
   Future<void> _confirmarExcluir(PessoaMeDeve p) async {
     if (p.id == null) return;
     final ok = await showDialog<bool>(
@@ -159,7 +257,10 @@ class _PessoasMeDevemPageState extends State<PessoasMeDevemPage> {
                 onRefresh: _load,
                 child: SlidableAutoCloseBehavior(
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: listViewPaddingWithBottomInset(
+                      context,
+                      const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    ),
                     children: [
                       Card(
                         child: ListTile(
@@ -189,14 +290,31 @@ class _PessoasMeDevemPageState extends State<PessoasMeDevemPage> {
     final pendente = p.valorPendente;
     final cs = Theme.of(context).colorScheme;
 
+    String? cartaoLabel() {
+      final id = p.idCartao;
+      if (id == null) return null;
+      try {
+        // _CadastroPessoaSheet carrega os cartões, mas aqui não.
+        // Exibe só o id caso ainda não esteja carregado em memória.
+        return 'Cartão #$id';
+      } catch (_) {
+        return 'Cartão #$id';
+      }
+    }
+
     final card = Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
         title: Text(p.nome),
         subtitle: Text(
           [
-            'Empréstimo: ${_fmtData.format(p.dataEmprestimo)}',
+            (p.compraCartao
+                ? 'Compra: ${_fmtData.format(p.dataEmprestimo)}'
+                : 'Empréstimo: ${_fmtData.format(p.dataEmprestimo)}'),
             if (p.observacao != null && p.observacao!.isNotEmpty) p.observacao!,
+            if (p.compraCartao && p.parcelasTotal != null)
+              'No cartão • ${p.parcelasTotal}x'
+              '${p.idCartao == null ? '' : ' • ${cartaoLabel()}'}',
             'Emprestado: ${_fmtMoney.format(p.valorTotal)}',
             if (p.valorRecebido > 0.009)
               'Recebido: ${_fmtMoney.format(p.valorRecebido)}',
@@ -253,7 +371,7 @@ class _PessoasMeDevemPageState extends State<PessoasMeDevemPage> {
               ? null
               : ActionPane(
                 motion: const DrawerMotion(),
-                extentRatio: 0.20,
+                extentRatio: 0.40,
                 children: [
                   CustomSlidableAction(
                     onPressed: (_) => _receber(p),
@@ -261,6 +379,16 @@ class _PessoasMeDevemPageState extends State<PessoasMeDevemPage> {
                     borderRadius: BorderRadius.circular(12),
                     child: const Icon(
                       Icons.check_circle,
+                      size: 28,
+                      color: Colors.white,
+                    ),
+                  ),
+                  CustomSlidableAction(
+                    onPressed: (_) => _registrarCompraNoCartao(p),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(12),
+                    child: const Icon(
+                      Icons.shopping_cart_outlined,
                       size: 28,
                       color: Colors.white,
                     ),
@@ -311,10 +439,15 @@ class _CadastroPessoaSheetState extends State<_CadastroPessoaSheet> {
   late final TextEditingController _nome;
   late final TextEditingController _valor;
   late final TextEditingController _obs;
+  late final TextEditingController _parcelas;
   late DateTime _data;
   bool _saving = false;
+  bool _compraCartao = false;
+  CartaoCredito? _cartao;
+  List<CartaoCredito> _cartoes = const [];
 
   final _repo = PessoaMeDeveRepository();
+  final _cartaoRepo = CartaoCreditoRepository();
 
   @override
   void initState() {
@@ -325,7 +458,26 @@ class _CadastroPessoaSheetState extends State<_CadastroPessoaSheet> {
       text: i != null ? i.valorTotal.toStringAsFixed(2).replaceAll('.', ',') : '',
     );
     _obs = TextEditingController(text: i?.observacao ?? '');
+    _parcelas = TextEditingController(
+      text: (i?.parcelasTotal ?? 8).toString(),
+    );
     _data = i?.dataEmprestimo ?? DateTime.now();
+    _compraCartao = i?.compraCartao ?? false;
+    _loadCartoes();
+  }
+
+  Future<void> _loadCartoes() async {
+    final list = await _cartaoRepo.getCartoesCredito();
+    if (!mounted) return;
+    setState(() {
+      _cartoes = list.where((c) => c.id != null && c.diaVencimento != null && c.diaFechamento != null).toList();
+      final initId = widget.inicial?.idCartao;
+      if (initId != null) {
+        try {
+          _cartao = _cartoes.firstWhere((c) => c.id == initId);
+        } catch (_) {}
+      }
+    });
   }
 
   @override
@@ -333,6 +485,7 @@ class _CadastroPessoaSheetState extends State<_CadastroPessoaSheet> {
     _nome.dispose();
     _valor.dispose();
     _obs.dispose();
+    _parcelas.dispose();
     super.dispose();
   }
 
@@ -360,6 +513,27 @@ class _CadastroPessoaSheetState extends State<_CadastroPessoaSheet> {
     }
 
     final i = widget.inicial;
+    final parcelas = int.tryParse(_parcelas.text.trim()) ?? 0;
+    if (_compraCartao) {
+      if (_cartao?.id == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecione o cartão.')),
+        );
+        return;
+      }
+      if (parcelas < 2 || parcelas > 60) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Informe um número de parcelas válido (2..60).')),
+        );
+        return;
+      }
+      if (_cartao!.diaFechamento == null || _cartao!.diaVencimento == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cartão sem dia de fechamento/vencimento configurado.')),
+        );
+        return;
+      }
+    }
     if (i?.id != null &&
         !widget.bloquearValorTotal &&
         v < i!.valorRecebido - 0.009) {
@@ -385,16 +559,57 @@ class _CadastroPessoaSheetState extends State<_CadastroPessoaSheet> {
           valorTotal: v,
           valorRecebido: i.valorRecebido,
           observacao: obs.isEmpty ? null : obs,
+          compraCartao: i.compraCartao,
+          idCartao: i.idCartao,
+          parcelasTotal: i.parcelasTotal,
+          grupoReceitas: i.grupoReceitas,
           criadoEm: i.criadoEm,
         ),
       );
     } else {
-      await _repo.inserir(
-        nome: nome,
-        dataEmprestimo: _data,
-        valorTotal: v,
-        observacao: obs.isEmpty ? null : obs,
-      );
+      if (_compraCartao) {
+        final grupo = 'PMD_${DateTime.now().millisecondsSinceEpoch}';
+        await _repo.inserir(
+          nome: nome,
+          dataEmprestimo: _data,
+          valorTotal: v,
+          observacao: obs.isEmpty ? null : obs,
+          compraCartao: true,
+          idCartao: _cartao!.id,
+          parcelasTotal: parcelas,
+          grupoReceitas: grupo,
+        );
+
+        await _repo.gerarReceitasParceladasCompraCartao(
+          nomePessoa: nome,
+          observacao: obs.isEmpty ? null : obs,
+          valorTotal: v,
+          dataCompra: _data,
+          parcelasTotal: parcelas,
+          diaFechamento: _cartao!.diaFechamento!,
+          diaVencimento: _cartao!.diaVencimento!,
+          grupoParcelas: grupo,
+        );
+
+        await _repo.gerarDespesasParceladasNoVencimentoCartao(
+          nomePessoa: nome,
+          observacao: obs.isEmpty ? null : obs,
+          valorTotal: v,
+          dataCompra: _data,
+          parcelasTotal: parcelas,
+          idCartao: _cartao!.id!,
+          diaFechamento: _cartao!.diaFechamento!,
+          diaVencimento: _cartao!.diaVencimento!,
+          grupoParcelasPrefixo: grupo,
+        );
+      } else {
+        await _repo.inserir(
+          nome: nome,
+          dataEmprestimo: _data,
+          valorTotal: v,
+          observacao: obs.isEmpty ? null : obs,
+        );
+      }
     }
 
     if (mounted) Navigator.pop(context, true);
@@ -403,66 +618,117 @@ class _CadastroPessoaSheetState extends State<_CadastroPessoaSheet> {
   @override
   Widget build(BuildContext context) {
     final inset = MediaQuery.of(context).viewInsets.bottom;
-    final bottom = MediaQuery.of(context).padding.bottom;
 
     return Padding(
       padding: EdgeInsets.only(bottom: inset),
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              widget.inicial == null ? 'Novo — quem te deve' : 'Editar',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _nome,
-              decoration: const InputDecoration(
-                labelText: 'Nome',
-                border: OutlineInputBorder(),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.inicial == null ? 'Novo — quem te deve' : 'Editar',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-              textCapitalization: TextCapitalization.words,
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Data do empréstimo'),
-              subtitle: Text(widget.fmtData.format(_data)),
-              trailing: IconButton(icon: const Icon(Icons.calendar_month), onPressed: _pickData),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _valor,
-              readOnly: widget.bloquearValorTotal,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Valor',
-                border: const OutlineInputBorder(),
-                prefixText: r'R$ ',
-                helperText:
-                    widget.bloquearValorTotal
-                        ? 'Valor total bloqueado após recebimentos.'
-                        : null,
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nome,
+                decoration: const InputDecoration(
+                  labelText: 'Nome',
+                  border: OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.words,
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _obs,
-              decoration: const InputDecoration(
-                labelText: 'Observação (opcional)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Compra no meu cartão (parcelado)'),
+                subtitle: const Text('Gera lançamentos de receita parcelados no vencimento do cartão.'),
+                value: _compraCartao,
+                onChanged:
+                    widget.inicial != null
+                        ? null
+                        : (v) => setState(() => _compraCartao = v),
               ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _saving ? null : _salvar,
-              icon: const Icon(Icons.save_outlined),
-              label: Text(widget.inicial == null ? 'Salvar' : 'Atualizar'),
-            ),
-          ],
+              if (_compraCartao) ...[
+                const SizedBox(height: 8),
+                InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Cartão',
+                    border: OutlineInputBorder(),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<CartaoCredito?>(
+                      isExpanded: true,
+                      value: _cartao,
+                      items: [
+                        const DropdownMenuItem<CartaoCredito?>(
+                          value: null,
+                          child: Text('Selecione'),
+                        ),
+                        ..._cartoes.map(
+                          (c) => DropdownMenuItem<CartaoCredito?>(
+                            value: c,
+                            child: Text(c.label),
+                          ),
+                        ),
+                      ],
+                      onChanged:
+                          (v) => setState(() => _cartao = v),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _parcelas,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Parcelas',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(_compraCartao ? 'Data da compra' : 'Data do empréstimo'),
+                subtitle: Text(widget.fmtData.format(_data)),
+                trailing: IconButton(icon: const Icon(Icons.calendar_month), onPressed: _pickData),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _valor,
+                readOnly: widget.bloquearValorTotal,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Valor',
+                  border: const OutlineInputBorder(),
+                  prefixText: r'R$ ',
+                  helperText:
+                      widget.bloquearValorTotal
+                          ? 'Valor total bloqueado após recebimentos.'
+                          : null,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _obs,
+                decoration: const InputDecoration(
+                  labelText: 'Observação (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _saving ? null : _salvar,
+                icon: const Icon(Icons.save_outlined),
+                label: Text(widget.inicial == null ? 'Salvar' : 'Atualizar'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -555,95 +821,97 @@ class _RecebimentoSheetState extends State<_RecebimentoSheet> {
   @override
   Widget build(BuildContext context) {
     final inset = MediaQuery.of(context).viewInsets.bottom;
-    final bottom = MediaQuery.of(context).padding.bottom;
     final pendente = widget.pessoa.valorPendente;
 
     return Padding(
       padding: EdgeInsets.only(bottom: inset),
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Recebimento — ${widget.pessoa.nome}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Pendente: ${widget.fmtMoney.format(pendente)} · Empréstimo: ${widget.fmtData.format(widget.pessoa.dataEmprestimo)}',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _valor,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Valor recebido',
-                border: OutlineInputBorder(),
-                prefixText: r'R$ ',
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Recebimento — ${widget.pessoa.nome}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Data do recebimento'),
-              subtitle: Text(widget.fmtData.format(_data)),
-              trailing: IconButton(icon: const Icon(Icons.calendar_month), onPressed: _pickData),
-            ),
-            const SizedBox(height: 8),
-            InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Forma de recebimento',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 4),
+              Text(
+                'Pendente: ${widget.fmtMoney.format(pendente)} · Empréstimo: ${widget.fmtData.format(widget.pessoa.dataEmprestimo)}',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<FormaPagamento>(
-                  isExpanded: true,
-                  value: _forma,
-                  items: [
-                    FormaPagamento.pix,
-                    FormaPagamento.dinheiro,
-                    FormaPagamento.debito,
-                    FormaPagamento.transferencia,
-                    FormaPagamento.outros,
-                  ].map((f) => DropdownMenuItem(value: f, child: Text(f.label))).toList(),
-                  onChanged: (v) => setState(() => _forma = v ?? _forma),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _valor,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Valor recebido',
+                  border: OutlineInputBorder(),
+                  prefixText: r'R$ ',
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Conta bancária (opcional)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Data do recebimento'),
+                subtitle: Text(widget.fmtData.format(_data)),
+                trailing: IconButton(icon: const Icon(Icons.calendar_month), onPressed: _pickData),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<int?>(
-                  isExpanded: true,
-                  value: _idConta,
-                  items: [
-                    const DropdownMenuItem<int?>(value: null, child: Text('Não vincular')),
-                    ...widget.contas.map(
-                      (c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.descricao)),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => _idConta = v),
+              const SizedBox(height: 8),
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Forma de recebimento',
+                  border: OutlineInputBorder(),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<FormaPagamento>(
+                    isExpanded: true,
+                    value: _forma,
+                    items: [
+                      FormaPagamento.pix,
+                      FormaPagamento.dinheiro,
+                      FormaPagamento.debito,
+                      FormaPagamento.transferencia,
+                      FormaPagamento.outros,
+                    ].map((f) => DropdownMenuItem(value: f, child: Text(f.label))).toList(),
+                    onChanged: (v) => setState(() => _forma = v ?? _forma),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Será criado um lançamento de receita (pago) na data escolhida.',
-              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _saving ? null : _confirmar,
-              icon: const Icon(Icons.check),
-              label: const Text('Confirmar recebimento'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Conta bancária (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int?>(
+                    isExpanded: true,
+                    value: _idConta,
+                    items: [
+                      const DropdownMenuItem<int?>(value: null, child: Text('Não vincular')),
+                      ...widget.contas.map(
+                        (c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.descricao)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _idConta = v),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Será criado um lançamento de receita (pago) na data escolhida.',
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _saving ? null : _confirmar,
+                icon: const Icon(Icons.check),
+                label: const Text('Confirmar recebimento'),
+              ),
+            ],
+          ),
         ),
       ),
     );
