@@ -1216,12 +1216,17 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) {
         final cs = Theme.of(ctx).colorScheme;
+        final mq = MediaQuery.of(ctx);
+        final bottomInset = mq.viewInsets.bottom;
+        final safeBottom = mq.padding.bottom;
+
         return SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom + bottomInset),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
