@@ -19,6 +19,7 @@ import 'package:vox_finance/ui/data/modules/integracao/integracao_fatura_cache_r
 import 'package:vox_finance/ui/data/service/db_service.dart';
 import 'package:vox_finance/ui/pages/home/widgets/lancamento_form_bottom_sheet.dart';
 import 'package:vox_finance/ui/core/service/integracao_cartoes_api_service.dart';
+import 'package:vox_finance/ui/pages/faturas_salvas/selecionar_lancamento_associacao_page.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
 enum _ModoAssociarFaturaItem { lancamento, contaPagar }
@@ -52,7 +53,6 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
 
   bool _loading = true;
   List<IntegracaoFaturaCacheItem> _itens = const [];
-  List<Lancamento> _lancamentosPeriodo = const [];
   List<ContaPagar> _contasPagarPeriodo = const [];
   final Map<int, Lancamento> _lancById = {};
   bool _mostrarSomenteNaoAssociados = false;
@@ -89,7 +89,6 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
     if (id == null) {
       setState(() {
         _itens = const [];
-        _lancamentosPeriodo = const [];
         _contasPagarPeriodo = const [];
         _lancById.clear();
         _faturaAtual = null;
@@ -128,7 +127,6 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
     if (!mounted) return;
     setState(() {
       _itens = itens;
-      _lancamentosPeriodo = lancs;
       _contasPagarPeriodo = contas;
       _lancById
         ..clear()
@@ -726,7 +724,7 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                                                   ? () => _snack(
                                                     'A fatura está fechada. Para alterar, favor reabrir.',
                                                   )
-                                                  : () => _selecionarLancamento(l),
+                                                  : () => _mostrarAssociacaoItem(l),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.max,
                                             children: [
@@ -1010,17 +1008,6 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
             .map((i) => i.idLancamentoLocal!)
             .toSet();
 
-    final candidatosLanc = _lancamentosPeriodo
-        .where((l) => coincideValorAssociacao(l.valor, item.valor))
-        .where((l) => l.id == null || !jaAssociados.contains(l.id!))
-        .toList();
-    final listaLanc =
-        (candidatosLanc.isEmpty
-            ? _lancamentosPeriodo
-                .where((l) => l.id == null || !jaAssociados.contains(l.id!))
-                .toList()
-            : candidatosLanc);
-
     bool contaUsavel(ContaPagar c) {
       final idL = c.idLancamento;
       if (idL == null) return false;
@@ -1037,6 +1024,8 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
             : candidatosConta);
 
     var modo = _ModoAssociarFaturaItem.lancamento;
+    final diaInicial = item.dataHora ?? DateTime.now();
+    final idAtual = item.idLancamentoLocal;
 
     final idEscolhido = await showModalBottomSheet<int?>(
       context: context,
@@ -1115,6 +1104,32 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                   },
                 ),
               ),
+              if (!usarContas)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      final idCartao =
+                          widget.cartao?.id ?? widget.fatura.idCartaoLocal;
+                      final id = await Navigator.push<int?>(
+                        context,
+                        MaterialPageRoute<int?>(
+                          builder: (_) => SelecionarLancamentoAssociacaoPage(
+                            idCartao: idCartao,
+                            diaInicial: diaInicial,
+                            jaAssociados: jaAssociados,
+                            idAtual: idAtual,
+                          ),
+                        ),
+                      );
+                      if (!context.mounted) return;
+                      if (id == null) return;
+                      Navigator.pop(sheetCtx, id);
+                    },
+                    icon: const Icon(Icons.search),
+                    label: const Text('Consultar lançamentos por data'),
+                  ),
+                ),
               const Divider(height: 24),
               ListTile(
                 leading: const Icon(Icons.link_off),
@@ -1161,31 +1176,17 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
                 }
               }
             } else {
-              if (listaLanc.isEmpty) {
-                filhos.add(
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    child: Text(
-                      'Nenhum lançamento candidato para este cartão.',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
+              filhos.add(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  child: Text(
+                    'Use “Consultar lançamentos por data” para ver a lista completa.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.outline,
                     ),
                   ),
-                );
-              } else {
-                for (final l in listaLanc) {
-                  filhos.add(
-                    ListTile(
-                      title: Text(l.descricao),
-                      subtitle: Text(
-                        '${DateFormat('dd/MM HH:mm').format(l.dataHora)} • ${_money.format(l.valor)}',
-                      ),
-                      onTap: () => Navigator.pop(sheetCtx, l.id),
-                    ),
-                  );
-                }
-              }
+                ),
+              );
             }
 
             return SafeArea(
@@ -1205,6 +1206,142 @@ class _FaturaSalvaDetalhePageState extends State<FaturaSalvaDetalhePage> {
     );
     if (!mounted) return;
     await _load();
+  }
+
+  Future<void> _mostrarAssociacaoItem(IntegracaoFaturaCacheItem item) async {
+    final vincId = item.idLancamentoLocal;
+    final vinc = vincId == null ? null : _lancById[vincId];
+    final itemId = item.id;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Associação',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                Card(
+                  elevation: 0,
+                  color: cs.surfaceContainerHighest.withOpacity(0.6),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          item.descricao,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _money.format(item.valor),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: cs.primary,
+                          ),
+                        ),
+                        if (item.dataHora != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            DateFormat('dd/MM/yyyy HH:mm').format(item.dataHora!),
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Text(
+                          vinc == null ? 'Não associado' : 'Associado a',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        if (vinc == null)
+                          Text(
+                            'Nenhum lançamento foi associado.',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          )
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                vinc.descricao,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${DateFormat('dd/MM/yyyy HH:mm').format(vinc.dataHora)} • ${_money.format(vinc.valor)}',
+                                style: TextStyle(color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (vinc != null)
+                  OutlinedButton.icon(
+                    onPressed: _faturaFechada
+                        ? null
+                        : () async {
+                            Navigator.pop(ctx);
+                            await _editarLancamento(vinc);
+                          },
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Editar lançamento'),
+                  ),
+                FilledButton.icon(
+                  onPressed: _faturaFechada
+                      ? null
+                      : () async {
+                          Navigator.pop(ctx);
+                          await _selecionarLancamento(item);
+                        },
+                  icon: const Icon(Icons.link),
+                  label: Text(vinc == null ? 'Associar' : 'Alterar associação'),
+                ),
+                if (vinc != null && itemId != null)
+                  TextButton.icon(
+                    onPressed: _faturaFechada
+                        ? null
+                        : () async {
+                            Navigator.pop(ctx);
+                            await _repo.vincularItemComLancamento(
+                              idItem: itemId,
+                              idLancamentoLocal: null,
+                            );
+                            if (!mounted) return;
+                            await _load();
+                          },
+                    icon: Icon(Icons.link_off, color: cs.error),
+                    label: Text(
+                      'Remover associação',
+                      style: TextStyle(color: cs.error),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _editarLancamento(Lancamento existente) async {

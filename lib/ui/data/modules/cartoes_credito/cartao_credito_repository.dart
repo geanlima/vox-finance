@@ -23,6 +23,27 @@ class CartaoCreditoRepository {
   //  G E R A R   F A T U R A   D O   C A R T Ã O   (FECHAMENTO)
   // ============================================================
 
+  DateTime _dataValida(int ano, int mes, int dia, [int h = 0, int m = 0, int s = 0, int ms = 0]) {
+    final ultimoDiaMes = DateTime(ano, mes + 1, 0).day;
+    final d = dia.clamp(1, ultimoDiaMes);
+    return DateTime(ano, mes, d, h, m, s, ms);
+  }
+
+  /// Regra do vencimento:
+  /// - Se o dia de vencimento for menor/igual ao dia de fechamento, o vencimento cai no mês seguinte.
+  /// - Caso contrário, cai no mesmo mês do fechamento.
+  DateTime _dataVencimentoPorReferencia({
+    required int anoFechamento,
+    required int mesFechamento,
+    required int diaFechamento,
+    required int diaVencimento,
+  }) {
+    final vencNoMesSeguinte = diaVencimento <= diaFechamento;
+    final mesVenc = vencNoMesSeguinte ? (mesFechamento + 1) : mesFechamento;
+    final anoVenc = vencNoMesSeguinte && mesFechamento == 12 ? (anoFechamento + 1) : anoFechamento;
+    return _dataValida(anoVenc, mesVenc, diaVencimento);
+  }
+
   Future<void> gerarFaturaDoCartao(int idCartao, {DateTime? referencia}) async {
     final database = await _dbService.db;
     final hoje = referencia ?? DateTime.now();
@@ -45,15 +66,8 @@ class CartaoCreditoRepository {
     if (!cartao.controlaFatura) return;
     if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
 
-    int _ultimoDiaMes(int ano, int mes) => DateTime(ano, mes + 1, 0).day;
-    DateTime _dataValida(int ano, int mes, int dia, [int h = 0, int m = 0, int s = 0, int ms = 0]) {
-      final ultimo = _ultimoDiaMes(ano, mes);
-      final d = dia.clamp(1, ultimo);
-      return DateTime(ano, mes, d, h, m, s, ms);
-    }
-
     final int diaFechamento =
-        cartao.diaFechamento!.clamp(1, _ultimoDiaMes(hoje.year, hoje.month));
+        cartao.diaFechamento!.clamp(1, DateTime(hoje.year, hoje.month + 1, 0).day);
     final int diaVencimento = cartao.diaVencimento!.clamp(1, 31);
 
     int anoAtual = hoje.year;
@@ -91,7 +105,12 @@ class CartaoCreditoRepository {
         anoReferencia: anoAtual,
         mesReferencia: mesAtual,
         dataFechamento: fimPeriodo,
-        dataVencimento: _dataValida(anoAtual, mesAtual, diaVencimento),
+        dataVencimento: _dataVencimentoPorReferencia(
+          anoFechamento: anoAtual,
+          mesFechamento: mesAtual,
+          diaFechamento: diaFechamento,
+          diaVencimento: diaVencimento,
+        ),
       );
       return;
     }
@@ -104,8 +123,13 @@ class CartaoCreditoRepository {
 
     if (total <= 0) return;
 
-    // Vencimento ocorre no mesmo mês do fechamento desta fatura.
-    final dataVencimento = _dataValida(anoAtual, mesAtual, diaVencimento);
+    // Vencimento pode cair no mês seguinte (ex.: fechamento 20, vencimento 01).
+    final dataVencimento = _dataVencimentoPorReferencia(
+      anoFechamento: anoAtual,
+      mesFechamento: mesAtual,
+      diaFechamento: diaFechamento,
+      diaVencimento: diaVencimento,
+    );
 
     // Lista com os IDs dos lançamentos que compõem a fatura (lado N)
     final idsLancamentos = compras.map<int>((row) => row['id'] as int).toList();
@@ -220,13 +244,6 @@ class CartaoCreditoRepository {
     if (!cartao.controlaFatura) return;
     if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
 
-    int _ultimoDiaMes(int ano, int mes) => DateTime(ano, mes + 1, 0).day;
-    DateTime _dataValida(int ano, int mes, int dia, [int h = 0, int m = 0, int s = 0, int ms = 0]) {
-      final ultimo = _ultimoDiaMes(ano, mes);
-      final d = dia.clamp(1, ultimo);
-      return DateTime(ano, mes, d, h, m, s, ms);
-    }
-
     final compra = DateTime(
       dataCompra.year,
       dataCompra.month,
@@ -237,7 +254,7 @@ class CartaoCreditoRepository {
       dataCompra.millisecond,
     );
 
-    final diaFech = cartao.diaFechamento!.clamp(1, _ultimoDiaMes(compra.year, compra.month));
+    final diaFech = cartao.diaFechamento!.clamp(1, DateTime(compra.year, compra.month + 1, 0).day);
     final diaVenc = cartao.diaVencimento!.clamp(1, 31);
 
     // Determina o mês/ano de fechamento da fatura que contém esta compra.
@@ -288,7 +305,12 @@ class CartaoCreditoRepository {
         anoReferencia: anoAtual,
         mesReferencia: mesAtual,
         dataFechamento: fimPeriodo,
-        dataVencimento: _dataValida(anoAtual, mesAtual, diaVenc),
+        dataVencimento: _dataVencimentoPorReferencia(
+          anoFechamento: anoAtual,
+          mesFechamento: mesAtual,
+          diaFechamento: diaFech,
+          diaVencimento: diaVenc,
+        ),
       );
       return;
     }
@@ -299,7 +321,12 @@ class CartaoCreditoRepository {
     );
     if (total <= 0) return;
 
-    final dataVencimento = _dataValida(anoAtual, mesAtual, diaVenc);
+    final dataVencimento = _dataVencimentoPorReferencia(
+      anoFechamento: anoAtual,
+      mesFechamento: mesAtual,
+      diaFechamento: diaFech,
+      diaVencimento: diaVenc,
+    );
     final idsLancamentos = compras.map<int>((row) => row['id'] as int).toList();
 
     final descricaoFatura =
@@ -404,28 +431,13 @@ class CartaoCreditoRepository {
     if (!cartao.controlaFatura) return;
     if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
 
-    int _ultimoDiaMes(int ano, int mes) => DateTime(ano, mes + 1, 0).day;
-    DateTime _dataValida(
-      int ano,
-      int mes,
-      int dia, [
-      int h = 0,
-      int m = 0,
-      int s = 0,
-      int ms = 0,
-    ]) {
-      final ultimo = _ultimoDiaMes(ano, mes);
-      final d = dia.clamp(1, ultimo);
-      return DateTime(ano, mes, d, h, m, s, ms);
-    }
-
     DateTime _addMonths(DateTime d, int months) {
       return DateTime(d.year, d.month + months, 1);
     }
 
     final compra = DateTime(dataCompra.year, dataCompra.month, dataCompra.day);
     final diaFech = cartao.diaFechamento!
-        .clamp(1, _ultimoDiaMes(compra.year, compra.month));
+        .clamp(1, DateTime(compra.year, compra.month + 1, 0).day);
     final diaVenc = cartao.diaVencimento!.clamp(1, 31);
 
     // Determina o mês de fechamento do ciclo que contém a compra.
@@ -485,7 +497,12 @@ AND data_hora <= ?
       }
 
       // Caso não haja compras: ainda assim garante o "lançamento de fatura" (valor 0).
-      final dataVencimento = _dataValida(anoAtual, mesAtual, diaVenc);
+      final dataVencimento = _dataVencimentoPorReferencia(
+        anoFechamento: anoAtual,
+        mesFechamento: mesAtual,
+        diaFechamento: diaFech,
+        diaVencimento: diaVenc,
+      );
       final dataVencMs = DateTime(
         dataVencimento.year,
         dataVencimento.month,
@@ -727,13 +744,6 @@ AND data_hora <= ?
   Future<List<FaturaGeracaoOpcao>> listarOpcoesGeracaoFaturas() async {
     final db = await _dbService.db;
 
-    int _ultimoDiaMes(int ano, int mes) => DateTime(ano, mes + 1, 0).day;
-    DateTime _dataValida(int ano, int mes, int dia, [int h = 0, int m = 0, int s = 0, int ms = 0]) {
-      final ultimo = _ultimoDiaMes(ano, mes);
-      final d = dia.clamp(1, ultimo);
-      return DateTime(ano, mes, d, h, m, s, ms);
-    }
-
     final cartoes = await getCartoesCredito();
     final cartoesValidos =
         cartoes
@@ -783,7 +793,12 @@ AND data_hora <= ?
                 ? DateTime(compra.year, compra.month + 1, 1)
                 : DateTime(compra.year, compra.month, 1);
 
-        final venc = _dataValida(ref.year, ref.month, c.diaVencimento!.clamp(1, 31));
+        final venc = _dataVencimentoPorReferencia(
+          anoFechamento: ref.year,
+          mesFechamento: ref.month,
+          diaFechamento: diaFech,
+          diaVencimento: c.diaVencimento!.clamp(1, 31),
+        );
         final opt = FaturaGeracaoOpcao(
           idCartao: idCartao,
           cartaoLabel: c.label,

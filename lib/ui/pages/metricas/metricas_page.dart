@@ -30,6 +30,8 @@ class _MetricasPageState extends State<MetricasPage> {
   final _cartaoRepo = CartaoCreditoRepository();
 
   final _money = NumberFormat.simpleCurrency(locale: 'pt_BR');
+  final _mesAbrev = DateFormat('MMM/yyyy', 'pt_BR');
+  final _dia = DateFormat('dd/MM/yyyy', 'pt_BR');
 
   bool _carregando = false;
 
@@ -122,7 +124,18 @@ class _MetricasPageState extends State<MetricasPage> {
   }
 
   String _cardSubtitle(MetricaLimite m) {
-    return '${m.periodoTipo} • ${m.escopo == 'forma' ? 'forma' : 'categoria'}';
+    final periodo = () {
+      if (m.periodoTipo == 'semanal') {
+        final sem = m.semana ?? _repo.semanaDoAno(_referencia);
+        final (ini, fim) = _repo.intervaloDaSemana(ano: m.ano, semana: sem);
+        return 'Semanal • Sem $sem • ${DateFormat('dd/MM').format(ini)}–${DateFormat('dd/MM').format(fim)}';
+      }
+      final mes = (m.mes ?? _referencia.month);
+      return 'Mensal • ${_mesAbrev.format(DateTime(m.ano, mes, 1))}';
+    }();
+
+    final base = m.escopo == 'forma' ? 'Forma' : 'Categoria';
+    return '$periodo • $base';
   }
 
   String get _periodoLabel {
@@ -148,11 +161,146 @@ class _MetricasPageState extends State<MetricasPage> {
     await _carregar();
   }
 
+  (DateTime inicio, DateTime fim) _intervaloBaseMetrica({
+    required MetricaLimite metrica,
+    required DateTime referenciaPeriodo,
+  }) {
+    if (metrica.periodoTipo == 'semanal') {
+      final sem = metrica.semana ?? _repo.semanaDoAno(referenciaPeriodo);
+      return _repo.intervaloDaSemana(ano: metrica.ano, semana: sem);
+    }
+
+    final mes = metrica.mes ?? referenciaPeriodo.month;
+    final inicio = DateTime(metrica.ano, mes, 1);
+    final fim = DateTime(metrica.ano, mes + 1, 1).subtract(
+      const Duration(milliseconds: 1),
+    );
+    return (inicio, fim);
+  }
+
+  (DateTime inicio, DateTime fim) _intervaloEfetivoMetrica({
+    required MetricaLimite metrica,
+    required DateTime referenciaPeriodo,
+  }) {
+    final (inicio, fimBase) = _intervaloBaseMetrica(
+      metrica: metrica,
+      referenciaPeriodo: referenciaPeriodo,
+    );
+    if (metrica.incluirFuturos) return (inicio, fimBase);
+
+    final now = DateTime.now();
+    final fim = now.isBefore(fimBase) ? now : fimBase;
+    return (inicio, fim);
+  }
+
+  Future<void> _mostrarPeriodoDoCard({
+    required MetricaLimite metrica,
+    required DateTime referenciaPeriodo,
+    required String titulo,
+  }) async {
+    final (iniBase, fimBase) = _intervaloBaseMetrica(
+      metrica: metrica,
+      referenciaPeriodo: referenciaPeriodo,
+    );
+    final (iniEf, fimEf) = _intervaloEfetivoMetrica(
+      metrica: metrica,
+      referenciaPeriodo: referenciaPeriodo,
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: false,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  titulo,
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Card(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                  elevation: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Período base usado na soma',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${_dia.format(iniBase)} até ${_dia.format(fimBase)}',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        if (!metrica.incluirFuturos) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Fim efetivo (sem futuros)',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${_dia.format(iniEf)} até ${_dia.format(fimEf)}',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await _abrirForm(existente: metrica);
+                  },
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Editar métrica'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _abrirForm({MetricaLimite? existente}) async {
     final formKey = GlobalKey<FormState>();
 
     String periodoTipo = existente?.periodoTipo ?? _periodoTipo;
     DateTime referencia = _referencia;
+    if (existente != null) {
+      if (existente.periodoTipo == 'semanal') {
+        final sem = existente.semana ?? _repo.semanaDoAno(_referencia);
+        referencia = _repo.referenciaDaSemana(ano: existente.ano, semana: sem);
+      } else {
+        referencia = DateTime(
+          existente.ano,
+          (existente.mes ?? _referencia.month),
+          1,
+        );
+      }
+    }
 
     String escopoAtual = existente?.escopo ?? 'categoria'; // 'categoria'|'forma'
 
@@ -875,7 +1023,11 @@ class _MetricasPageState extends State<MetricasPage> {
                                               ],
                                             ),
                                             onTap:
-                                                () => _abrirForm(existente: m),
+                                                () => _mostrarPeriodoDoCard(
+                                                  metrica: m,
+                                                  referenciaPeriodo: _referencia,
+                                                  titulo: _cardTitle(m, cat, sub),
+                                                ),
                                           ),
                                         ),
                                       );
