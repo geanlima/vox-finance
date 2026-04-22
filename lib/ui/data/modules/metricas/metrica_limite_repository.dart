@@ -29,6 +29,34 @@ class MetricaLimiteRepository {
     return (diff ~/ 7) + 1;
   }
 
+  DateTime _primeiraSegundaDoAno(int ano) {
+    final firstDay = DateTime(ano, 1, 1);
+    final firstWeekday = firstDay.weekday; // 1..7
+    return firstDay.subtract(Duration(days: firstWeekday - 1));
+  }
+
+  /// Retorna uma data de referência (segunda-feira) para uma semana do ano.
+  /// Usa a mesma regra simplificada de [semanaDoAno] (semanas iniciam na segunda).
+  DateTime referenciaDaSemana({
+    required int ano,
+    required int semana,
+  }) {
+    final base = _primeiraSegundaDoAno(ano);
+    return base.add(Duration(days: (semana - 1) * 7));
+  }
+
+  /// Intervalo de uma semana específica do ano.
+  (DateTime inicio, DateTime fim) intervaloDaSemana({
+    required int ano,
+    required int semana,
+  }) {
+    final inicio = referenciaDaSemana(ano: ano, semana: semana);
+    final fim = inicio.add(const Duration(days: 7)).subtract(
+      const Duration(milliseconds: 1),
+    );
+    return (inicio, fim);
+  }
+
   Future<List<MetricaLimite>> listarPorPeriodo({
     required String periodoTipo,
     required int ano,
@@ -112,6 +140,9 @@ class MetricaLimiteRepository {
       referencia: referenciaPeriodo,
     );
 
+    final bool metricaCredito =
+        metrica.formaPagamento == 0; // FormaPagamento.credito.index (V1)
+
     // Base: despesas do período (tipo_movimento = despesa (1))
     final where = <String>[
       'data_hora >= ? AND data_hora <= ?',
@@ -123,7 +154,12 @@ class MetricaLimiteRepository {
       if (metrica.formaPagamento != null) 'forma_pagamento = ?',
       if (metrica.idCartao != null) 'id_cartao = ?',
       if (metrica.idConta != null) 'id_conta = ?',
-      if (metrica.ignorarPagamentoFatura) 'pagamento_fatura = 0',
+      if (metricaCredito)
+        (metrica.ignorarPagamentoFatura
+            ? 'pagamento_fatura = 0' // compras do cartão (evita duplicar com a fatura)
+            : 'pagamento_fatura = 1') // apenas o lançamento de fatura (quando o usuário registra só a fatura)
+      else if (metrica.ignorarPagamentoFatura)
+        'pagamento_fatura = 0',
       if (metrica.considerarSomentePagos) 'pago = 1',
       if (!metrica.incluirFuturos) 'data_hora <= ?',
     ];
