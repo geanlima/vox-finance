@@ -193,6 +193,11 @@ class _MetricasPageState extends State<MetricasPage> {
     return (inicio, fim);
   }
 
+  (int ano, int mes) _add1Month(int ano, int mes) {
+    if (mes == 12) return (ano + 1, 1);
+    return (ano, mes + 1);
+  }
+
   Future<void> _mostrarPeriodoDoCard({
     required MetricaLimite metrica,
     required DateTime referenciaPeriodo,
@@ -206,6 +211,12 @@ class _MetricasPageState extends State<MetricasPage> {
       metrica: metrica,
       referenciaPeriodo: referenciaPeriodo,
     );
+
+    final bool metricaCredito = metrica.formaPagamento == FormaPagamento.credito.index;
+    final bool usarCicloFatura = metricaCredito && metrica.periodoTipo == 'mensal';
+    final int? cartaoId = metrica.idCartao;
+    final int anoRef = metrica.ano;
+    final int mesRef = metrica.mes ?? referenciaPeriodo.month;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -237,17 +248,79 @@ class _MetricasPageState extends State<MetricasPage> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'Período base usado na soma',
+                          usarCicloFatura
+                              ? 'Ciclo da fatura usado na soma'
+                              : 'Período base usado na soma',
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          '${_dia.format(iniBase)} até ${_dia.format(fimBase)}',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
+                        if (!usarCicloFatura)
+                          Text(
+                            '${_dia.format(iniBase)} até ${_dia.format(fimBase)}',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          )
+                        else if (cartaoId == null)
+                          Text(
+                            'Por cartão (cada um com seu fechamento/vencimento) — referência ${_mesAbrev.format(DateTime(anoRef, mesRef, 1))}',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          )
+                        else
+                          FutureBuilder(
+                            future: _cartaoRepo.getCartaoCreditoById(cartaoId),
+                            builder: (context, snap) {
+                              final c = snap.data;
+                              final diaFech = c?.diaFechamento;
+                              final diaVenc = c?.diaVencimento;
+                              if (diaFech == null) {
+                                return Text(
+                                  '${_dia.format(iniBase)} até ${_dia.format(fimBase)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w800),
+                                );
+                              }
+                              final bool vencNoMesSeguinte =
+                                  (diaVenc != null) && (diaVenc <= diaFech);
+                              final (anoFechC, mesFechC) = !usarCicloFatura
+                                  ? (anoRef, mesRef)
+                                  : (vencNoMesSeguinte
+                                      ? (anoRef, mesRef)
+                                      : _add1Month(anoRef, mesRef));
+                              final (ini, fim) = _repo.intervaloCicloFatura(
+                                anoReferencia: anoFechC,
+                                mesReferencia: mesFechC,
+                                diaFechamento: diaFech,
+                              );
+                              final venc = diaVenc == null
+                                  ? null
+                                  : DateTime(
+                                      vencNoMesSeguinte ? anoFechC : anoFechC,
+                                      vencNoMesSeguinte ? (mesFechC + 1) : mesFechC,
+                                      diaVenc,
+                                    );
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    '${_dia.format(ini)} até ${_dia.format(fim)}',
+                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Fechamento: dia $diaFech'
+                                    '${diaVenc == null ? '' : ' • Vencimento: dia $diaVenc'}',
+                                    style: TextStyle(color: cs.onSurfaceVariant),
+                                  ),
+                                  if (venc != null)
+                                    Text(
+                                      'Vencimento (ref.): ${_dia.format(venc)}',
+                                      style: TextStyle(color: cs.onSurfaceVariant),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
                         if (!metrica.incluirFuturos) ...[
                           const SizedBox(height: 12),
                           Text(
