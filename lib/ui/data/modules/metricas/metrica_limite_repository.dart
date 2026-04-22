@@ -129,19 +129,143 @@ class MetricaLimiteRepository {
     return (inicio, fim);
   }
 
+  DateTime _dataValida(int ano, int mes, int dia, [int h = 0, int m = 0, int s = 0, int ms = 0]) {
+    final ultimoDia = DateTime(ano, mes + 1, 0).day;
+    final d = dia.clamp(1, ultimoDia);
+    return DateTime(ano, mes, d, h, m, s, ms);
+  }
+
+  /// Intervalo do ciclo da fatura (fechamento→fechamento) para o cartão.
+  /// Ex.: fechamento dia 08 no mês 04/2026 => 09/03/2026 .. 08/04/2026 23:59:59.999
+  (DateTime inicio, DateTime fim) intervaloCicloFatura({
+    required int anoReferencia,
+    required int mesReferencia,
+    required int diaFechamento,
+  }) {
+    int mesAnterior = mesReferencia - 1;
+    int anoAnterior = anoReferencia;
+    if (mesAnterior == 0) {
+      mesAnterior = 12;
+      anoAnterior--;
+    }
+
+    final fechamentoAnterior = _dataValida(anoAnterior, mesAnterior, diaFechamento);
+    final inicio = fechamentoAnterior.add(const Duration(days: 1));
+    final fim = _dataValida(anoReferencia, mesReferencia, diaFechamento, 23, 59, 59, 999);
+    return (inicio, fim);
+  }
+
+  (int ano, int mes) _add1Month(int ano, int mes) {
+    if (mes == 12) return (ano + 1, 1);
+    return (ano, mes + 1);
+  }
+
   Future<ConsumoMetrica> calcularConsumo({
     required MetricaLimite metrica,
     required DateTime referenciaPeriodo,
   }) async {
     final db = await _db;
 
+    final bool metricaCredito =
+        metrica.formaPagamento == 0; // FormaPagamento.credito.index (V1)
+
+    // Para crédito em período mensal, calculamos pelo ciclo de fatura (fechamento→fechamento),
+    // respeitando o cadastro do cartão (dia de fechamento). Para "todos os cartões",
+    // somamos o ciclo de cada um.
+    final bool usarCicloFatura = metricaCredito && metrica.periodoTipo == 'mensal';
+
+    final anoSelecionado = metrica.ano;
+    final mesSelecionado = metrica.mes ?? referenciaPeriodo.month;
+
+    if (usarCicloFatura) {
+      // Descobre cartões a considerar
+      final idsCartao = <int>[];
+      if (metrica.idCartao != null) {
+        idsCartao.add(metrica.idCartao!);
+      } else {
+        final cartoes = await db.query(
+          'cartao_credito',
+          columns: const ['id'],
+          where: 'id IS NOT NULL',
+        );
+        for (final c in cartoes) {
+          final id = (c['id'] as num?)?.toInt();
+          if (id != null) idsCartao.add(id);
+        }
+      }
+
+      double total = 0.0;
+
+      for (final idCartao in idsCartao) {
+        final row = await db.query(
+          'cartao_credito',
+          columns: const ['dia_fechamento', 'dia_vencimento'],
+          where: 'id = ?',
+          whereArgs: [idCartao],
+          limit: 1,
+        );
+        final diaFech =
+            (row.isEmpty ? null : (row.first['dia_fechamento'] as num?)?.toInt());
+        final diaVenc =
+            (row.isEmpty ? null : (row.first['dia_vencimento'] as num?)?.toInt());
+        if (diaFech == null) {
+          // Sem fechamento configurado: fallback para o mês calendário.
+          final (iniMes, fimMes) = intervaloPeriodo(
+            periodoTipo: 'mensal',
+            referencia: DateTime(anoSelecionado, mesSelecionado, 1),
+          );
+          total += await _sumLancamentos(
+            db: db,
+            metrica: metrica,
+            inicio: iniMes,
+            fim: fimMes,
+            forceCartaoId: idCartao,
+            // ciclo de fatura sempre soma compras (não pagamento de fatura)
+            forcePagamentoFaturaZero: true,
+          );
+          continue;
+        }
+
+        // Regra para casar com a fatura mostrada na Home (vencimento no mês seguinte ao "mês selecionado"):
+        // - Se vencimento <= fechamento, a fatura vence no mês seguinte ao mês de FECHAMENTO.
+        //   Então, para Abr/2026 (mês selecionado), o fechamento está em Abr/2026.
+        // - Se vencimento > fechamento, a fatura vence no MESMO mês do fechamento.
+        //   Então, para Abr/2026 (mês selecionado), o fechamento está em Mai/2026.
+        final bool vencNoMesSeguinte =
+            (diaVenc != null) && (diaVenc <= diaFech);
+        final (anoFech, mesFech) = vencNoMesSeguinte
+            ? (anoSelecionado, mesSelecionado)
+            : _add1Month(anoSelecionado, mesSelecionado);
+
+        final (ini, fim) = intervaloCicloFatura(
+          anoReferencia: anoFech,
+          mesReferencia: mesFech,
+          diaFechamento: diaFech,
+        );
+
+        total += await _sumLancamentos(
+          db: db,
+          metrica: metrica,
+          inicio: ini,
+          fim: fim,
+          forceCartaoId: idCartao,
+          // ciclo de fatura sempre soma compras (não pagamento de fatura)
+          forcePagamentoFaturaZero: true,
+          // precisa bater com o valor da fatura (pagamento_fatura=1) que é gerado
+          // somando compras do ciclo sem aplicar filtros de "pago" ou tipo_movimento.
+          ignorePagoAndTipoMovimento: true,
+        );
+      }
+
+      final limite = metrica.limiteValor;
+      final pct = limite <= 0 ? 0.0 : (total / limite) * 100.0;
+      return ConsumoMetrica(total: total, limite: limite, percentual: pct);
+    }
+
     final (inicio, fim) = intervaloPeriodo(
       periodoTipo: metrica.periodoTipo,
       referencia: referenciaPeriodo,
     );
-
-    final bool metricaCredito =
-        metrica.formaPagamento == 0; // FormaPagamento.credito.index (V1)
 
     // Base: despesas do período (tipo_movimento = despesa (1))
     final where = <String>[
@@ -191,6 +315,57 @@ class MetricaLimiteRepository {
     final pct = limite <= 0 ? 0.0 : (total / limite) * 100.0;
 
     return ConsumoMetrica(total: total, limite: limite, percentual: pct);
+  }
+
+  Future<double> _sumLancamentos({
+    required Database db,
+    required MetricaLimite metrica,
+    required DateTime inicio,
+    required DateTime fim,
+    required int forceCartaoId,
+    required bool forcePagamentoFaturaZero,
+    bool ignorePagoAndTipoMovimento = false,
+  }) async {
+    final where = <String>[
+      'data_hora >= ? AND data_hora <= ?',
+      if (!ignorePagoAndTipoMovimento) 'tipo_movimento = ?',
+      if (metrica.idCategoriaPersonalizada > 0)
+        'id_categoria_personalizada = ?',
+      if (metrica.idSubcategoriaPersonalizada != null)
+        'id_subcategoria_personalizada = ?',
+      if (metrica.formaPagamento != null) 'forma_pagamento = ?',
+      'id_cartao = ?',
+      if (metrica.idConta != null) 'id_conta = ?',
+      if (forcePagamentoFaturaZero) 'pagamento_fatura = 0',
+      if (!ignorePagoAndTipoMovimento && metrica.considerarSomentePagos)
+        'pago = 1',
+      if (!ignorePagoAndTipoMovimento && !metrica.incluirFuturos)
+        'data_hora <= ?',
+    ];
+
+    final args = <Object?>[
+      inicio.millisecondsSinceEpoch,
+      fim.millisecondsSinceEpoch,
+      if (!ignorePagoAndTipoMovimento) 1,
+      if (metrica.idCategoriaPersonalizada > 0) metrica.idCategoriaPersonalizada,
+      if (metrica.idSubcategoriaPersonalizada != null)
+        metrica.idSubcategoriaPersonalizada,
+      if (metrica.formaPagamento != null) metrica.formaPagamento,
+      forceCartaoId,
+      if (metrica.idConta != null) metrica.idConta,
+      if (!ignorePagoAndTipoMovimento && !metrica.incluirFuturos)
+        DateTime.now().millisecondsSinceEpoch,
+    ];
+
+    final result = await db.rawQuery(
+      '''
+      SELECT SUM(valor) AS total
+      FROM lancamentos
+      WHERE ${where.join(' AND ')}
+      ''',
+      args,
+    );
+    return ((result.first['total'] as num?) ?? 0).toDouble();
   }
 
   Future<bool> jaDisparouAlerta({
