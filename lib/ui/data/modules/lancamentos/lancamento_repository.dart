@@ -578,29 +578,42 @@ class LancamentoRepository {
     required int diaVencimento,
     required int numeroParcela,
   }) {
-    // Vencimento deve sempre cair no dia configurado no cartão (diaVencimento).
-    // Se o mês não tiver esse dia (ex.: 31 em fevereiro), ajusta para o último dia do mês.
-    final dia = diaVencimento.clamp(1, 31);
+    // Vencimento deve cair no dia configurado no cartão. Se o mês não tiver esse dia
+    // (ex.: 31 em fevereiro), ajusta para o último dia do mês.
+    final diaVenc = diaVencimento.clamp(1, 31);
 
-    // Regra do cartão (fechamento + vencimento):
-    // - Compra até o dia de fechamento (inclusive) entra na fatura que **fecha** neste mês;
-    //   o pagamento (dia de vencimento) cai no **mês seguinte** (ex.: fecha 20/02 → vence 01/03).
-    // - Compra **depois** do fechamento entra na próxima fatura; o 1º vencimento fica
-    //   **dois** meses à frente do mês da compra no calendário (ex.: compra 25/02, fecha 20 →1º venc. 01/04).
-    final fechamentoEsteMes = _garantirDataValida(
+    // Determina o mês/ano de FECHAMENTO da fatura que contém a compra.
+    // - compra até o fechamento (inclusive) => fatura fecha no mesmo mês
+    // - compra após o fechamento => fatura fecha no mês seguinte
+    final fechamentoEsteMesFim = _garantirDataValida(
       dataCompra.year,
       dataCompra.month,
       diaFechamento.clamp(1, 31),
+    ).add(
+      const Duration(hours: 23, minutes: 59, seconds: 59, milliseconds: 999),
     );
 
-    final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMes);
-    final int baseOffset = aposFechamento ? 2 : 1;
-    final int offsetMes = baseOffset + (numeroParcela - 1);
+    final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMesFim);
+    final DateTime refFech = DateTime(
+      dataCompra.year,
+      dataCompra.month + (aposFechamento ? 1 : 0),
+      1,
+    );
+
+    // Regra do vencimento:
+    // - Se vencimento <= fechamento, vence no mês seguinte ao mês de fechamento.
+    // - Caso contrário, vence no mesmo mês do fechamento.
+    final bool vencNoMesSeguinte = diaVenc <= diaFechamento;
+    final int baseOffsetMes = (vencNoMesSeguinte ? 1 : 0);
+
+    final int offsetParcela = numeroParcela - 1;
+    final int mesVenc = refFech.month + baseOffsetMes + offsetParcela;
+    final int anoVenc = refFech.year;
 
     return _garantirDataValida(
-      dataCompra.year,
-      dataCompra.month + offsetMes,
-      dia,
+      anoVenc,
+      mesVenc,
+      diaVenc,
     );
   }
 

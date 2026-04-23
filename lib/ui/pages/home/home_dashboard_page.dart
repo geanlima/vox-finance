@@ -633,6 +633,103 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     Navigator.pushNamed(context, route, arguments: args);
   }
 
+  Widget _orcamentoMesMetricaTile({
+    required BuildContext context,
+    required _OrcamentoMesLinha linha,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final m = linha.metrica;
+    final c = linha.consumo;
+    final pctRaw = c.percentual;
+    final pctBar = (pctRaw / 100.0).clamp(0.0, 1.0);
+
+    Color barColor = cs.primary;
+    if (pctRaw >= m.alertaPct2) {
+      barColor = cs.error;
+    } else if (pctRaw >= m.alertaPct1) {
+      barColor = Colors.orange.shade800;
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _goMain(MetricasPage.routeName),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    linha.titulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${pctRaw.toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color:
+                        pctRaw >= m.alertaPct2
+                            ? cs.error
+                            : cs.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: pctBar,
+                minHeight: 5,
+                backgroundColor: cs.surfaceContainerHighest.withOpacity(0.85),
+                valueColor: AlwaysStoppedAnimation<Color>(barColor),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _currency.format(c.total),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _currency.format(c.limite),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _orcamentoMesCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final ref = DateTime.now();
@@ -651,8 +748,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         borderRadius: BorderRadius.circular(16),
         onTap: () => _goMain(MetricasPage.routeName),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
@@ -680,14 +778,20 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          _orcamentoMesLinhas.isEmpty
-                              ? 'Defina limites por categoria (ou geral), por forma de pagamento, e acompanhe o quanto já gastou.'
-                              : '${_orcamentoMesLinhas.length} métrica(s) mensal(is) ativa(s).',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12.5,
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _orcamentoMesLinhas.isEmpty
+                                ? 'Defina limites por categoria (ou geral), por forma de pagamento, e acompanhe o quanto já gastou.'
+                                : '${_orcamentoMesLinhas.length} métrica(s) mensal(is) ativa(s).',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12.5,
+                            ),
                           ),
                         ),
                       ],
@@ -707,87 +811,23 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                 const SizedBox(height: 10),
                 const Divider(height: 1),
                 const SizedBox(height: 8),
-                ..._orcamentoMesLinhas.take(maxLinhas).map((linha) {
-                  final m = linha.metrica;
-                  final c = linha.consumo;
-                  final pctRaw = c.percentual;
-                  final pctBar = (pctRaw / 100.0).clamp(0.0, 1.0);
-                  Color barColor = cs.primary;
-                  if (pctRaw >= m.alertaPct2) {
-                    barColor = cs.error;
-                  } else if (pctRaw >= m.alertaPct1) {
-                    barColor = Colors.orange.shade800;
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                linha.titulo,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '${pctRaw.toStringAsFixed(0)}%',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color:
-                                    pctRaw >= m.alertaPct2
-                                        ? cs.error
-                                        : cs.onSurfaceVariant,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 5),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: pctBar,
-                            minHeight: 5,
-                            backgroundColor: cs.surfaceContainerHighest
-                                .withOpacity(0.85),
-                            valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _currency.format(c.total),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.onSurface,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              'limite ${_currency.format(c.limite)}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurfaceVariant,
-                                fontSize: 11.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                }),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final itens = _orcamentoMesLinhas.take(maxLinhas).toList();
+
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      itemCount: itens.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 4),
+                      itemBuilder: (context, i) => _orcamentoMesMetricaTile(
+                        context: context,
+                        linha: itens[i],
+                      ),
+                    );
+                  },
+                ),
                 if (_orcamentoMesLinhas.length > maxLinhas)
                   Text(
                     '+ ${_orcamentoMesLinhas.length - maxLinhas} outra(s) em Métricas',
