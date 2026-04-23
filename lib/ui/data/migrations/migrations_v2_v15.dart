@@ -1145,6 +1145,18 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V55: Métricas — flag de recorrência mensal
+    // =========================
+    if (oldVersion < 55) {
+      await _addColumnSafe(
+        db,
+        'metricas_limites',
+        'recorrente',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -1173,6 +1185,12 @@ class MigrationV2toV15 {
     await _addColumnSafe(db, 'conta_pagar', 'id_cartao', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'id_conta', 'INTEGER');
     await _addColumnSafe(db, 'conta_pagar', 'data_cabecalho', 'INTEGER');
+    await _addColumnSafe(
+      db,
+      'metricas_limites',
+      'recorrente',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     await _addColumnSafe(
       db,
       'planejamentos_despesa_itens',

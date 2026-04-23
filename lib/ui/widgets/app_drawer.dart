@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/data/modules/usuarios/usuario_repository.dart';
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/categorias/subcategorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
+import 'package:vox_finance/ui/pages/metricas/metricas_analises_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/config_tema_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/parametros_page.dart';
 import 'package:vox_finance/ui/pages/configuracoes/sobre_page.dart';
@@ -441,6 +442,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.calendar_month,
                   title: 'Resumo (Mensal/Semanal)',
                   route: '/graficos',
+                ),
+                _subItem(
+                  icon: Icons.insights_outlined,
+                  title: 'Análises de métricas',
+                  route: MetricasAnalisesPage.routeName,
                 ),
                 _subItem(
                   icon: Icons.compare_arrows,

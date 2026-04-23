@@ -29,6 +29,14 @@ class CartaoCreditoRepository {
     return DateTime(ano, mes, d, h, m, s, ms);
   }
 
+  (int inicioMs, int fimMs) _rangeDiaMs(DateTime d) {
+    final ini = DateTime(d.year, d.month, d.day);
+    final fim = ini.add(const Duration(days: 1)).subtract(
+      const Duration(milliseconds: 1),
+    );
+    return (ini.millisecondsSinceEpoch, fim.millisecondsSinceEpoch);
+  }
+
   /// Regra do vencimento:
   /// - Se o dia de vencimento for menor/igual ao dia de fechamento, o vencimento cai no mês seguinte.
   /// - Caso contrário, cai no mesmo mês do fechamento.
@@ -141,11 +149,12 @@ class CartaoCreditoRepository {
     int idLancamentoFatura;
 
     // Verifica se já existe lançamento de fatura para esse vencimento
-    final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
+    final (vencIniMs, vencFimMs) = _rangeDiaMs(dataVencimento);
     final faturaExistente = await database.query(
       'lancamentos',
-      where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
-      whereArgs: [idCartao, dataVencimentoMs],
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, vencIniMs, vencFimMs],
       limit: 1,
     );
 
@@ -158,6 +167,12 @@ class CartaoCreditoRepository {
         {
           'valor': total,
           'descricao': descricaoFatura,
+          // normaliza data_hora para o dia do vencimento (evita duplicar por horário)
+          'data_hora': DateTime(
+            dataVencimento.year,
+            dataVencimento.month,
+            dataVencimento.day,
+          ).millisecondsSinceEpoch,
           'pago': 0, // volta a ser pendente
           'data_pagamento': null,
         },
@@ -333,11 +348,12 @@ class CartaoCreditoRepository {
         'Fatura ${cartao.descricao} ${mesAtual.toString().padLeft(2, '0')}/$anoAtual';
 
     int idLancamentoFatura;
-    final dataVencimentoMs = dataVencimento.millisecondsSinceEpoch;
+    final (vencIniMs2, vencFimMs2) = _rangeDiaMs(dataVencimento);
     final faturaExistente = await database.query(
       'lancamentos',
-      where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
-      whereArgs: [idCartao, dataVencimentoMs],
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, vencIniMs2, vencFimMs2],
       limit: 1,
     );
 
@@ -348,6 +364,11 @@ class CartaoCreditoRepository {
         {
           'valor': total,
           'descricao': descricaoFatura,
+          'data_hora': DateTime(
+            dataVencimento.year,
+            dataVencimento.month,
+            dataVencimento.day,
+          ).millisecondsSinceEpoch,
           'pago': 0,
           'data_pagamento': null,
         },
@@ -509,11 +530,13 @@ AND data_hora <= ?
         dataVencimento.day,
       ).millisecondsSinceEpoch;
 
+      final (vencIniMs3, vencFimMs3) = _rangeDiaMs(dataVencimento);
       final existeLanc = await db.query(
         'lancamentos',
         columns: const ['id'],
-        where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
-        whereArgs: [idCartao, dataVencMs],
+        where:
+            'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
+        whereArgs: [idCartao, vencIniMs3, vencFimMs3],
         limit: 1,
       );
 
@@ -528,6 +551,7 @@ AND data_hora <= ?
           {
             'valor': 0.0,
             'descricao': descricaoFatura,
+            'data_hora': dataVencMs,
             'pago': 0,
             'data_pagamento': null,
           },
@@ -601,11 +625,13 @@ AND data_hora <= ?
     ).millisecondsSinceEpoch;
 
     // 1) Garante o lançamento de fatura (valor 0)
+    final (vencIniMs4, vencFimMs4) = _rangeDiaMs(dataVencimento);
     final faturaExistente = await database.query(
       'lancamentos',
       columns: const ['id'],
-      where: 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?',
-      whereArgs: [idCartao, dataVencMs],
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, vencIniMs4, vencFimMs4],
       limit: 1,
     );
 
@@ -617,6 +643,7 @@ AND data_hora <= ?
         {
           'valor': 0.0,
           'descricao': descricaoFatura,
+          'data_hora': dataVencMs,
           'pago': 0,
           'data_pagamento': null,
         },

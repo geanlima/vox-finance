@@ -11,6 +11,7 @@ import 'package:vox_finance/ui/pages/home/home_page.dart';
 import 'package:vox_finance/ui/pages/categorias/categorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/categorias/subcategorias_personalizadas_page.dart';
 import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
+import 'package:vox_finance/ui/pages/metricas/metricas_analises_page.dart';
 import 'package:vox_finance/ui/pages/renda/minha_renda_page.dart';
 import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_mes_page.dart';
@@ -83,6 +84,7 @@ class VoxFinanceApp extends StatelessWidget {
       SubcategoriasPersonalizadasPage.routeName: (_) =>
           const SubcategoriasPersonalizadasPage(),
       MetricasPage.routeName: (_) => const MetricasPage(),
+      MetricasAnalisesPage.routeName: (_) => const MetricasAnalisesPage(),
       '/contas-pagar': (_) => const ContasPagarPage(),
       ParcelamentosPage.routeName: (_) => const ParcelamentosPage(),
       '/cartoes-credito': (_) => const CartaoCreditoPage(),

@@ -73,6 +73,79 @@ class MetricaLimiteRepository {
     return rows.map((m) => MetricaLimite.fromMap(m)).toList();
   }
 
+  /// Lista métricas do período atual (mensal do mês atual + semanal da semana atual).
+  /// Útil para telas de análise/seleção sem ter que varrer o banco todo.
+  Future<List<MetricaLimite>> listarDoPeriodoAtual(DateTime agora) async {
+    final mensal = await listarPorPeriodo(
+      periodoTipo: 'mensal',
+      ano: agora.year,
+      mes: agora.month,
+      semana: null,
+    );
+    final semanal = await listarPorPeriodo(
+      periodoTipo: 'semanal',
+      ano: agora.year,
+      mes: null,
+      semana: semanaDoAno(agora),
+    );
+    return [...mensal, ...semanal];
+  }
+
+  (int ano, int mes) _sub1Month(int ano, int mes) {
+    if (mes == 1) return (ano - 1, 12);
+    return (ano, mes - 1);
+  }
+
+  /// Gera (no melhor esforço) as métricas do mês atual a partir das métricas
+  /// marcadas como recorrentes no mês anterior.
+  ///
+  /// Regra:
+  /// - só considera métricas com `periodo_tipo = 'mensal'` e `recorrente = 1`
+  /// - clona do mês anterior -> mês atual
+  /// - usa `INSERT OR IGNORE` para não sobrescrever ajustes feitos no mês atual
+  Future<void> gerarRecorrentesDoMesAtualSeNecessario(DateTime agora) async {
+    final db = await _db;
+
+    final (anoBase, mesBase) = _sub1Month(agora.year, agora.month);
+    final anoAlvo = agora.year;
+    final mesAlvo = agora.month;
+
+    final baseRows = await db.query(
+      'metricas_limites',
+      where: "periodo_tipo = 'mensal' AND recorrente = 1 AND ano = ? AND mes = ?",
+      whereArgs: [anoBase, mesBase],
+    );
+
+    if (baseRows.isEmpty) return;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    final batch = db.batch();
+    for (final r in baseRows) {
+      final base = Map<String, dynamic>.from(r);
+      base.remove('id');
+
+      base['ano'] = anoAlvo;
+      base['mes'] = mesAlvo;
+      base['semana'] = null;
+
+      // mantemos recorrente=1 para continuar gerando nos meses seguintes
+      base['recorrente'] = 1;
+
+      // timestamps
+      base['criado_em'] = nowMs;
+      base['atualizado_em'] = nowMs;
+
+      batch.insert(
+        'metricas_limites',
+        base,
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+
+    await batch.commit(noResult: true);
+  }
+
   Future<int> salvar(MetricaLimite m) async {
     final db = await _db;
     final now = DateTime.now();
@@ -315,6 +388,63 @@ class MetricaLimiteRepository {
     final pct = limite <= 0 ? 0.0 : (total / limite) * 100.0;
 
     return ConsumoMetrica(total: total, limite: limite, percentual: pct);
+  }
+
+  /// Soma despesas no intervalo [inicio, fim] aplicando os mesmos filtros
+  /// que a métrica usa no `calcularConsumo()` (categoria/forma/cartão/conta,
+  /// pago/futuros/pagamento de fatura).
+  ///
+  /// Observação: aqui o intervalo é explícito, então NÃO aplicamos a regra de
+  /// ciclo de fatura (fechamento→fechamento). Isso é intencional para análises
+  /// por subperíodos (semana/dia) dentro de um mês.
+  Future<double> somarGastosNoIntervalo({
+    required MetricaLimite metrica,
+    required DateTime inicio,
+    required DateTime fim,
+  }) async {
+    final db = await _db;
+    final bool metricaCredito = metrica.formaPagamento == 0;
+
+    final where = <String>[
+      'data_hora >= ? AND data_hora <= ?',
+      'tipo_movimento = ?',
+      if (metrica.idCategoriaPersonalizada > 0)
+        'id_categoria_personalizada = ?',
+      if (metrica.idSubcategoriaPersonalizada != null)
+        'id_subcategoria_personalizada = ?',
+      if (metrica.formaPagamento != null) 'forma_pagamento = ?',
+      if (metrica.idCartao != null) 'id_cartao = ?',
+      if (metrica.idConta != null) 'id_conta = ?',
+      if (metricaCredito)
+        (metrica.ignorarPagamentoFatura ? 'pagamento_fatura = 0' : 'pagamento_fatura = 1')
+      else if (metrica.ignorarPagamentoFatura)
+        'pagamento_fatura = 0',
+      if (metrica.considerarSomentePagos) 'pago = 1',
+      if (!metrica.incluirFuturos) 'data_hora <= ?',
+    ];
+
+    final args = <Object?>[
+      inicio.millisecondsSinceEpoch,
+      fim.millisecondsSinceEpoch,
+      1,
+      if (metrica.idCategoriaPersonalizada > 0) metrica.idCategoriaPersonalizada,
+      if (metrica.idSubcategoriaPersonalizada != null)
+        metrica.idSubcategoriaPersonalizada,
+      if (metrica.formaPagamento != null) metrica.formaPagamento,
+      if (metrica.idCartao != null) metrica.idCartao,
+      if (metrica.idConta != null) metrica.idConta,
+      if (!metrica.incluirFuturos) DateTime.now().millisecondsSinceEpoch,
+    ];
+
+    final result = await db.rawQuery(
+      '''
+      SELECT SUM(valor) AS total
+      FROM lancamentos
+      WHERE ${where.join(' AND ')}
+      ''',
+      args,
+    );
+    return ((result.first['total'] as num?) ?? 0).toDouble();
   }
 
   Future<double> _sumLancamentos({

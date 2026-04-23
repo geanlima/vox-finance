@@ -24,6 +24,21 @@ class _AppGatePageState extends State<AppGatePage> {
   String? _version; // v1 | v2 | null
   bool _bootedOnce = false;
 
+  Future<User?> _getFirebaseUserWithWarmup({
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    final auth = FirebaseAuth.instance;
+    final cur = auth.currentUser;
+    if (cur != null) return cur;
+
+    try {
+      // Em cold start, o Firebase pode demorar um pouco para restaurar a sessão.
+      return await auth.authStateChanges().first.timeout(timeout);
+    } catch (_) {
+      return auth.currentUser;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -63,7 +78,7 @@ class _AppGatePageState extends State<AppGatePage> {
   }
 
   Future<bool> _checkLogged() async {
-    final fbUser = FirebaseAuth.instance.currentUser;
+    final fbUser = await _getFirebaseUserWithWarmup();
     if (fbUser != null) {
       await SessionService.instance.saveLogin(
         loginType: 'firebase',
