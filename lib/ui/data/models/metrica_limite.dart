@@ -33,6 +33,10 @@ class MetricaLimite {
   final int alertaPct1;
   final int alertaPct2;
 
+  /// Se true, ao virar o mês o app cria automaticamente a métrica do próximo mês.
+  /// (Aplicável apenas para período mensal.)
+  final bool recorrente;
+
   final DateTime criadoEm;
   final DateTime atualizadoEm;
 
@@ -55,6 +59,7 @@ class MetricaLimite {
     required this.ignorarPagamentoFatura,
     required this.alertaPct1,
     required this.alertaPct2,
+    required this.recorrente,
     required this.criadoEm,
     required this.atualizadoEm,
   });
@@ -80,6 +85,7 @@ class MetricaLimite {
       ignorarPagamentoFatura: (map['ignorar_pagamento_fatura'] ?? 1) == 1,
       alertaPct1: ((map['alerta_pct1'] ?? 80) as num).toInt(),
       alertaPct2: ((map['alerta_pct2'] ?? 100) as num).toInt(),
+      recorrente: (map['recorrente'] ?? 0) == 1,
       criadoEm: DateTime.fromMillisecondsSinceEpoch(map['criado_em'] as int),
       atualizadoEm:
           DateTime.fromMillisecondsSinceEpoch(map['atualizado_em'] as int),
@@ -106,6 +112,7 @@ class MetricaLimite {
       'ignorar_pagamento_fatura': ignorarPagamentoFatura ? 1 : 0,
       'alerta_pct1': alertaPct1,
       'alerta_pct2': alertaPct2,
+      'recorrente': recorrente ? 1 : 0,
       'criado_em': criadoEm.millisecondsSinceEpoch,
       'atualizado_em': atualizadoEm.millisecondsSinceEpoch,
     };

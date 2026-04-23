@@ -13,6 +13,7 @@ import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repos
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/data/modules/metricas/metrica_limite_repository.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
+import 'package:vox_finance/ui/pages/metricas/metricas_analises_page.dart';
 
 class MetricasPage extends StatefulWidget {
   const MetricasPage({super.key});
@@ -52,6 +53,9 @@ class _MetricasPageState extends State<MetricasPage> {
   Future<void> _carregar() async {
     setState(() => _carregando = true);
     try {
+      // 🔁 Gera métricas mensais recorrentes ao entrar na tela.
+      await _repo.gerarRecorrentesDoMesAtualSeNecessario(DateTime.now());
+
       final cats = await _catRepo.listarTodas();
       final cartoes = await _cartaoRepo.getCartoesCredito();
 
@@ -98,24 +102,29 @@ class _MetricasPageState extends State<MetricasPage> {
     }
   }
 
+  /// Rótulo da forma (e cartão no crédito), usado no título e na descrição do card.
+  String _tituloFormaPagamento(MetricaLimite m) {
+    final f =
+        (m.formaPagamento != null &&
+                m.formaPagamento! >= 0 &&
+                m.formaPagamento! < FormaPagamento.values.length)
+            ? FormaPagamento.values[m.formaPagamento!]
+            : null;
+    if (f == null) return 'Forma de pagamento';
+    if (f == FormaPagamento.credito && m.idCartao != null) {
+      try {
+        final c = _cartoes.firstWhere((e) => e.id == m.idCartao);
+        return '${f.label} • ${c.label}';
+      } catch (_) {
+        return '${f.label} • Cartão';
+      }
+    }
+    return f.label;
+  }
+
   String _cardTitle(MetricaLimite m, CategoriaPersonalizada? cat, SubcategoriaPersonalizada? sub) {
     if (m.escopo == 'forma') {
-      final f =
-          (m.formaPagamento != null &&
-                  m.formaPagamento! >= 0 &&
-                  m.formaPagamento! < FormaPagamento.values.length)
-              ? FormaPagamento.values[m.formaPagamento!]
-              : null;
-      if (f == null) return 'Forma de pagamento';
-      if (f == FormaPagamento.credito && m.idCartao != null) {
-        try {
-          final c = _cartoes.firstWhere((e) => e.id == m.idCartao);
-          return '${f.label} • ${c.label}';
-        } catch (_) {
-          return '${f.label} • Cartão';
-        }
-      }
-      return f.label;
+      return _tituloFormaPagamento(m);
     }
 
     final base = cat?.nome ?? 'Categoria';
@@ -123,7 +132,12 @@ class _MetricasPageState extends State<MetricasPage> {
     return base;
   }
 
-  String _cardSubtitle(MetricaLimite m) {
+  /// Descrição (subtítulo): período + escopo com o mesmo nível de detalhe para categoria e forma.
+  String _cardSubtitle(
+    MetricaLimite m,
+    CategoriaPersonalizada? cat,
+    SubcategoriaPersonalizada? sub,
+  ) {
     final periodo = () {
       if (m.periodoTipo == 'semanal') {
         final sem = m.semana ?? _repo.semanaDoAno(_referencia);
@@ -134,8 +148,15 @@ class _MetricasPageState extends State<MetricasPage> {
       return 'Mensal • ${_mesAbrev.format(DateTime(m.ano, mes, 1))}';
     }();
 
-    final base = m.escopo == 'forma' ? 'Forma' : 'Categoria';
-    return '$periodo • $base';
+    if (m.escopo == 'forma') {
+      final alvo = _tituloFormaPagamento(m);
+      return '$periodo • Forma de pagamento • $alvo';
+    }
+
+    if (m.idCategoriaPersonalizada <= 0) {
+      return '$periodo • Categoria • Todas as despesas';
+    }
+    return '$periodo • Categoria';
   }
 
   String get _periodoLabel {
@@ -392,6 +413,7 @@ class _MetricasPageState extends State<MetricasPage> {
     bool considerarSomentePagos = existente?.considerarSomentePagos ?? true;
     bool incluirFuturos = existente?.incluirFuturos ?? false;
     bool ignorarPagamentoFatura = existente?.ignorarPagamentoFatura ?? true;
+    bool recorrente = existente?.recorrente ?? false;
 
     final pct1Ctrl = TextEditingController(
       text: (existente?.alertaPct1 ?? 80).toString(),
@@ -774,6 +796,16 @@ class _MetricasPageState extends State<MetricasPage> {
                                   () => ignorarPagamentoFatura = v,
                                 ),
                           ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Meta recorrente'),
+                            subtitle: const Text(
+                              'Ao virar o mês, o app cria automaticamente a métrica do próximo mês.',
+                            ),
+                            value: recorrente,
+                            onChanged:
+                                (v) => modalSetState(() => recorrente = v),
+                          ),
                           const SizedBox(height: 8),
 
                           Row(
@@ -865,6 +897,7 @@ class _MetricasPageState extends State<MetricasPage> {
                                 ignorarPagamentoFatura: ignorarPagamentoFatura,
                                 alertaPct1: a1,
                                 alertaPct2: a2,
+                                recorrente: (periodoTipo == 'mensal') ? recorrente : false,
                                 criadoEm: existente?.criadoEm ?? now,
                                 atualizadoEm: now,
                               );
@@ -932,6 +965,18 @@ class _MetricasPageState extends State<MetricasPage> {
       appBar: AppBar(
         title: const Text('Métricas'),
         actions: [
+          IconButton(
+            tooltip: 'Análises',
+            onPressed: () {
+              final id = _metricas.isNotEmpty ? _metricas.first.id : null;
+              Navigator.pushNamed(
+                context,
+                MetricasAnalisesPage.routeName,
+                arguments: id == null ? null : {'metricaId': id},
+              );
+            },
+            icon: const Icon(Icons.insights_outlined),
+          ),
           IconButton(
             tooltip: 'Atualizar',
             onPressed: _carregar,
@@ -1066,8 +1111,8 @@ class _MetricasPageState extends State<MetricasPage> {
                                               _cardTitle(m, cat, sub),
                                             ),
                                             subtitle: Text(
-                                              _cardSubtitle(m),
-                                              maxLines: 2,
+                                              _cardSubtitle(m, cat, sub),
+                                              maxLines: 3,
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             trailing: Column(

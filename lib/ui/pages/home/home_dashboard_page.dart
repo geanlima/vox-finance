@@ -24,6 +24,7 @@ import 'package:vox_finance/ui/data/modules/metricas/metrica_limite_repository.d
 import 'package:vox_finance/ui/pages/home/home_voice.dart';
 import 'package:vox_finance/ui/data/database/database_initializer.dart';
 import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
+import 'package:vox_finance/ui/pages/metricas/metricas_analises_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
@@ -59,7 +60,27 @@ String _tituloMetricaDashboard(
   MetricaLimite m,
   List<CategoriaPersonalizada> cats,
   Map<int, List<SubcategoriaPersonalizada>> subsByCat,
+  List<CartaoCredito> cartoes,
 ) {
+  if (m.escopo == 'forma') {
+    final idx = m.formaPagamento;
+    if (idx == null ||
+        idx < 0 ||
+        idx >= FormaPagamento.values.length) {
+      return 'Forma de pagamento';
+    }
+    final f = FormaPagamento.values[idx];
+    if (f == FormaPagamento.credito && m.idCartao != null) {
+      try {
+        final c = cartoes.firstWhere((e) => e.id == m.idCartao);
+        return '${f.label} • ${c.label}';
+      } catch (_) {
+        return '${f.label} • Cartão';
+      }
+    }
+    return f.label;
+  }
+
   if (m.idCategoriaPersonalizada <= 0) {
     return 'Todas as despesas';
   }
@@ -149,11 +170,14 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     });
 
     try {
+      // 🔁 Gera métricas mensais recorrentes no mês atual (se necessário).
+      final agora = DateTime.now();
+      await _metricaRepo.gerarRecorrentesDoMesAtualSeNecessario(agora);
+
       // Garante que as despesas fixas automáticas do mês foram geradas
       // antes de montar as notificações de vencimento.
       await _despesasFixasService.gerarNoMesAtualSeNecessario();
 
-      final agora = DateTime.now();
       final inicioHoje = DateTime(agora.year, agora.month, agora.day);
       final fimHoje = DateTime(
         agora.year,
@@ -305,6 +329,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
           final catRepo = CategoriaPersonalizadaRepository();
           final subRepo = SubcategoriaPersonalizadaRepository();
           final cats = await catRepo.listarTodas();
+          final cartoes = await _cartaoRepo.getCartoesCredito();
           final subsByCat = <int, List<SubcategoriaPersonalizada>>{};
           for (final c in cats) {
             if (c.id == null) continue;
@@ -316,7 +341,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
               metrica: m,
               referenciaPeriodo: agora,
             );
-            final titulo = _tituloMetricaDashboard(m, cats, subsByCat);
+            final titulo = _tituloMetricaDashboard(m, cats, subsByCat, cartoes);
             linhas.add(
               _OrcamentoMesLinha(
                 metrica: m,
@@ -465,7 +490,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
               const SizedBox(height: 10),
               const Divider(height: 1),
               const SizedBox(height: 10),
-              ..._faturasCartao.take(3).map((f) {
+              ..._faturasCartao.map((f) {
                 final v = DateFormat('dd/MM').format(f.vencimento);
                 final cor = f.pago ? Colors.green.shade700 : cs.error;
                 final status = f.pago ? 'Paga' : 'Em aberto';
@@ -530,16 +555,6 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                   ),
                 );
               }),
-              if (_faturasCartao.length > 3)
-                Text(
-                  '+ ${_faturasCartao.length - 3} cartão(ões)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12.5,
-                  ),
-                ),
             ],
           ),
         ),
@@ -636,7 +651,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
         borderRadius: BorderRadius.circular(16),
         onTap: () => _goMain(MetricasPage.routeName),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -644,15 +659,15 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: cs.primary.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(Icons.savings_outlined, color: cs.primary),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -661,18 +676,18 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                           'Orçamento do mês ($mesLabel)',
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
-                            fontSize: 15,
+                            fontSize: 14.5,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           _orcamentoMesLinhas.isEmpty
-                              ? 'Defina limites por categoria (ou geral) e acompanhe o quanto já gastou.'
-                              : '${_orcamentoMesLinhas.length} métrica(s) mensal(is) ativa(s). Toque para gerenciar.',
+                              ? 'Defina limites por categoria (ou geral), por forma de pagamento, e acompanhe o quanto já gastou.'
+                              : '${_orcamentoMesLinhas.length} métrica(s) mensal(is) ativa(s).',
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
-                            fontSize: 13,
+                            fontSize: 12.5,
                           ),
                         ),
                       ],
@@ -682,12 +697,16 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                     onPressed: () => _goMain(MetricasPage.routeName),
                     child: const Text('Gerenciar'),
                   ),
+                  TextButton(
+                    onPressed: () => _goMain(MetricasAnalisesPage.routeName),
+                    child: const Text('Análises'),
+                  ),
                 ],
               ),
               if (_orcamentoMesLinhas.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Divider(height: 1),
                 const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
                 ..._orcamentoMesLinhas.take(maxLinhas).map((linha) {
                   final m = linha.metrica;
                   final c = linha.consumo;
@@ -700,7 +719,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                     barColor = Colors.orange.shade800;
                   }
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -714,7 +733,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 13.5,
+                                  fontSize: 13,
                                 ),
                               ),
                             ),
@@ -726,23 +745,23 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                                     pctRaw >= m.alertaPct2
                                         ? cs.error
                                         : cs.onSurfaceVariant,
-                                fontSize: 13,
+                                fontSize: 12.5,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 5),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
                             value: pctBar,
-                            minHeight: 6,
+                            minHeight: 5,
                             backgroundColor: cs.surfaceContainerHighest
                                 .withOpacity(0.85),
                             valueColor: AlwaysStoppedAnimation<Color>(barColor),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Row(
                           children: [
                             Expanded(
@@ -751,7 +770,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: cs.onSurface,
-                                  fontSize: 12.5,
+                                  fontSize: 12,
                                 ),
                               ),
                             ),
@@ -760,7 +779,7 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 color: cs.onSurfaceVariant,
-                                fontSize: 12,
+                                fontSize: 11.5,
                               ),
                             ),
                           ],
