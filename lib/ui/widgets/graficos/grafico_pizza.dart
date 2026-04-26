@@ -12,6 +12,7 @@ import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/despesas_fixas/despesa_fixa_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
 // ⭐ NOVO: categorias personalizadas
@@ -20,6 +21,7 @@ import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_r
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
+import 'package:vox_finance/ui/data/models/despesa_fixa_mes_resumo.dart';
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
@@ -119,6 +121,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   List<SubcategoriaPersonalizada> _subcategorias = [];
 
   final _lancamentoRepo = LancamentoRepository();
+  final _fixasRepo = DespesaFixaRepository();
+
+  List<Lancamento> _receitas = [];
+  ResumoDespesasFixasMes? _resumoFixas;
 
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
@@ -226,10 +232,31 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final cards = await _repositoryCartao.getCartoesCredito();
     final contas = await _repositoryConta.getContasBancarias();
 
+    // receitas
+    List<Lancamento> receitas = [];
+    if (widget.periodo == PeriodoResumoPizza.mensal) {
+      receitas = await _repositoryLancamento.getReceitasDoMes(
+        _anoSelecionado,
+        _mesSelecionado,
+      );
+    } else {
+      // semanal: pega tudo e filtra receitas
+      final todos = await _repositoryLancamento.getByPeriodo(inicio, fim);
+      receitas = todos.where((l) => l.tipoMovimento == TipoMovimento.receita).toList();
+    }
+
+    // despesas fixas (previstas): usa o módulo de despesas fixas (conta_pagar FIXA_*)
+    // Para mês, sempre usamos referência do mês selecionado.
+    final refFixas = DateTime(_anoSelecionado, _mesSelecionado, 1);
+    await _fixasRepo.gerarPendenciasDoMes(refFixas);
+    final resumoFixas = await _fixasRepo.resumoMes(refFixas);
+
     Iterable<Lancamento> filtrados = lista;
+    Iterable<Lancamento> receitasFiltradas = receitas;
 
     if (widget.considerarSomentePagos) {
       filtrados = filtrados.where((l) => l.pago);
+      receitasFiltradas = receitasFiltradas.where((l) => l.pago);
     }
 
     if (widget.ignorarPagamentoFatura) {
@@ -237,9 +264,13 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     }
 
     final lancsFiltrados = filtrados.toList();
+    final receitasFinal = receitasFiltradas.toList();
 
     // ⭐ Carrega categorias personalizadas apenas para os tipos usados
-    final tiposUsados = lancsFiltrados.map((l) => l.tipoMovimento).toSet();
+    final tiposUsados = {
+      ...lancsFiltrados.map((l) => l.tipoMovimento),
+      ...receitasFinal.map((l) => l.tipoMovimento),
+    };
     final List<CategoriaPersonalizada> cats = [];
     for (final tipo in tiposUsados) {
       try {
@@ -260,10 +291,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
     setState(() {
       _lancamentos = lancsFiltrados;
+      _receitas = receitasFinal;
       _cartoes = cards;
       _contas = contas;
       _categoriasPersonalizadas = cats;
       _subcategorias = subs;
+      _resumoFixas = resumoFixas;
       _carregando = false;
     });
   }
@@ -381,6 +414,39 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   double get _totalMes {
     return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
+  }
+
+  double get _totalReceitasPeriodo {
+    return _receitas.fold<double>(0.0, (acc, l) => acc + l.valor);
+  }
+
+  double get _totalFixasPeriodo {
+    final r = _resumoFixas;
+    if (r == null) return 0.0;
+    // Total do mês = quitado + pendente (inativas ficam fora)
+    return r.totalMes;
+  }
+
+  bool get _periodoSelecionadoEhFuturo {
+    final now = DateTime.now();
+    if (widget.periodo != PeriodoResumoPizza.mensal) return false;
+    return (_anoSelecionado > now.year) ||
+        (_anoSelecionado == now.year && _mesSelecionado > now.month);
+  }
+
+  bool get _periodoSelecionadoEhMesAtual {
+    final now = DateTime.now();
+    if (widget.periodo != PeriodoResumoPizza.mensal) return false;
+    return _anoSelecionado == now.year && _mesSelecionado == now.month;
+  }
+
+  double get _totalMesExibicaoComFixasFuturo {
+    // Regra solicitada:
+    // - mês atual: NÃO soma fixas no total
+    // - meses futuros: soma fixas no total (previsão)
+    final base = _totalMes;
+    if (_periodoSelecionadoEhFuturo) return base + _totalFixasPeriodo;
+    return base;
   }
 
   /// Mesma regra da tela de lançamentos: parcela de compra com mais de uma parcela.
@@ -915,6 +981,191 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     );
   }
 
+  void _mostrarResumoReceitas() {
+    final lista = [..._receitas]..sort((a, b) => b.dataHora.compareTo(a.dataHora));
+    if (lista.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há receitas neste período.')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final total = lista.fold<double>(0.0, (a, b) => a + b.valor);
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.78,
+          child: Column(
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green.withOpacity(0.12),
+                  child: Icon(Icons.arrow_upward, color: Colors.green.shade700),
+                ),
+                title: const Text('Receitas'),
+                subtitle: Text('$_labelPeriodoAtual • ${lista.length} item(ns)'),
+                trailing: Text(
+                  _currency.format(total),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: listViewPaddingWithBottomInset(
+                    ctx,
+                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  ),
+                  itemCount: lista.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final l = lista[i];
+                    return ListTile(
+                      title: Text(l.descricao.isEmpty ? '(Sem descrição)' : l.descricao),
+                      subtitle: Text(_dateHoraFormat.format(l.dataHora)),
+                      trailing: Text(
+                        _currency.format(l.valor),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _mostrarResumoDespesasFixas() {
+    final r = _resumoFixas;
+    if (r == null || r.linhas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há despesas fixas para detalhar.')),
+      );
+      return;
+    }
+
+    final linhas = [...r.linhas]
+      ..removeWhere((l) => l.situacao == DespesaFixaSituacaoMes.inativa);
+    linhas.sort((a, b) => b.valorReferencia.compareTo(a.valorReferencia));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.82,
+          child: Column(
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.deepOrange.withOpacity(0.12),
+                  child: Icon(
+                    Icons.push_pin_outlined,
+                    color: Colors.deepOrange.shade700,
+                  ),
+                ),
+                title: const Text('Despesas fixas'),
+                subtitle: Text(_labelPeriodoAtual),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Card(
+                  elevation: 0,
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        _linhaTot('Quitado', _currency.format(r.totalPago), Colors.green.shade700),
+                        const SizedBox(height: 6),
+                        _linhaTot('Pendente', _currency.format(r.totalPendente), Colors.orange.shade800),
+                        const Divider(height: 16),
+                        _linhaTot('Total', _currency.format(r.totalMes), cs.primary),
+                        if (_periodoSelecionadoEhMesAtual) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Obs.: no mês atual não soma no total, pois o lançamento é gerado quando você paga.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: listViewPaddingWithBottomInset(
+                    ctx,
+                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  ),
+                  itemCount: linhas.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final l = linhas[i];
+                    final corStatus = switch (l.situacao) {
+                      DespesaFixaSituacaoMes.quitado => Colors.green.shade700,
+                      DespesaFixaSituacaoMes.pendente => Colors.orange.shade800,
+                      DespesaFixaSituacaoMes.semLancamento => cs.onSurfaceVariant,
+                      DespesaFixaSituacaoMes.inativa => cs.onSurfaceVariant,
+                    };
+                    final statusTxt = switch (l.situacao) {
+                      DespesaFixaSituacaoMes.quitado => 'QUITADO',
+                      DespesaFixaSituacaoMes.pendente => 'PENDENTE',
+                      DespesaFixaSituacaoMes.semLancamento => 'SEM LANÇAMENTO',
+                      DespesaFixaSituacaoMes.inativa => 'INATIVA',
+                    };
+
+                    return ListTile(
+                      title: Text(l.fixa.descricao),
+                      subtitle: Text(statusTxt, style: TextStyle(color: corStatus, fontWeight: FontWeight.w800, fontSize: 12)),
+                      trailing: Text(
+                        _currency.format(l.valorReferencia),
+                        style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _linhaTot(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w900, color: color)),
+      ],
+    );
+  }
+
   Map<String, _GrupoFormaPagamento> _totaisPorFormaPagamentoAgrupadoFrom(
     List<Lancamento> base,
   ) {
@@ -1351,13 +1602,15 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   @override
   Widget build(BuildContext context) {
     final labelMesAno = _labelPeriodoAtual;
-    final totalMesFormatado = _currency.format(_totalMes);
+    final totalMesFormatado = _currency.format(_totalMesExibicaoComFixasFuturo);
     final parceladoMesFormatado = _currency.format(_totalMesParcelado);
     final demaisMesFormatado = _currency.format(_totalMesDemais);
     final mediaDiariaFormatada = _currency.format(_mediaDiariaMes);
     final mediaDiariaMesCalendarioFormatada = _currency.format(
       _mediaDiariaMesCalendario,
     );
+    final receitasFormatado = _currency.format(_totalReceitasPeriodo);
+    final fixasFormatado = _currency.format(_totalFixasPeriodo);
 
     final diaMaior = _diaMaiorGasto;
     final diaMenor = _diaMenorGasto;
@@ -1543,6 +1796,127 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ====== RECEITAS (CLICÁVEL) ======
+                InkWell(
+                  onTap: _mostrarResumoReceitas,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.arrow_upward,
+                          color: Colors.green.shade700,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.periodo == PeriodoResumoPizza.mensal
+                              ? 'Receitas no mês'
+                              : 'Receitas na semana',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          receitasFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ====== DESPESAS FIXAS (CLICÁVEL, NÃO SOMA NO MÊS ATUAL) ======
+                InkWell(
+                  onTap: _mostrarResumoDespesasFixas,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.push_pin_outlined,
+                          color: Colors.deepOrange.shade700,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Despesas fixas',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (_periodoSelecionadoEhMesAtual)
+                                Text(
+                                  'Não entra no total do mês atual',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                )
+                              else if (_periodoSelecionadoEhFuturo)
+                                Text(
+                                  'Previstas (entram no total)',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          fixasFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepOrange.shade700,
                           ),
                         ),
                       ],
