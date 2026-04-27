@@ -200,6 +200,18 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     );
   }
 
+  Future<void> _reabrirPagamento(ContaPagar parcela) async {
+    await _pagamentoService.reabrirPagamento(parcela);
+    await _carregar();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Parcela reaberta. Lançamento ajustado.'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -300,7 +312,77 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                                 }
                               },
                       // Toque longo → ver lançamento vinculado
-                      onLongPress: () => _mostrarLancamentoVinculado(p),
+                      onLongPress: () async {
+                        final opt = await showModalBottomSheet<String>(
+                          context: context,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                          ),
+                          builder: (ctx) {
+                            return SafeArea(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.receipt_long),
+                                    title: const Text('Ver lançamento vinculado'),
+                                    onTap: () =>
+                                        Navigator.pop(ctx, 'verLanc'),
+                                  ),
+                                  if (p.pago)
+                                    ListTile(
+                                      leading: const Icon(Icons.undo),
+                                      title: const Text('Reabrir parcela'),
+                                      subtitle: const Text(
+                                        'Desfaz o pagamento desta parcela.',
+                                      ),
+                                      onTap: () =>
+                                          Navigator.pop(ctx, 'reabrir'),
+                                    ),
+                                  const SizedBox(height: 8),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+
+                        if (opt == 'verLanc') {
+                          await _mostrarLancamentoVinculado(p);
+                          return;
+                        }
+                        if (opt == 'reabrir') {
+                          final confirmar = await showDialog<bool>(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                title: const Text('Reabrir parcela'),
+                                content: const Text(
+                                  'Deseja reabrir esta parcela?\n\n'
+                                  'Isso irá remover o lançamento criado no pagamento (quando existir) '
+                                  'e voltar a parcela para pendente.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Reabrir'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                          if (confirmar == true) {
+                            await _reabrirPagamento(p);
+                          }
+                        }
+                      },
                     ),
                   );
                 },

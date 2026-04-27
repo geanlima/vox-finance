@@ -2,6 +2,7 @@
 
 import 'package:sqflite/sqflite.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito_calendario.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/fatura_geracao_opcao.dart';
 import 'package:vox_finance/ui/data/models/fatura_cartao.dart';
@@ -29,6 +30,109 @@ class CartaoCreditoRepository {
     return DateTime(ano, mes, d, h, m, s, ms);
   }
 
+  Future<(int diaFechamento, int diaVencimento)?> getDiasCicloPorReferencia({
+    required int idCartao,
+    required int anoReferencia,
+    required int mesReferencia,
+  }) async {
+    final db = await _dbService.db;
+
+    // 1) Calendário por mês (prioritário)
+    final rows = await db.query(
+      'cartao_credito_calendario',
+      columns: const ['dia_fechamento', 'dia_vencimento'],
+      where: 'id_cartao = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartao, anoReferencia, mesReferencia],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final dFech = (rows.first['dia_fechamento'] as num?)?.toInt();
+      final dVenc = (rows.first['dia_vencimento'] as num?)?.toInt();
+      if (dFech != null && dVenc != null) return (dFech, dVenc);
+    }
+
+    // 2) Fallback: cadastro do cartão
+    final cartao = await getCartaoCreditoById(idCartao);
+    if (cartao == null) return null;
+    if (cartao.diaFechamento == null || cartao.diaVencimento == null) {
+      return null;
+    }
+    return (cartao.diaFechamento!, cartao.diaVencimento!);
+  }
+
+  Future<List<CartaoCreditoCalendario>> listarCalendarioPorCartao(
+    int idCartao,
+  ) async {
+    final db = await _dbService.db;
+    final rows = await db.query(
+      'cartao_credito_calendario',
+      where: 'id_cartao = ?',
+      whereArgs: [idCartao],
+      orderBy: 'ano DESC, mes DESC',
+    );
+    return rows.map(CartaoCreditoCalendario.fromMap).toList();
+  }
+
+  Future<void> upsertCalendarioMes({
+    required int idCartao,
+    required int ano,
+    required int mes,
+    required int diaFechamento,
+    required int diaVencimento,
+  }) async {
+    final db = await _dbService.db;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final existing = await db.query(
+      'cartao_credito_calendario',
+      columns: const ['id'],
+      where: 'id_cartao = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartao, ano, mes],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      await db.insert(
+        'cartao_credito_calendario',
+        {
+          'id_cartao': idCartao,
+          'ano': ano,
+          'mes': mes,
+          'dia_fechamento': diaFechamento,
+          'dia_vencimento': diaVencimento,
+          'criado_em': nowMs,
+          'atualizado_em': nowMs,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return;
+    }
+
+    final id = (existing.first['id'] as num?)?.toInt();
+    if (id == null) return;
+    await db.update(
+      'cartao_credito_calendario',
+      {
+        'dia_fechamento': diaFechamento,
+        'dia_vencimento': diaVencimento,
+        'atualizado_em': nowMs,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> deletarCalendarioMes({
+    required int idCartao,
+    required int ano,
+    required int mes,
+  }) async {
+    final db = await _dbService.db;
+    await db.delete(
+      'cartao_credito_calendario',
+      where: 'id_cartao = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartao, ano, mes],
+    );
+  }
+
   (int inicioMs, int fimMs) _rangeDiaMs(DateTime d) {
     final ini = DateTime(d.year, d.month, d.day);
     final fim = ini.add(const Duration(days: 1)).subtract(
@@ -52,6 +156,425 @@ class CartaoCreditoRepository {
     return _dataValida(anoVenc, mesVenc, diaVencimento);
   }
 
+  DateTime _calcularVencimentoCartaoParaConta({
+    required DateTime dataCompra,
+    required int diaFechamento,
+    required int diaVencimento,
+    required int numeroParcela,
+  }) {
+    final diaFech = diaFechamento.clamp(
+      1,
+      DateTime(dataCompra.year, dataCompra.month + 1, 0).day,
+    );
+    final diaVenc = diaVencimento.clamp(1, 31);
+
+    final fechamentoEsteMesFim = _dataValida(
+      dataCompra.year,
+      dataCompra.month,
+      diaFech,
+      23,
+      59,
+      59,
+      999,
+    );
+    final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMesFim);
+    final DateTime refFech = DateTime(
+      dataCompra.year,
+      dataCompra.month + (aposFechamento ? 1 : 0),
+      1,
+    );
+
+    final bool vencNoMesSeguinte = diaVenc <= diaFech;
+    final int baseOffsetMes = vencNoMesSeguinte ? 1 : 0;
+    final int offsetParcela = numeroParcela - 1;
+
+    final int mesVenc = refFech.month + baseOffsetMes + offsetParcela;
+    final int anoVenc = refFech.year;
+
+    return _dataValida(anoVenc, mesVenc, diaVenc);
+  }
+
+  /// Recalcula:
+  /// - vencimentos das parcelas (tabela `conta_pagar`) baseadas no cartão
+  /// - faturas do cartão (apagando somente as **não pagas** e gerando novamente)
+  ///
+  /// Útil quando o usuário altera `dia_fechamento` ou `dia_vencimento`.
+  Future<void> regerarParcelasEFaturasAoAlterarDatas({
+    required int idCartao,
+    required int? novoDiaFechamento,
+    required int? novoDiaVencimento,
+    int? anoReferencia,
+    int? mesReferencia,
+    bool incluirPagos = false,
+  }) async {
+    if (novoDiaFechamento == null || novoDiaVencimento == null) return;
+    final db = await _dbService.db;
+
+    // Para preservar pagamentos quando incluir pagos:
+    // chave: "ano-mes" -> (pago, data_pagamento_ms, data_vencimento_ms_antiga)
+    // Observação: se o vencimento mudar, o pagamento deve ser reaberto.
+    final pagamentoAnteriorFatura =
+        <String, (bool pago, int? dataPgMs, int? vencMsAntigo)>{};
+    final pagamentoAnteriorLanc =
+        <String, (bool pago, int? dataPgMs, int? vencMsAntigo)>{};
+
+    await db.transaction((txn) async {
+      // 1) Recalcular vencimentos de contas a pagar parceladas no crédito desse cartão
+      final gruposRows = await txn.query(
+        'conta_pagar',
+        columns: const ['grupo_parcelas'],
+        where:
+            incluirPagos
+                ? 'id_cartao = ? AND forma_pagamento = ? AND grupo_parcelas IS NOT NULL AND grupo_parcelas != ""'
+                : 'id_cartao = ? AND forma_pagamento = ? AND grupo_parcelas IS NOT NULL AND grupo_parcelas != "" AND (pago IS NULL OR pago = 0)',
+        whereArgs: [idCartao, FormaPagamento.credito.index],
+        groupBy: 'grupo_parcelas',
+      );
+
+      for (final g in gruposRows) {
+        final grupo = (g['grupo_parcelas'] as String?)?.trim();
+        if (grupo == null || grupo.isEmpty) continue;
+
+        // Compra base: parcela 1 (para calcular a referência do ciclo)
+        final baseRows = await txn.query(
+          'lancamentos',
+          columns: const ['data_hora'],
+          where:
+              'id_cartao = ? AND forma_pagamento = ? AND pagamento_fatura = 0 AND grupo_parcelas = ? AND parcela_numero = 1',
+          whereArgs: [idCartao, FormaPagamento.credito.index, grupo],
+          limit: 1,
+        );
+        if (baseRows.isEmpty) continue;
+        final baseMs = (baseRows.first['data_hora'] as num?)?.toInt();
+        if (baseMs == null) continue;
+        final dataCompraBase = DateTime.fromMillisecondsSinceEpoch(baseMs);
+
+        final parcelasConta = await txn.query(
+          'conta_pagar',
+          columns: const [
+            'id',
+            'parcela_numero',
+            'data_vencimento',
+            'pago',
+            'data_pagamento',
+            'id_lancamento',
+          ],
+          where:
+              incluirPagos
+                  ? 'id_cartao = ? AND forma_pagamento = ? AND grupo_parcelas = ?'
+                  : 'id_cartao = ? AND forma_pagamento = ? AND grupo_parcelas = ? AND (pago IS NULL OR pago = 0)',
+          whereArgs: [idCartao, FormaPagamento.credito.index, grupo],
+        );
+
+        for (final p in parcelasConta) {
+          final idConta = (p['id'] as num?)?.toInt();
+          if (idConta == null) continue;
+          final numeroParcela = (p['parcela_numero'] as num?)?.toInt();
+          if (numeroParcela == null || numeroParcela <= 0) continue;
+
+          final novoVenc = _calcularVencimentoCartaoParaConta(
+            dataCompra: dataCompraBase,
+            diaFechamento: novoDiaFechamento,
+            diaVencimento: novoDiaVencimento,
+            numeroParcela: numeroParcela,
+          );
+          final novoVencMs =
+              DateTime(novoVenc.year, novoVenc.month, novoVenc.day)
+                  .millisecondsSinceEpoch;
+
+          final vencAntigoMs = (p['data_vencimento'] as num?)?.toInt();
+          final estavaPago = (p['pago'] as int? ?? 0) == 1;
+          final reabrir = estavaPago &&
+              vencAntigoMs != null &&
+              vencAntigoMs != novoVencMs;
+
+          await txn.update(
+            'conta_pagar',
+            {
+              'data_vencimento': novoVencMs,
+              if (reabrir) 'pago': 0,
+              if (reabrir) 'data_pagamento': null,
+            },
+            where: 'id = ?',
+            whereArgs: [idConta],
+          );
+
+          // Importante: não reabre lançamento de cartão aqui.
+          // Para cartão, o pagamento é controlado pela conta a pagar/fatura.
+        }
+      }
+
+      // 2) Apagar faturas não pagas (fatura_cartao + vínculos + lançamento de fatura + conta_pagar vinculada)
+      // Se (anoReferencia, mesReferencia) forem informados, limita ao mês selecionado.
+      final bool filtrarMes =
+          anoReferencia != null &&
+          mesReferencia != null &&
+          mesReferencia >= 1 &&
+          mesReferencia <= 12;
+
+      final fatRows = await txn.query(
+        'fatura_cartao',
+        columns: const ['id', 'data_vencimento', 'ano', 'mes', 'pago', 'data_pagamento'],
+        where:
+            filtrarMes
+                ? (incluirPagos
+                    ? 'id_cartao = ? AND ano = ? AND mes = ?'
+                    : 'id_cartao = ? AND (pago IS NULL OR pago = 0) AND ano = ? AND mes = ?')
+                : (incluirPagos
+                    ? 'id_cartao = ?'
+                    : 'id_cartao = ? AND (pago IS NULL OR pago = 0)'),
+        whereArgs:
+            filtrarMes
+                ? [idCartao, anoReferencia, mesReferencia]
+                : [idCartao],
+      );
+
+      for (final f in fatRows) {
+        final idFatura = (f['id'] as num?)?.toInt();
+        final vencMs = (f['data_vencimento'] as num?)?.toInt();
+        final ano = (f['ano'] as num?)?.toInt();
+        final mes = (f['mes'] as num?)?.toInt();
+        if (ano != null && mes != null) {
+          final key = '$ano-${mes.toString().padLeft(2, '0')}';
+          final pago = (f['pago'] as int? ?? 0) == 1;
+          final dataPgMs = (f['data_pagamento'] as num?)?.toInt();
+          pagamentoAnteriorFatura[key] = (pago, dataPgMs, vencMs);
+        }
+        if (idFatura != null) {
+          await txn.delete(
+            'fatura_cartao_lancamento',
+            where: 'id_fatura = ?',
+            whereArgs: [idFatura],
+          );
+          await txn.delete(
+            'fatura_cartao',
+            where: 'id = ?',
+            whereArgs: [idFatura],
+          );
+        }
+
+        if (vencMs == null) continue;
+
+        final lancFat = await txn.query(
+          'lancamentos',
+          columns: const ['id', 'pago', 'data_pagamento'],
+          where:
+              incluirPagos
+                  ? 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ?'
+                  : 'id_cartao = ? AND pagamento_fatura = 1 AND data_hora = ? AND (pago IS NULL OR pago = 0)',
+          whereArgs: incluirPagos ? [idCartao, vencMs] : [idCartao, vencMs],
+          limit: 1,
+        );
+        if (lancFat.isEmpty) continue;
+        final idLanc = (lancFat.first['id'] as num?)?.toInt();
+        if (idLanc == null) continue;
+
+        if (ano != null && mes != null) {
+          final key = '$ano-${mes.toString().padLeft(2, '0')}';
+          final pago = (lancFat.first['pago'] as int? ?? 0) == 1;
+          final dataPgMs = (lancFat.first['data_pagamento'] as num?)?.toInt();
+          pagamentoAnteriorLanc[key] = (pago, dataPgMs, vencMs);
+        }
+
+        await txn.delete(
+          'conta_pagar',
+          where: 'id_lancamento = ?',
+          whereArgs: [idLanc],
+        );
+        await txn.delete(
+          'lancamentos',
+          where: 'id = ?',
+          whereArgs: [idLanc],
+        );
+      }
+    });
+
+    // 3) Gerar novamente faturas
+    if (anoReferencia != null &&
+        mesReferencia != null &&
+        mesReferencia >= 1 &&
+        mesReferencia <= 12) {
+      await gerarFaturaDoCartao(
+        idCartao,
+        referencia: DateTime(anoReferencia, mesReferencia, 1),
+      );
+
+      // Restaura "pago" (se aplicável)
+      if (incluirPagos) {
+        final key = '$anoReferencia-${mesReferencia.toString().padLeft(2, '0')}';
+        await _restaurarPagamentoSeNecessario(
+          idCartao: idCartao,
+          ano: anoReferencia,
+          mes: mesReferencia,
+          pagamentoFatura: pagamentoAnteriorFatura[key],
+          pagamentoLancamento: pagamentoAnteriorLanc[key],
+        );
+      }
+      return;
+    }
+
+    // Padrão: regera tudo a partir das compras existentes
+    await gerarFaturasDoCartaoAPartirDosLancamentosExistentes(idCartao);
+
+    if (incluirPagos && pagamentoAnteriorFatura.isNotEmpty) {
+      for (final entry in pagamentoAnteriorFatura.entries) {
+        final parts = entry.key.split('-');
+        if (parts.length != 2) continue;
+        final ano = int.tryParse(parts[0]);
+        final mes = int.tryParse(parts[1]);
+        if (ano == null || mes == null) continue;
+        await _restaurarPagamentoSeNecessario(
+          idCartao: idCartao,
+          ano: ano,
+          mes: mes,
+          pagamentoFatura: pagamentoAnteriorFatura[entry.key],
+          pagamentoLancamento: pagamentoAnteriorLanc[entry.key],
+        );
+      }
+    }
+  }
+
+  Future<void> _restaurarPagamentoSeNecessario({
+    required int idCartao,
+    required int ano,
+    required int mes,
+    required (bool pago, int? dataPgMs, int? vencMsAntigo)? pagamentoFatura,
+    required (bool pago, int? dataPgMs, int? vencMsAntigo)? pagamentoLancamento,
+  }) async {
+    final db = await _dbService.db;
+    final pagoF = pagamentoFatura?.$1 == true;
+    final pagoL = pagamentoLancamento?.$1 == true;
+    if (!pagoF && !pagoL) return;
+
+    final dataPgMs = pagamentoFatura?.$2 ?? pagamentoLancamento?.$2;
+    final vencAntigoMs = pagamentoFatura?.$3 ?? pagamentoLancamento?.$3;
+
+    // Atualiza o lançamento de fatura do período: usa o vencimento gravado na fatura
+    final fat = await db.query(
+      'fatura_cartao',
+      columns: const ['data_vencimento'],
+      where: 'id_cartao = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartao, ano, mes],
+      limit: 1,
+    );
+    if (fat.isEmpty) return;
+    final vencMs = (fat.first['data_vencimento'] as num?)?.toInt();
+    if (vencMs == null) return;
+
+    // Se o vencimento mudou, o pagamento anterior não é mais válido → reabre.
+    final deveReabrir = vencAntigoMs != null && vencAntigoMs != vencMs;
+
+    // Atualiza fatura_cartao pelo período (ano/mes de referência)
+    await db.update(
+      'fatura_cartao',
+      {
+        'pago': deveReabrir ? 0 : 1,
+        'data_pagamento': deveReabrir ? null : dataPgMs,
+      },
+      where: 'id_cartao = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartao, ano, mes],
+    );
+    final venc = DateTime.fromMillisecondsSinceEpoch(vencMs);
+    final (ini, fim) = _rangeDiaMs(venc);
+
+    final lanc = await db.query(
+      'lancamentos',
+      columns: const ['id'],
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, ini, fim],
+      limit: 1,
+    );
+    if (lanc.isEmpty) return;
+    final idLanc = (lanc.first['id'] as num?)?.toInt();
+    if (idLanc == null) return;
+
+    await db.update(
+      'lancamentos',
+      {
+        'pago': deveReabrir ? 0 : 1,
+        'data_pagamento': deveReabrir ? null : dataPgMs,
+      },
+      where: 'id = ?',
+      whereArgs: [idLanc],
+    );
+
+    await db.update(
+      'conta_pagar',
+      {
+        'pago': deveReabrir ? 0 : 1,
+        'data_pagamento': deveReabrir ? null : dataPgMs,
+      },
+      where: 'id_lancamento = ?',
+      whereArgs: [idLanc],
+    );
+  }
+
+  /// Regera faturas do cartão com base nas compras (lancamentos no crédito),
+  /// deduplicando por (ano, mes) de referência (mês de fechamento).
+  Future<int> gerarFaturasDoCartaoAPartirDosLancamentosExistentes(
+    int idCartao,
+  ) async {
+    final db = await _dbService.db;
+
+    final cartao = await getCartaoCreditoById(idCartao);
+    if (cartao == null) return 0;
+    final bool ehCreditoLike =
+        cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
+    if (!ehCreditoLike) return 0;
+    if (!cartao.controlaFatura) return 0;
+    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return 0;
+
+    final compras = await db.query(
+      'lancamentos',
+      columns: const ['data_hora'],
+      where:
+          'id_cartao = ? AND forma_pagamento = ? AND pagamento_fatura = 0',
+      whereArgs: [idCartao, FormaPagamento.credito.index],
+    );
+    if (compras.isEmpty) return 0;
+
+    final diaFech = cartao.diaFechamento!;
+    final periodos = <int>{};
+    DateTime? ultimaCompra;
+
+    for (final c in compras) {
+      final ms = (c['data_hora'] as num?)?.toInt();
+      if (ms == null) continue;
+      final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+      if (ultimaCompra == null || dt.isAfter(ultimaCompra)) {
+        ultimaCompra = dt;
+      }
+
+      final ultimoDiaMes = DateTime(dt.year, dt.month + 1, 0).day;
+      final fechDia = diaFech.clamp(1, ultimoDiaMes);
+      final fechamentoFim = DateTime(dt.year, dt.month, fechDia, 23, 59, 59, 999);
+      final ref =
+          dt.isAfter(fechamentoFim)
+              ? DateTime(dt.year, dt.month + 1, 1)
+              : DateTime(dt.year, dt.month, 1);
+      periodos.add(ref.year * 100 + ref.month);
+    }
+
+    final lista = periodos.toList()..sort();
+    for (final p in lista) {
+      final ano = p ~/ 100;
+      final mes = p % 100;
+      await gerarFaturaDoCartao(idCartao, referencia: DateTime(ano, mes, 1));
+    }
+
+    // Também garante faturas futuras (valor 0) a partir da última compra.
+    if (ultimaCompra != null) {
+      await garantirFaturasFuturasAPartirDaCompra(
+        idCartao: idCartao,
+        dataCompra: ultimaCompra,
+        mesesFuturos: 12,
+      );
+    }
+
+    return lista.length;
+  }
+
   Future<void> gerarFaturaDoCartao(int idCartao, {DateTime? referencia}) async {
     final database = await _dbService.db;
     final hoje = referencia ?? DateTime.now();
@@ -72,11 +595,16 @@ class CartaoCreditoRepository {
 
     if (!ehCreditoLike) return;
     if (!cartao.controlaFatura) return;
-    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
+    final diasCiclo = await getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: hoje.year,
+      mesReferencia: hoje.month,
+    );
+    if (diasCiclo == null) return;
 
     final int diaFechamento =
-        cartao.diaFechamento!.clamp(1, DateTime(hoje.year, hoje.month + 1, 0).day);
-    final int diaVencimento = cartao.diaVencimento!.clamp(1, 31);
+        diasCiclo.$1.clamp(1, DateTime(hoje.year, hoje.month + 1, 0).day);
+    final int diaVencimento = diasCiclo.$2.clamp(1, 31);
 
     int anoAtual = hoje.year;
     int mesAtual = hoje.month;
@@ -257,7 +785,13 @@ class CartaoCreditoRepository {
         cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
     if (!ehCreditoLike) return;
     if (!cartao.controlaFatura) return;
-    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
+    // Para descobrir o ciclo da compra, usa o fechamento do MÊS da compra.
+    final diasCompraMes = await getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: dataCompra.year,
+      mesReferencia: dataCompra.month,
+    );
+    if (diasCompraMes == null) return;
 
     final compra = DateTime(
       dataCompra.year,
@@ -269,8 +803,10 @@ class CartaoCreditoRepository {
       dataCompra.millisecond,
     );
 
-    final diaFech = cartao.diaFechamento!.clamp(1, DateTime(compra.year, compra.month + 1, 0).day);
-    final diaVenc = cartao.diaVencimento!.clamp(1, 31);
+    final diaFech = diasCompraMes.$1.clamp(
+      1,
+      DateTime(compra.year, compra.month + 1, 0).day,
+    );
 
     // Determina o mês/ano de fechamento da fatura que contém esta compra.
     // Regra correta: se a compra acontecer após o dia do fechamento (fim do dia),
@@ -289,6 +825,15 @@ class CartaoCreditoRepository {
         aposFechamento
             ? DateTime(compra.year, compra.month + 1, 1)
             : DateTime(compra.year, compra.month, 1);
+
+    // Agora que sabemos o mês de REFERÊNCIA, pega o fechamento/vencimento daquele mês.
+    final diasRef = await getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: referenciaFechamento.year,
+      mesReferencia: referenciaFechamento.month,
+    );
+    if (diasRef == null) return;
+    final diaVenc = diasRef.$2.clamp(1, 31);
 
     final int anoAtual = referenciaFechamento.year;
     final int mesAtual = referenciaFechamento.month;
@@ -450,16 +995,26 @@ class CartaoCreditoRepository {
         cartao.tipo == TipoCartao.credito || cartao.tipo == TipoCartao.ambos;
     if (!ehCreditoLike) return;
     if (!cartao.controlaFatura) return;
-    if (cartao.diaFechamento == null || cartao.diaVencimento == null) return;
+    if (cartao.diaFechamento == null || cartao.diaVencimento == null) {
+      // pode ainda ter calendário configurado; segue
+    }
 
     DateTime _addMonths(DateTime d, int months) {
       return DateTime(d.year, d.month + months, 1);
     }
 
     final compra = DateTime(dataCompra.year, dataCompra.month, dataCompra.day);
-    final diaFech = cartao.diaFechamento!
-        .clamp(1, DateTime(compra.year, compra.month + 1, 0).day);
-    final diaVenc = cartao.diaVencimento!.clamp(1, 31);
+    // Para descobrir o mês base, usa o fechamento do MÊS da compra.
+    final diasCompraMes = await getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: compra.year,
+      mesReferencia: compra.month,
+    );
+    if (diasCompraMes == null) return;
+    final diaFech = diasCompraMes.$1.clamp(
+      1,
+      DateTime(compra.year, compra.month + 1, 0).day,
+    );
 
     // Determina o mês de fechamento do ciclo que contém a compra.
     final fechamentoEsteMesFim = _dataValida(
@@ -482,6 +1037,18 @@ class CartaoCreditoRepository {
       final anoAtual = ref.year;
       final mesAtual = ref.month;
 
+      final diasRef = await getDiasCicloPorReferencia(
+        idCartao: idCartao,
+        anoReferencia: anoAtual,
+        mesReferencia: mesAtual,
+      );
+      if (diasRef == null) continue;
+      final int diaFechRef = diasRef.$1.clamp(
+        1,
+        DateTime(anoAtual, mesAtual + 1, 0).day,
+      );
+      final int diaVencRef = diasRef.$2.clamp(1, 31);
+
       // Período do ciclo: do dia seguinte ao fechamento anterior até o dia do fechamento (inclusive).
       int mesAnterior = mesAtual - 1;
       int anoAnterior = anoAtual;
@@ -489,9 +1056,11 @@ class CartaoCreditoRepository {
         mesAnterior = 12;
         anoAnterior--;
       }
-      final fechamentoAnterior = _dataValida(anoAnterior, mesAnterior, diaFech);
+      final fechamentoAnterior =
+          _dataValida(anoAnterior, mesAnterior, diaFechRef);
       final inicioPeriodo = fechamentoAnterior.add(const Duration(days: 1));
-      final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFech, 23, 59, 59, 999);
+      final fimPeriodo =
+          _dataValida(anoAtual, mesAtual, diaFechRef, 23, 59, 59, 999);
 
       final compras = await db.query(
         'lancamentos',
@@ -521,8 +1090,8 @@ AND data_hora <= ?
       final dataVencimento = _dataVencimentoPorReferencia(
         anoFechamento: anoAtual,
         mesFechamento: mesAtual,
-        diaFechamento: diaFech,
-        diaVencimento: diaVenc,
+        diaFechamento: diaFechRef,
+        diaVencimento: diaVencRef,
       );
       final dataVencMs = DateTime(
         dataVencimento.year,
@@ -1145,8 +1714,7 @@ AND data_hora <= ?
 
     final int idCartao = faturaLancamento.idCartao!;
     final DateTime venc = faturaLancamento.dataHora;
-    final int vencMs = DateTime(venc.year, venc.month, venc.day)
-        .millisecondsSinceEpoch;
+    final (vencIniMs, vencFimMs) = _rangeDiaMs(venc);
 
     // 1) Localizar a fatura na tabela fatura_cartao pelo vencimento.
     // Importante: o "mês de referência" pode ser o mês de fechamento (ex.: 04/2026),
@@ -1154,8 +1722,8 @@ AND data_hora <= ?
     // Portanto, não é confiável bater por (ano, mes) a partir da data do lançamento.
     final faturaRows = await db.query(
       'fatura_cartao',
-      where: 'id_cartao = ? AND data_vencimento = ?',
-      whereArgs: [idCartao, vencMs],
+      where: 'id_cartao = ? AND data_vencimento >= ? AND data_vencimento <= ?',
+      whereArgs: [idCartao, vencIniMs, vencFimMs],
       limit: 1,
     );
 

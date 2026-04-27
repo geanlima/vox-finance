@@ -1157,6 +1157,32 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V56: Calendário do cartão (fechamento/vencimento por mês)
+    // =========================
+    if (oldVersion < 56) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS cartao_credito_calendario (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_cartao INTEGER NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          dia_fechamento INTEGER NOT NULL,
+          dia_vencimento INTEGER NOT NULL,
+          criado_em INTEGER NOT NULL,
+          atualizado_em INTEGER NOT NULL,
+          UNIQUE(id_cartao, ano, mes)
+        );
+      ''');
+
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_cartao_calendario_cartao_periodo
+          ON cartao_credito_calendario (id_cartao, ano, mes);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -1519,6 +1545,27 @@ class MigrationV2toV15 {
         id_lancamento INTEGER NOT NULL
       );
     ''');
+
+    // CARTAO_CREDITO_CALENDARIO (fechamento/vencimento por mês)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cartao_credito_calendario (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_cartao INTEGER NOT NULL,
+        ano INTEGER NOT NULL,
+        mes INTEGER NOT NULL,
+        dia_fechamento INTEGER NOT NULL,
+        dia_vencimento INTEGER NOT NULL,
+        criado_em INTEGER NOT NULL,
+        atualizado_em INTEGER NOT NULL,
+        UNIQUE(id_cartao, ano, mes)
+      );
+    ''');
+    try {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_cartao_calendario_cartao_periodo
+        ON cartao_credito_calendario (id_cartao, ano, mes);
+      ''');
+    } catch (_) {}
 
     // Lancamentos / conta_pagar
     await _addColumnSafe(

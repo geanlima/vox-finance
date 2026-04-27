@@ -79,8 +79,11 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   final DespesasFixasService _despesasFixasService = DespesasFixasService();
 
   List<ContaPagarResumo> _resumos = [];
+  List<ContaPagarResumo> _resumosBase = [];
   bool _mostrarSomentePendentes = true;
   bool _carregando = false;
+  final TextEditingController _buscaCtrl = TextEditingController();
+  String _buscaDescricao = '';
 
   // 🔢 Totalizadores
   double _totalGeral = 0;
@@ -89,6 +92,45 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
   // 🔢 Totalizadores (somente faturas de cartão)
   double _totalFaturasGeral = 0;
+
+  Widget _searchBox(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, color: cs.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _buscaCtrl,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Buscar por descrição (ex: bateria)',
+                border: InputBorder.none,
+                isDense: true,
+                hintStyle: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ),
+          ),
+          if (_buscaDescricao.isNotEmpty)
+            IconButton(
+              tooltip: 'Limpar',
+              onPressed: () {
+                _buscaCtrl.clear();
+                FocusScope.of(context).unfocus();
+              },
+              icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _totChip(
     BuildContext context,
@@ -135,7 +177,43 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
   void initState() {
     super.initState();
     _iaService = IAService(_isarService);
+    _buscaCtrl.addListener(() {
+      final v = _buscaCtrl.text.trim();
+      if (v == _buscaDescricao) return;
+      setState(() => _buscaDescricao = v);
+      _aplicarFiltroBusca();
+    });
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _buscaCtrl.dispose();
+    super.dispose();
+  }
+
+  void _aplicarFiltroBusca() {
+    final q = _buscaDescricao.toLowerCase();
+    final filtrados =
+        q.isEmpty
+            ? _resumosBase
+            : _resumosBase
+                .where((r) => r.descricao.toLowerCase().contains(q))
+                .toList();
+
+    // recalcula totalizadores com base no que está na tela
+    double totalGeral = 0;
+    double totalPendente = 0;
+    for (final r in filtrados) {
+      totalGeral += r.valorTotal;
+      totalPendente += r.valorPendente;
+    }
+
+    setState(() {
+      _resumos = filtrados;
+      _totalGeral = totalGeral;
+      _totalPendente = totalPendente;
+    });
   }
 
   Future<void> _bootstrap() async {
@@ -186,6 +264,20 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
 
     for (final conta in todasParcelas) {
       final grupo = conta.grupoParcelas; // agora é obrigatório (String)
+
+      // ❌ Não listar despesas fixas nesta tela (elas são geradas/geridas em outra área)
+      if (grupo.startsWith('FIXA_')) {
+        continue;
+      }
+
+      // ❌ Não listar compras no cartão sem parcelamento (1/1)
+      // (o controle dessas compras fica pela fatura do cartão / lançamentos)
+      final ehCredito = conta.formaPagamento == FormaPagamento.credito;
+      final totalParc = conta.parcelaTotal ?? 1;
+      if (ehCredito && totalParc <= 1 && !grupo.startsWith('FATURA_')) {
+        continue;
+      }
+
       // Não considerar "contas a pagar" geradas apenas para o lançamento de fatura do cartão.
       // Elas existem para controle do vencimento da fatura, mas não devem entrar nos totais
       // (nem na lista) de Contas a pagar.
@@ -298,26 +390,17 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
       );
     }
 
-    // 🔢 recalcula totalizadores
-    double totalGeral = 0;
-    double totalPendente = 0;
-    for (final r in resumos) {
-      totalGeral += r.valorTotal;
-      totalPendente += r.valorPendente;
-    }
-
     double totalFaturasGeral = 0;
     for (final r in resumosFaturas) {
       totalFaturasGeral += r.valorTotal;
     }
 
     setState(() {
-      _resumos = resumos;
+      _resumosBase = resumos;
       _carregando = false;
-      _totalGeral = totalGeral;
-      _totalPendente = totalPendente;
       _totalFaturasGeral = totalFaturasGeral;
     });
+    _aplicarFiltroBusca();
   }
 
   Future<void> _excluirGrupo(ContaPagarResumo resumo) async {
@@ -1261,6 +1344,12 @@ class _ContasPagarPageState extends State<ContasPagarPage> {
                 ),
               ),
             ),
+
+          // Busca por descrição
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+            child: _searchBox(context),
+          ),
 
           // Lista
           Expanded(child: buildLista()),

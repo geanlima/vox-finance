@@ -122,7 +122,9 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
   bool _aplicouFiltroDaRota = false;
   DateTime _refFatura = DateTime.now();
 
-  List<ParcelamentoResumo> _resumos = const [];
+  List<ParcelamentoResumo> _resumosBase = const [];
+  final TextEditingController _buscaCtrl = TextEditingController();
+  String _buscaDescricao = '';
   /// Soma de todas as parcelas pendentes (parcelado, exc. FATURA_*).
   double _totalEmAbertoGeral = 0.0;
   /// Parcelas pendentes com vencimento no mês corrente.
@@ -149,7 +151,65 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     super.initState();
     final agora = DateTime.now();
     _refFatura = DateTime(agora.year, agora.month, 1);
+    _buscaCtrl.addListener(() {
+      final v = _buscaCtrl.text.trim();
+      if (v == _buscaDescricao) return;
+      setState(() => _buscaDescricao = v);
+    });
     _carregar();
+  }
+
+  @override
+  void dispose() {
+    _buscaCtrl.dispose();
+    super.dispose();
+  }
+
+  List<ParcelamentoResumo> _filtrados() {
+    final q = _buscaDescricao.toLowerCase();
+    if (q.isEmpty) return _resumosBase;
+    return _resumosBase
+        .where((r) => r.descricao.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Widget _searchBox(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, color: cs.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _buscaCtrl,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Buscar por descrição (ex: bateria)',
+                border: InputBorder.none,
+                isDense: true,
+                hintStyle: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ),
+          ),
+          if (_buscaDescricao.isNotEmpty)
+            IconButton(
+              tooltip: 'Limpar',
+              onPressed: () {
+                _buscaCtrl.clear();
+                FocusScope.of(context).unfocus();
+              },
+              icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -592,7 +652,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
 
     if (!mounted) return;
     setState(() {
-      _resumos = resumos;
+      _resumosBase = resumos;
       _totalEmAbertoGeral = totalGeral;
       _totalNesteMes = nesteMes;
       _totalProximoMes = proximoMes;
@@ -1650,8 +1710,12 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                     ),
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: _searchBox(context),
+                ),
                 Expanded(
-                  child: _resumos.isEmpty
+                  child: _filtrados().isEmpty
                       ? Center(
                           child: Padding(
                             padding: const EdgeInsets.all(24),
@@ -1671,11 +1735,11 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                         )
                       : ListView.separated(
                               padding: listViewPaddingWithBottomInset(context, const EdgeInsets.fromLTRB(16, 0, 16, 16)),
-                              itemCount: _resumos.length,
+                              itemCount: _filtrados().length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 10),
                               itemBuilder: (context, i) {
-                                final r = _resumos[i];
+                                final r = _filtrados()[i];
                                 final pct = r.quantidadeParcelas == 0
                                     ? 0.0
                                     : (r.qtdPagas / r.quantidadeParcelas)

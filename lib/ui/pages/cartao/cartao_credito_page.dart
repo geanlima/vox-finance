@@ -3,9 +3,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito_calendario.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
@@ -191,6 +193,628 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
             final bool mostraCamposFatura = _ehCreditoLike(tipoSelecionado);
             final bool precisaDiasObrigatorios =
                 mostraCamposFatura && controlaFatura;
+
+            Future<void> _abrirCalendarioMensal() async {
+              final idCartao = existente?.id;
+              if (idCartao == null) return;
+
+              List<CartaoCreditoCalendario> itens =
+                  await _repository.listarCalendarioPorCartao(idCartao);
+
+              await showDialog<void>(
+                context: modalContext,
+                builder: (ctx) {
+                  return StatefulBuilder(
+                    builder: (ctx, setSt) {
+                      Future<void> recarregar() async {
+                        itens = await _repository.listarCalendarioPorCartao(
+                          idCartao,
+                        );
+                        setSt(() {});
+                      }
+
+                      Future<void> editarOuAdicionar({
+                        CartaoCreditoCalendario? existenteMes,
+                      }) async {
+                        DateTime ref =
+                            existenteMes != null
+                                ? DateTime(existenteMes.ano, existenteMes.mes, 1)
+                                : DateTime(DateTime.now().year, DateTime.now().month, 1);
+                        int diaFech =
+                            existenteMes?.diaFechamento ??
+                            (existente?.diaFechamento ?? 1);
+                        int diaVenc =
+                            existenteMes?.diaVencimento ??
+                            (existente?.diaVencimento ?? 1);
+
+                        final ok = await showDialog<bool>(
+                          context: ctx,
+                          builder: (ctx2) {
+                            return StatefulBuilder(
+                              builder: (ctx2, set2) {
+                                Future<void> pickMes() async {
+                                  final d = await showDatePicker(
+                                    context: ctx2,
+                                    initialDate: ref,
+                                    firstDate: DateTime(2000, 1, 1),
+                                    lastDate: DateTime(2100, 12, 31),
+                                    helpText:
+                                        'Escolha uma data do mês desejado',
+                                  );
+                                  if (d == null) return;
+                                  set2(() => ref = DateTime(d.year, d.month, 1));
+                                }
+
+                                return AlertDialog(
+                                  title: Text(
+                                    existenteMes == null
+                                        ? 'Adicionar mês'
+                                        : 'Editar mês',
+                                  ),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed:
+                                            existenteMes == null ? pickMes : null,
+                                        icon: const Icon(Icons.calendar_month),
+                                        label: Text(
+                                          '${ref.month.toString().padLeft(2, '0')}/${ref.year}',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: diaFech,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Dia de fechamento',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: List.generate(
+                                          31,
+                                          (i) => DropdownMenuItem(
+                                            value: i + 1,
+                                            child: Text('${i + 1}'),
+                                          ),
+                                        ),
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          set2(() => diaFech = v);
+                                        },
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: diaVenc,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Dia de vencimento',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: List.generate(
+                                          31,
+                                          (i) => DropdownMenuItem(
+                                            value: i + 1,
+                                            child: Text('${i + 1}'),
+                                          ),
+                                        ),
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          set2(() => diaVenc = v);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx2, false),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx2, true),
+                                      child: const Text('Salvar'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        );
+
+                        if (ok != true) return;
+
+                        await _repository.upsertCalendarioMes(
+                          idCartao: idCartao,
+                          ano: ref.year,
+                          mes: ref.month,
+                          diaFechamento: diaFech,
+                          diaVencimento: diaVenc,
+                        );
+                        await recarregar();
+                      }
+
+                      return AlertDialog(
+                        titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        title: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Theme.of(ctx).colorScheme.primary
+                                    .withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.calendar_month,
+                                color: Theme.of(ctx).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Calendário do cartão',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                        content: SizedBox(
+                          width: double.maxFinite,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Defina fechamento/vencimento por mês. '
+                                  'Se um mês não estiver aqui, o app usa o padrão do cartão.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              if (itens.isEmpty)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: Colors.grey.shade200,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.shade50,
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.info_outline,
+                                          color: Colors.orange.shade700,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Expanded(
+                                        child: Text(
+                                          'Nenhum mês configurado ainda.\n'
+                                          'Toque em “Adicionar” para cadastrar um mês.',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 380,
+                                  ),
+                                  child: ListView.separated(
+                                    shrinkWrap: true,
+                                    itemCount: itens.length,
+                                    separatorBuilder:
+                                        (_, __) => const SizedBox(height: 10),
+                                    itemBuilder: (_, i) {
+                                      final it = itens[i];
+                                      final periodo =
+                                          '${it.mes.toString().padLeft(2, '0')}/${it.ano}';
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                          color: Colors.white,
+                                        ),
+                                        child: Slidable(
+                                          key: ValueKey('cal_${it.ano}_${it.mes}'),
+                                          startActionPane: ActionPane(
+                                            motion: const DrawerMotion(),
+                                            extentRatio: 0.25,
+                                            children: [
+                                              SlidableAction(
+                                                onPressed: (_) =>
+                                                    editarOuAdicionar(
+                                                  existenteMes: it,
+                                                ),
+                                                backgroundColor:
+                                                    Theme.of(ctx)
+                                                        .colorScheme
+                                                        .primary,
+                                                foregroundColor: Colors.white,
+                                                icon: Icons.edit,
+                                                label: 'Editar',
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                              ),
+                                            ],
+                                          ),
+                                          endActionPane: ActionPane(
+                                            motion: const DrawerMotion(),
+                                            extentRatio: 0.25,
+                                            children: [
+                                              SlidableAction(
+                                                onPressed: (_) async {
+                                                  final confirmar =
+                                                      await showDialog<bool>(
+                                                    context: ctx,
+                                                    builder: (c3) {
+                                                      return AlertDialog(
+                                                        title: const Text(
+                                                          'Excluir mês',
+                                                        ),
+                                                        content: Text(
+                                                          'Deseja excluir a configuração de $periodo?',
+                                                        ),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () =>
+                                                                Navigator.pop(
+                                                              c3,
+                                                              false,
+                                                            ),
+                                                            child: const Text(
+                                                              'Cancelar',
+                                                            ),
+                                                          ),
+                                                          ElevatedButton(
+                                                            onPressed: () =>
+                                                                Navigator.pop(
+                                                              c3,
+                                                              true,
+                                                            ),
+                                                            child: const Text(
+                                                              'Excluir',
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      );
+                                                    },
+                                                  );
+                                                  if (confirmar != true) return;
+                                                  await _repository
+                                                      .deletarCalendarioMes(
+                                                    idCartao: idCartao,
+                                                    ano: it.ano,
+                                                    mes: it.mes,
+                                                  );
+                                                  await recarregar();
+                                                },
+                                                backgroundColor:
+                                                    Colors.red.shade600,
+                                                foregroundColor: Colors.white,
+                                                icon: Icons.delete_outline,
+                                                label: 'Excluir',
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 44,
+                                                height: 44,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.teal.shade50,
+                                                  borderRadius:
+                                                      BorderRadius.circular(14),
+                                                ),
+                                                child: Icon(
+                                                  Icons.event,
+                                                  color: Colors.teal.shade700,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      periodo,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Wrap(
+                                                      spacing: 8,
+                                                      runSpacing: 6,
+                                                      children: [
+                                                        Chip(
+                                                          label: Text(
+                                                            'Fecha dia ${it.diaFechamento}',
+                                                          ),
+                                                          visualDensity:
+                                                              VisualDensity
+                                                                  .compact,
+                                                        ),
+                                                        Chip(
+                                                          label: Text(
+                                                            'Vence dia ${it.diaVencimento}',
+                                                          ),
+                                                          visualDensity:
+                                                              VisualDensity
+                                                                  .compact,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Fechar'),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () => editarOuAdicionar(),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Adicionar'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+            }
+
+            Future<void> _regerarFaturasDoCartao() async {
+              final idCartao = existente?.id;
+              if (idCartao == null) return;
+
+              final bool? regen = await showDialog<bool>(
+                context: modalContext,
+                builder: (ctx) {
+                  return AlertDialog(
+                    title: const Text('Regerar parcelas e faturas?'),
+                    content: const Text(
+                      'Isso recalcula vencimentos em contas a pagar e gera novamente as faturas do cartão.\n\n'
+                      'Você pode limitar a um mês e também incluir os meses pagos.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancelar'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Continuar'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              if (regen != true) return;
+
+              int? anoRef;
+              int? mesRef;
+              bool incluirPagos = false;
+
+              final tipo = await showDialog<int>(
+                context: modalContext,
+                builder: (ctx) {
+                  int modo = 1; // 1 = todos, 2 = um mês
+                  DateTime? escolhido;
+                  return StatefulBuilder(
+                    builder: (ctx, setSt) {
+                      Future<void> pick() async {
+                        final agora = DateTime.now();
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate:
+                              escolhido ?? DateTime(agora.year, agora.month, 1),
+                          firstDate: DateTime(2000, 1, 1),
+                          lastDate: DateTime(2100, 12, 31),
+                          helpText: 'Selecione uma data do mês desejado',
+                        );
+                        if (d == null) return;
+                        setSt(() => escolhido = d);
+                      }
+
+                      final labelMes =
+                          escolhido == null
+                              ? 'Selecionar mês/ano'
+                              : '${escolhido!.month.toString().padLeft(2, '0')}/${escolhido!.year}';
+
+                      return AlertDialog(
+                        titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        title: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Theme.of(ctx).colorScheme.primary
+                                    .withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.refresh,
+                                color: Theme.of(ctx).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Como regerar?',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ],
+                        ),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Escolha o escopo e se deve incluir meses pagos.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .surfaceContainerHighest
+                                    .withOpacity(0.65),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Theme.of(ctx)
+                                      .colorScheme
+                                      .outlineVariant
+                                      .withOpacity(0.6),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  RadioListTile<int>(
+                                    contentPadding: EdgeInsets.zero,
+                                    value: 1,
+                                    groupValue: modo,
+                                    onChanged: (v) =>
+                                        setSt(() => modo = v ?? 1),
+                                    title: const Text('Todos os meses'),
+                                  ),
+                                  if (modo == 1)
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text('Incluir meses pagos'),
+                                      subtitle: Text(
+                                        'Se o vencimento mudar, o app reabre automaticamente.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                      value: incluirPagos,
+                                      onChanged: (v) =>
+                                          setSt(() => incluirPagos = v),
+                                    ),
+                                  const Divider(height: 1),
+                                  RadioListTile<int>(
+                                    contentPadding: EdgeInsets.zero,
+                                    value: 2,
+                                    groupValue: modo,
+                                    onChanged: (v) =>
+                                        setSt(() => modo = v ?? 2),
+                                    title: const Text('Somente um mês'),
+                                  ),
+                                  if (modo == 2) ...[
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text('Incluir mês pago'),
+                                      value: incluirPagos,
+                                      onChanged: (v) =>
+                                          setSt(() => incluirPagos = v),
+                                    ),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: OutlinedButton.icon(
+                                        onPressed: pick,
+                                        icon:
+                                            const Icon(Icons.calendar_month),
+                                        label: Text(labelMes),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, null),
+                            child: const Text('Cancelar'),
+                          ),
+                          FilledButton.icon(
+                            onPressed: () {
+                              if (modo == 2 && escolhido == null) return;
+                              if (modo == 2) {
+                                anoRef = escolhido!.year;
+                                mesRef = escolhido!.month;
+                              }
+                              Navigator.pop(ctx, modo);
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Regerar'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+
+              if (tipo == null) return;
+              if (!mounted) return;
+
+              // Usa os dias atuais do cartão como fallback (se o mês não tiver calendário).
+              await _repository.regerarParcelasEFaturasAoAlterarDatas(
+                idCartao: idCartao,
+                novoDiaFechamento: diaFechamento,
+                novoDiaVencimento: diaVencimento,
+                anoReferencia: anoRef,
+                mesReferencia: mesRef,
+                incluirPagos: incluirPagos,
+              );
+            }
 
             final mq = MediaQuery.of(modalContext);
             final viewInsets = mq.viewInsets; // teclado
@@ -558,6 +1182,35 @@ class _CartaoCreditoPageState extends State<CartaoCreditoPage> {
                                                 });
                                               },
                                             ),
+                                            if (ehEdicao &&
+                                                existente.id != null) ...[
+                                              const SizedBox(height: 12),
+                                              OutlinedButton.icon(
+                                                onPressed: _abrirCalendarioMensal,
+                                                icon: const Icon(
+                                                  Icons.date_range,
+                                                ),
+                                                label: const Text(
+                                                  'Configurar fechamento/vencimento por mês',
+                                                ),
+                                              ),
+                                              const SizedBox(height: 10),
+                                              FilledButton.icon(
+                                                onPressed: _regerarFaturasDoCartao,
+                                                icon: const Icon(Icons.refresh),
+                                                label: const Text(
+                                                  'Regerar parcelas e faturas',
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                'Se um mês não estiver configurado aqui, o app usa os dias padrão do cartão.',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),
