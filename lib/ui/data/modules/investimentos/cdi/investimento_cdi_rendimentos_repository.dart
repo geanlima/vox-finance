@@ -153,5 +153,10 @@ class InvestimentoCdiRendimentosRepository {
       whereArgs: [id],
     );
   }
+
+  Future<void> deletar(int id) async {
+    final db = await _db;
+    await db.delete(_tbl, where: 'id = ?', whereArgs: [id]);
+  }
 }
 

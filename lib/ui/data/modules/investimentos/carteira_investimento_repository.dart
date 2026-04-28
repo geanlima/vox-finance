@@ -111,6 +111,13 @@ class CarteiraInvestimentoRepository {
           where: 'id_carteira = ?',
           whereArgs: [id],
         );
+
+        // remove saques/aportes (movimentos)
+        await txn.delete(
+          'investimento_cdi_movimentos',
+          where: 'id_carteira = ?',
+          whereArgs: [id],
+        );
       } catch (_) {
         // se tabelas não existirem na base do usuário, segue o fluxo
       }

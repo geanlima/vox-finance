@@ -1320,6 +1320,29 @@ class MigrationV2toV15 {
       );
     }
 
+    // =========================
+    // V62: movimentos CDI (saque/aporte) para exibir no histórico diário
+    // =========================
+    if (oldVersion < 62) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_cdi_movimentos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_carteira INTEGER NOT NULL,
+          data INTEGER NOT NULL,
+          tipo INTEGER NOT NULL, -- 0=saque, 1=aporte
+          valor REAL NOT NULL DEFAULT 0,
+          id_lancamento INTEGER,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_invest_cdi_mov_carteira_data
+          ON investimento_cdi_movimentos (id_carteira, data);
+        ''');
+      } catch (_) {}
+    }
+
 
     // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
