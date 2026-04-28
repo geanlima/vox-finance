@@ -97,6 +97,12 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
                 vencimento: r.vencimento,
                 rentabilidadeTipo: r.rentabilidadeTipo,
                 rentabilidadeValor: r.rentabilidadeValor,
+                cdiPctAte10k: r.cdiPctAte10k,
+                cdiPctAcima10k: r.cdiPctAcima10k,
+                cdiLimiteFaixa: r.cdiLimiteFaixa,
+                contaCorrente: r.contaCorrente,
+                considerarFimSemana: r.considerarFimSemana,
+                considerarFeriados: r.considerarFeriados,
                 observacoes: r.observacoes,
                 ativoFlag: r.ativoFlag,
               );
@@ -130,6 +136,12 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
               vencimento: item.vencimento,
               rentabilidadeTipo: item.rentabilidadeTipo,
               rentabilidadeValor: item.rentabilidadeValor,
+              cdiPctAte10k: item.cdiPctAte10k,
+              cdiPctAcima10k: item.cdiPctAcima10k,
+              cdiLimiteFaixa: item.cdiLimiteFaixa,
+              contaCorrente: item.contaCorrente,
+              considerarFimSemana: item.considerarFimSemana,
+              considerarFeriados: item.considerarFeriados,
               observacoes: item.observacoes,
               ativoFlag: item.ativoFlag,
             ),
@@ -147,6 +159,12 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
                 vencimento: r.vencimento,
                 rentabilidadeTipo: r.rentabilidadeTipo,
                 rentabilidadeValor: r.rentabilidadeValor,
+                cdiPctAte10k: r.cdiPctAte10k,
+                cdiPctAcima10k: r.cdiPctAcima10k,
+                cdiLimiteFaixa: r.cdiLimiteFaixa,
+                contaCorrente: r.contaCorrente,
+                considerarFimSemana: r.considerarFimSemana,
+                considerarFeriados: r.considerarFeriados,
                 observacoes: r.observacoes,
                 ativoFlag: r.ativoFlag,
               );
@@ -198,6 +216,20 @@ class _InvestimentosPageState extends State<InvestimentosPage> {
       'Qtd: ${_num(item.quantidade)}  •  '
       'PM: ${_brl(item.precoMedio)}',
     );
+
+    if (item.rentabilidadeTipo == 3) {
+      final pct =
+          (item.valorAplicado <= item.cdiLimiteFaixa)
+              ? item.cdiPctAte10k
+              : item.cdiPctAcima10k;
+      linhas.add(
+        'CDI: ${_num(pct)}% (faixas, limite ${_brl(item.cdiLimiteFaixa)})  •  '
+        '${item.considerarFimSemana ? 'considera FDS' : 'desconsidera FDS'}  •  '
+        '${item.considerarFeriados ? 'considera feriados' : 'desconsidera feriados'}',
+      );
+      final cc = (item.contaCorrente ?? '').trim();
+      if (cc.isNotEmpty) linhas.add('Conta corrente: $cc');
+    }
 
     final venc = (item.vencimento ?? '').trim();
     if (venc.isNotEmpty) linhas.add('Vencimento: $venc');
@@ -338,6 +370,14 @@ class _InvestimentoEditResult {
   final int rentabilidadeTipo;
   final double rentabilidadeValor;
 
+  // CDI (faixas)
+  final double cdiPctAte10k;
+  final double cdiPctAcima10k;
+  final double cdiLimiteFaixa;
+  final String? contaCorrente;
+  final bool considerarFimSemana;
+  final bool considerarFeriados;
+
   final String? observacoes;
   final bool ativoFlag;
 
@@ -353,6 +393,12 @@ class _InvestimentoEditResult {
     required this.vencimento,
     required this.rentabilidadeTipo,
     required this.rentabilidadeValor,
+    required this.cdiPctAte10k,
+    required this.cdiPctAcima10k,
+    required this.cdiLimiteFaixa,
+    required this.contaCorrente,
+    required this.considerarFimSemana,
+    required this.considerarFeriados,
     required this.observacoes,
     required this.ativoFlag,
   });
@@ -417,11 +463,17 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
   late final TextEditingController aporteCtrl;
   late final TextEditingController vencCtrl;
   late final TextEditingController rentCtrl;
+  late final TextEditingController cdiAteCtrl;
+  late final TextEditingController cdiAcimaCtrl;
+  late final TextEditingController cdiLimiteCtrl;
+  late final TextEditingController contaCorrenteCtrl;
   late final TextEditingController obsCtrl;
 
   int tipoLocal = 1;
   int rentTipoLocal = 0;
   bool ativoFlagLocal = true;
+  bool considerarFimSemanaLocal = false;
+  bool considerarFeriadosLocal = false;
 
   bool _saving = false;
 
@@ -433,6 +485,8 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
     tipoLocal = i?.tipo ?? 1;
     rentTipoLocal = i?.rentabilidadeTipo ?? 0;
     ativoFlagLocal = i?.ativoFlag ?? true;
+    considerarFimSemanaLocal = i?.considerarFimSemana ?? false;
+    considerarFeriadosLocal = i?.considerarFeriados ?? false;
 
     ativoCtrl = TextEditingController(text: i?.ativo ?? '');
     instCtrl = TextEditingController(text: i?.instituicao ?? '');
@@ -443,6 +497,10 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
     aporteCtrl = TextEditingController(text: i?.dataAporte ?? '');
     vencCtrl = TextEditingController(text: i?.vencimento ?? '');
     rentCtrl = TextEditingController(text: _num(i?.rentabilidadeValor ?? 0));
+    cdiAteCtrl = TextEditingController(text: _num(i?.cdiPctAte10k ?? 0));
+    cdiAcimaCtrl = TextEditingController(text: _num(i?.cdiPctAcima10k ?? 0));
+    cdiLimiteCtrl = TextEditingController(text: _num(i?.cdiLimiteFaixa ?? 10000));
+    contaCorrenteCtrl = TextEditingController(text: i?.contaCorrente ?? '');
     obsCtrl = TextEditingController(text: i?.observacoes ?? '');
   }
 
@@ -457,6 +515,10 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
     aporteCtrl.dispose();
     vencCtrl.dispose();
     rentCtrl.dispose();
+    cdiAteCtrl.dispose();
+    cdiAcimaCtrl.dispose();
+    cdiLimiteCtrl.dispose();
+    contaCorrenteCtrl.dispose();
     obsCtrl.dispose();
     super.dispose();
   }
@@ -489,6 +551,12 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
       vencimento: _cleanStr(vencCtrl.text),
       rentabilidadeTipo: rentTipoLocal,
       rentabilidadeValor: _parseDouble(rentCtrl.text),
+      cdiPctAte10k: _parseDouble(cdiAteCtrl.text),
+      cdiPctAcima10k: _parseDouble(cdiAcimaCtrl.text),
+      cdiLimiteFaixa: _parseDouble(cdiLimiteCtrl.text),
+      contaCorrente: _cleanStr(contaCorrenteCtrl.text),
+      considerarFimSemana: considerarFimSemanaLocal,
+      considerarFeriados: considerarFeriadosLocal,
       observacoes: _cleanStr(obsCtrl.text),
       ativoFlag: ativoFlagLocal,
     );
@@ -668,22 +736,115 @@ class _InvestimentoModalState extends State<_InvestimentoModal> {
                             value: 2,
                             child: Text('R\$ (valor)'),
                           ),
+                          DropdownMenuItem(
+                            value: 3,
+                            child: Text('CDI (faixas — até 10k / acima)'),
+                          ),
                         ],
                         onChanged:
                             (v) => setState(() => rentTipoLocal = v ?? 0),
                       ),
                       const SizedBox(height: 10),
 
-                      TextField(
-                        controller: rentCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
+                      if (rentTipoLocal != 3)
+                        TextField(
+                          controller: rentCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Rentabilidade (valor)',
+                            border: OutlineInputBorder(),
+                          ),
+                        )
+                      else ...[
+                        Text(
+                          'Configuração CDI (faixas): até um limite usa um %, acima usa outro %.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'Rentabilidade (valor)',
-                          border: OutlineInputBorder(),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: cdiLimiteCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Limite da faixa (R\$)',
+                            hintText: 'Ex: 10000,00',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: cdiAteCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: '% do CDI (até o limite)',
+                                  hintText: 'Ex: 110,00',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: cdiAcimaCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: '% do CDI (acima do limite)',
+                                  hintText: 'Ex: 120,00',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: contaCorrenteCtrl,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Conta corrente (opcional)',
+                            hintText: 'Ex: Itaú • CC 1234-5',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: considerarFimSemanaLocal,
+                          onChanged: (v) =>
+                              setState(() => considerarFimSemanaLocal = v),
+                          title: const Text('Considerar fim de semana'),
+                          subtitle: const Text(
+                            'Se desmarcado, rendimento é considerado só em dias úteis.',
+                          ),
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: considerarFeriadosLocal,
+                          onChanged: (v) =>
+                              setState(() => considerarFeriadosLocal = v),
+                          title: const Text('Considerar feriados'),
+                          subtitle: const Text(
+                            'Configuração guardada para o cálculo (quando aplicável).',
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
 
                       TextField(

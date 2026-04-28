@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/extensions/list_extensions.dart';
+import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
@@ -50,6 +51,104 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       _parcelas = lista;
       _carregando = false;
     });
+  }
+
+  Future<void> _adicionarParcelas() async {
+    if (_parcelas.isEmpty) return;
+
+    final qtdCtrl = TextEditingController(text: '1');
+    final valorCtrl = TextEditingController();
+
+    final totalAtual = _parcelas.fold<double>(0, (s, p) => s + p.valor);
+    final qtdAtual = _parcelas.length;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Adicionar parcelas'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Grupo atual: $qtdAtual parcela(s) · Total ${_currency.format(totalAtual)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: qtdCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantidade a adicionar',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: 2',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: valorCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Valor de cada nova parcela',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: 120,00',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok != true) return;
+
+    final qtd = int.tryParse(qtdCtrl.text.trim()) ?? 0;
+    final valor = CurrencyInputFormatter.parse(valorCtrl.text);
+
+    if (qtd <= 0 || valor <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe quantidade e valor válidos.')),
+      );
+      return;
+    }
+
+    setState(() => _carregando = true);
+    final err = await _repository.adicionarParcelasAoGrupo(
+      grupoParcelas: widget.grupoParcelas,
+      quantidadeAdicionar: qtd,
+      valorNovaParcela: valor,
+    );
+    await _carregar();
+
+    if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Parcelas adicionadas. Novo total: ${_currency.format(totalAtual + (qtd * valor))}.',
+        ),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -217,7 +316,16 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detalhes das parcelas')),
+      appBar: AppBar(
+        title: const Text('Detalhes das parcelas'),
+        actions: [
+          IconButton(
+            tooltip: 'Adicionar parcelas',
+            icon: const Icon(Icons.add),
+            onPressed: _carregando ? null : _adicionarParcelas,
+          ),
+        ],
+      ),
       body:
           _carregando
               ? const Center(child: CircularProgressIndicator())

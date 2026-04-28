@@ -17,6 +17,14 @@ class InvestimentoRow {
   final int rentabilidadeTipo;
   final double rentabilidadeValor;
 
+  /// Layout CDI (faixas)
+  final double cdiPctAte10k;
+  final double cdiPctAcima10k;
+  final double cdiLimiteFaixa;
+  final String? contaCorrente;
+  final bool considerarFimSemana;
+  final bool considerarFeriados;
+
   final String? observacoes;
   final bool ativoFlag;
 
@@ -36,6 +44,12 @@ class InvestimentoRow {
     required this.vencimento,
     required this.rentabilidadeTipo,
     required this.rentabilidadeValor,
+    required this.cdiPctAte10k,
+    required this.cdiPctAcima10k,
+    required this.cdiLimiteFaixa,
+    required this.contaCorrente,
+    required this.considerarFimSemana,
+    required this.considerarFeriados,
     required this.observacoes,
     required this.ativoFlag,
     required this.createdAt,
@@ -59,6 +73,12 @@ class InvestimentoRow {
       vencimento: m['vencimento'] as String?,
       rentabilidadeTipo: i(m['rentabilidade_tipo']),
       rentabilidadeValor: d(m['rentabilidade_valor']),
+      cdiPctAte10k: d(m['cdi_pct_ate_10k']),
+      cdiPctAcima10k: d(m['cdi_pct_acima_10k']),
+      cdiLimiteFaixa: d(m['cdi_limite_faixa']) == 0 ? 10000 : d(m['cdi_limite_faixa']),
+      contaCorrente: m['conta_corrente'] as String?,
+      considerarFimSemana: i(m['considerar_fim_semana']) == 1,
+      considerarFeriados: i(m['considerar_feriados']) == 1,
       observacoes: m['observacoes'] as String?,
       ativoFlag: i(m['ativo_flag']) == 1,
       createdAt: (m['created_at'] as String?) ?? '',
@@ -132,6 +152,12 @@ class InvestimentosRepository {
     String? vencimento,
     int rentabilidadeTipo = 0,
     double rentabilidadeValor = 0,
+    double cdiPctAte10k = 0,
+    double cdiPctAcima10k = 0,
+    double cdiLimiteFaixa = 10000,
+    String? contaCorrente,
+    bool considerarFimSemana = false,
+    bool considerarFeriados = false,
     String? observacoes,
     bool ativoFlag = true,
   }) async {
@@ -151,6 +177,13 @@ class InvestimentosRepository {
           (vencimento?.trim().isEmpty ?? true) ? null : vencimento!.trim(),
       'rentabilidade_tipo': rentabilidadeTipo,
       'rentabilidade_valor': rentabilidadeValor,
+      'cdi_pct_ate_10k': cdiPctAte10k,
+      'cdi_pct_acima_10k': cdiPctAcima10k,
+      'cdi_limite_faixa': cdiLimiteFaixa,
+      'conta_corrente':
+          (contaCorrente?.trim().isEmpty ?? true) ? null : contaCorrente!.trim(),
+      'considerar_fim_semana': considerarFimSemana ? 1 : 0,
+      'considerar_feriados': considerarFeriados ? 1 : 0,
       'observacoes':
           (observacoes?.trim().isEmpty ?? true) ? null : observacoes!.trim(),
       'ativo_flag': ativoFlag ? 1 : 0,
@@ -171,6 +204,12 @@ class InvestimentosRepository {
     String? vencimento,
     int rentabilidadeTipo = 0,
     double rentabilidadeValor = 0,
+    double cdiPctAte10k = 0,
+    double cdiPctAcima10k = 0,
+    double cdiLimiteFaixa = 10000,
+    String? contaCorrente,
+    bool considerarFimSemana = false,
+    bool considerarFeriados = false,
     String? observacoes,
     bool ativoFlag = true,
   }) async {
@@ -192,6 +231,13 @@ class InvestimentosRepository {
             (vencimento?.trim().isEmpty ?? true) ? null : vencimento!.trim(),
         'rentabilidade_tipo': rentabilidadeTipo,
         'rentabilidade_valor': rentabilidadeValor,
+        'cdi_pct_ate_10k': cdiPctAte10k,
+        'cdi_pct_acima_10k': cdiPctAcima10k,
+        'cdi_limite_faixa': cdiLimiteFaixa,
+        'conta_corrente':
+            (contaCorrente?.trim().isEmpty ?? true) ? null : contaCorrente!.trim(),
+        'considerar_fim_semana': considerarFimSemana ? 1 : 0,
+        'considerar_feriados': considerarFeriados ? 1 : 0,
         'observacoes':
             (observacoes?.trim().isEmpty ?? true) ? null : observacoes!.trim(),
         'ativo_flag': ativoFlag ? 1 : 0,

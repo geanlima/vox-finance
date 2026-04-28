@@ -12,6 +12,8 @@ import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v16_caca_p
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v17_mural_sonhos.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v18_desafio_financeiro.dart';
 import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v19_investimentos.dart';
+import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v20_investimentos_cdi.dart';
+import 'package:vox_finance/v2/infrastructure/db/migrations/migration_v21_investimentos_cdi_limite.dart';
 
 import 'migrations/migration_v1.dart';
 import 'migrations/migration_v2.dart';
@@ -25,7 +27,7 @@ import 'migrations/migration_v9_despesas_variaveis.dart';
 
 class DbServiceV2 {
   static const _dbName = 'vox_finance_v2.db';
-  static const _latest = 19;
+  static const _latest = 21;
 
   Database? _db;
   Database get db => _db!;
@@ -122,6 +124,8 @@ class DbServiceV2 {
       MigrationV17MuralSonhos(),
       MigrationV18DesafioFinanceiro(),
       MigrationV19Investimentos(),
+      MigrationV20InvestimentosCdi(),
+      MigrationV21InvestimentosCdiLimite(),
     ]..sort((a, b) => a.version.compareTo(b.version));
 
     final current =

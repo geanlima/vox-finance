@@ -10,6 +10,12 @@ class InvestimentoLayoutCatalog {
       descricao:
           'Dois saldos (investido e disponível), rendimento diário por %, importação de taxas.',
     ),
+    InvestimentoLayoutDef(
+      id: 'cdi_faixas',
+      titulo: 'CDI (faixas)',
+      descricao:
+          'Configuração por percentual do CDI com limite configurável (até / acima), conta corrente e opção de considerar dias não úteis.',
+    ),
   ];
 
   static InvestimentoLayoutDef? porId(String id) {
