@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/extensions/list_extensions.dart';
+import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
@@ -50,6 +51,104 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
       _parcelas = lista;
       _carregando = false;
     });
+  }
+
+  Future<void> _adicionarParcelas() async {
+    if (_parcelas.isEmpty) return;
+
+    final qtdCtrl = TextEditingController(text: '1');
+    final valorCtrl = TextEditingController();
+
+    final totalAtual = _parcelas.fold<double>(0, (s, p) => s + p.valor);
+    final qtdAtual = _parcelas.length;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Adicionar parcelas'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Grupo atual: $qtdAtual parcela(s) · Total ${_currency.format(totalAtual)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: qtdCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantidade a adicionar',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: 2',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: valorCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Valor de cada nova parcela',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex: 120,00',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok != true) return;
+
+    final qtd = int.tryParse(qtdCtrl.text.trim()) ?? 0;
+    final valor = CurrencyInputFormatter.parse(valorCtrl.text);
+
+    if (qtd <= 0 || valor <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe quantidade e valor válidos.')),
+      );
+      return;
+    }
+
+    setState(() => _carregando = true);
+    final err = await _repository.adicionarParcelasAoGrupo(
+      grupoParcelas: widget.grupoParcelas,
+      quantidadeAdicionar: qtd,
+      valorNovaParcela: valor,
+    );
+    await _carregar();
+
+    if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Parcelas adicionadas. Novo total: ${_currency.format(totalAtual + (qtd * valor))}.',
+        ),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -200,12 +299,33 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
     );
   }
 
+  Future<void> _reabrirPagamento(ContaPagar parcela) async {
+    await _pagamentoService.reabrirPagamento(parcela);
+    await _carregar();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Parcela reaberta. Lançamento ajustado.'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detalhes das parcelas')),
+      appBar: AppBar(
+        title: const Text('Detalhes das parcelas'),
+        actions: [
+          IconButton(
+            tooltip: 'Adicionar parcelas',
+            icon: const Icon(Icons.add),
+            onPressed: _carregando ? null : _adicionarParcelas,
+          ),
+        ],
+      ),
       body:
           _carregando
               ? const Center(child: CircularProgressIndicator())
@@ -300,7 +420,77 @@ class _ContaPagarDetalhePageState extends State<ContaPagarDetalhePage> {
                                 }
                               },
                       // Toque longo → ver lançamento vinculado
-                      onLongPress: () => _mostrarLancamentoVinculado(p),
+                      onLongPress: () async {
+                        final opt = await showModalBottomSheet<String>(
+                          context: context,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                          ),
+                          builder: (ctx) {
+                            return SafeArea(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.receipt_long),
+                                    title: const Text('Ver lançamento vinculado'),
+                                    onTap: () =>
+                                        Navigator.pop(ctx, 'verLanc'),
+                                  ),
+                                  if (p.pago)
+                                    ListTile(
+                                      leading: const Icon(Icons.undo),
+                                      title: const Text('Reabrir parcela'),
+                                      subtitle: const Text(
+                                        'Desfaz o pagamento desta parcela.',
+                                      ),
+                                      onTap: () =>
+                                          Navigator.pop(ctx, 'reabrir'),
+                                    ),
+                                  const SizedBox(height: 8),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+
+                        if (opt == 'verLanc') {
+                          await _mostrarLancamentoVinculado(p);
+                          return;
+                        }
+                        if (opt == 'reabrir') {
+                          final confirmar = await showDialog<bool>(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                title: const Text('Reabrir parcela'),
+                                content: const Text(
+                                  'Deseja reabrir esta parcela?\n\n'
+                                  'Isso irá remover o lançamento criado no pagamento (quando existir) '
+                                  'e voltar a parcela para pendente.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Reabrir'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                          if (confirmar == true) {
+                            await _reabrirPagamento(p);
+                          }
+                        }
+                      },
                     ),
                   );
                 },

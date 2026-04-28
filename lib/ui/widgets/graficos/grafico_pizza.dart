@@ -12,7 +12,9 @@ import 'package:vox_finance/ui/core/enum/categoria.dart';
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
+import 'package:vox_finance/ui/data/modules/despesas_fixas/despesa_fixa_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
+import 'package:vox_finance/ui/pages/home/widgets/resumo_gastos_dia_item.dart';
 
 // ⭐ NOVO: categorias personalizadas
 import 'package:vox_finance/ui/data/models/categoria_personalizada.dart';
@@ -20,6 +22,7 @@ import 'package:vox_finance/ui/data/modules/categorias/categoria_personalizada_r
 import 'package:vox_finance/ui/data/models/subcategoria_personalizada.dart';
 import 'package:vox_finance/ui/data/modules/categorias/subcategoria_personalizada_repository.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
+import 'package:vox_finance/ui/data/models/despesa_fixa_mes_resumo.dart';
 
 enum TipoAgrupamentoPizza { categoria, formaPagamento, dia }
 
@@ -119,6 +122,10 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   List<SubcategoriaPersonalizada> _subcategorias = [];
 
   final _lancamentoRepo = LancamentoRepository();
+  final _fixasRepo = DespesaFixaRepository();
+
+  List<Lancamento> _receitas = [];
+  ResumoDespesasFixasMes? _resumoFixas;
 
   final List<Color> _palette = const [
     Color(0xFF4CAF50),
@@ -226,10 +233,31 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     final cards = await _repositoryCartao.getCartoesCredito();
     final contas = await _repositoryConta.getContasBancarias();
 
+    // receitas
+    List<Lancamento> receitas = [];
+    if (widget.periodo == PeriodoResumoPizza.mensal) {
+      receitas = await _repositoryLancamento.getReceitasDoMes(
+        _anoSelecionado,
+        _mesSelecionado,
+      );
+    } else {
+      // semanal: pega tudo e filtra receitas
+      final todos = await _repositoryLancamento.getByPeriodo(inicio, fim);
+      receitas = todos.where((l) => l.tipoMovimento == TipoMovimento.receita).toList();
+    }
+
+    // despesas fixas (previstas): usa o módulo de despesas fixas (conta_pagar FIXA_*)
+    // Para mês, sempre usamos referência do mês selecionado.
+    final refFixas = DateTime(_anoSelecionado, _mesSelecionado, 1);
+    await _fixasRepo.gerarPendenciasDoMes(refFixas);
+    final resumoFixas = await _fixasRepo.resumoMes(refFixas);
+
     Iterable<Lancamento> filtrados = lista;
+    Iterable<Lancamento> receitasFiltradas = receitas;
 
     if (widget.considerarSomentePagos) {
       filtrados = filtrados.where((l) => l.pago);
+      receitasFiltradas = receitasFiltradas.where((l) => l.pago);
     }
 
     if (widget.ignorarPagamentoFatura) {
@@ -237,9 +265,13 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
     }
 
     final lancsFiltrados = filtrados.toList();
+    final receitasFinal = receitasFiltradas.toList();
 
     // ⭐ Carrega categorias personalizadas apenas para os tipos usados
-    final tiposUsados = lancsFiltrados.map((l) => l.tipoMovimento).toSet();
+    final tiposUsados = {
+      ...lancsFiltrados.map((l) => l.tipoMovimento),
+      ...receitasFinal.map((l) => l.tipoMovimento),
+    };
     final List<CategoriaPersonalizada> cats = [];
     for (final tipo in tiposUsados) {
       try {
@@ -260,10 +292,12 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
     setState(() {
       _lancamentos = lancsFiltrados;
+      _receitas = receitasFinal;
       _cartoes = cards;
       _contas = contas;
       _categoriasPersonalizadas = cats;
       _subcategorias = subs;
+      _resumoFixas = resumoFixas;
       _carregando = false;
     });
   }
@@ -381,6 +415,39 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
 
   double get _totalMes {
     return _lancamentos.fold<double>(0.0, (acc, l) => acc + l.valor);
+  }
+
+  double get _totalReceitasPeriodo {
+    return _receitas.fold<double>(0.0, (acc, l) => acc + l.valor);
+  }
+
+  double get _totalFixasPeriodo {
+    final r = _resumoFixas;
+    if (r == null) return 0.0;
+    // Total do mês = quitado + pendente (inativas ficam fora)
+    return r.totalMes;
+  }
+
+  bool get _periodoSelecionadoEhFuturo {
+    final now = DateTime.now();
+    if (widget.periodo != PeriodoResumoPizza.mensal) return false;
+    return (_anoSelecionado > now.year) ||
+        (_anoSelecionado == now.year && _mesSelecionado > now.month);
+  }
+
+  bool get _periodoSelecionadoEhMesAtual {
+    final now = DateTime.now();
+    if (widget.periodo != PeriodoResumoPizza.mensal) return false;
+    return _anoSelecionado == now.year && _mesSelecionado == now.month;
+  }
+
+  double get _totalMesExibicaoComFixasFuturo {
+    // Regra solicitada:
+    // - mês atual: NÃO soma fixas no total
+    // - meses futuros: soma fixas no total (previsão)
+    final base = _totalMes;
+    if (_periodoSelecionadoEhFuturo) return base + _totalFixasPeriodo;
+    return base;
   }
 
   /// Mesma regra da tela de lançamentos: parcela de compra com mais de uma parcela.
@@ -892,10 +959,355 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   }
 
   void _mostrarResumoPorFormaPagamentoPeriodo() {
-    _mostrarResumoPorFormaPagamento(
-      titulo: 'Gastos por forma de pagamento / cartão',
-      subtitulo: _labelPeriodoAtual,
-      baseLancamentos: _lancamentos,
+    _mostrarResumoTotalGastoComFixasPendentes();
+  }
+
+  void _mostrarResumoTotalGastoComFixasPendentes() {
+    if (_lancamentos.isEmpty &&
+        (_resumoFixas == null ||
+            !_resumoFixas!.linhas.any(
+              (l) => l.situacao == DespesaFixaSituacaoMes.pendente,
+            ))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há gastos neste período para detalhar.')),
+      );
+      return;
+    }
+
+    final tema = Theme.of(context);
+    final subtitulo = _labelPeriodoAtual;
+
+    final fixas = _resumoFixas;
+    final pendentes =
+        (fixas?.linhas ?? const <DespesaFixaMesLinha>[])
+            .where((l) => l.situacao == DespesaFixaSituacaoMes.pendente)
+            .toList()
+          ..sort((a, b) => b.valorReferencia.compareTo(a.valorReferencia));
+
+    final double totalLancamentos =
+        _lancamentos.fold<double>(0.0, (a, b) => a + b.valor);
+    final double totalFixasPendentes =
+        pendentes.fold<double>(0.0, (a, b) => a + b.valorReferencia);
+
+    final double totalExibido = _totalMesExibicaoComFixasFuturo;
+    final bool incluiFixasNoTotal = _periodoSelecionadoEhFuturo;
+
+    // resumo e lançamentos por grupo (como já era)
+    final totaisPorGrupo = _totaisPorFormaPagamentoAgrupadoFrom(_lancamentos);
+    final lancsPorGrupo = _lancamentosPorGrupoFormaPagamentoFrom(_lancamentos);
+    final grupos = totaisPorGrupo.values.toList()
+      ..sort((a, b) => b.total.compareTo(a.total));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.78,
+          minChildSize: 0.55,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            final safeBottom = MediaQuery.of(context).padding.bottom;
+            return SafeArea(
+              top: false,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: tema.colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade400,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Total gasto no período',
+                            style: tema.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitulo,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Total exibido no card principal
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              color: tema.colorScheme.primary.withOpacity(0.06),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: tema.colorScheme.primary.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.summarize,
+                                    color: tema.colorScheme.primary,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: tema.colorScheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      _currency.format(totalExibido),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+                          Text(
+                            incluiFixasNoTotal
+                                ? 'Inclui despesas fixas do mês (quitado + pendente).'
+                                : 'Obs.: despesas fixas pendentes aparecem abaixo, mas não entram no total do mês atual.',
+                            style: TextStyle(
+                              color: tema.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12.5,
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+                          // Resumo rápido
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              _pillResumo(
+                                context,
+                                icon: Icons.receipt_long,
+                                label: 'Lançamentos',
+                                value: _currency.format(totalLancamentos),
+                                color: tema.colorScheme.primary,
+                              ),
+                              _pillResumo(
+                                context,
+                                icon: Icons.push_pin_outlined,
+                                label: 'Fixas pendentes',
+                                value: _currency.format(totalFixasPendentes),
+                                color: Colors.deepOrange.shade700,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Divider(height: 1),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Detalhado por forma / cartão / conta',
+                            style: tema.textTheme.labelMedium?.copyWith(
+                              color: Colors.grey[700],
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                      ),
+                    ),
+
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: listViewPaddingWithBottomInset(
+                          context,
+                          EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+                        ),
+                        children: [
+                          // Seção: despesas fixas pendentes
+                          if (pendentes.isNotEmpty) ...[
+                            ResumoGastosDiaItem(
+                              icone: Icons.push_pin_outlined,
+                              titulo: 'Despesas fixas',
+                              subtitulo: 'Pendentes no período',
+                              valor: totalFixasPendentes,
+                              color: Colors.deepOrange.shade700,
+                              currency: _currency,
+                              onTap: _mostrarResumoDespesasFixas,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
+                          // Seção: grupos por forma/cartão/conta
+                          ...grupos.map((g) {
+                            final lancs =
+                                lancsPorGrupo[g.label] ?? const <Lancamento>[];
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap:
+                                  lancs.isEmpty
+                                      ? null
+                                      : () {
+                                        _mostrarDetalheLancamentos(
+                                          titulo: 'Detalhe por forma / cartão',
+                                          subtitulo: '${g.label} • $_labelPeriodoAtual',
+                                          lancamentos: lancs,
+                                          manterNoGrupo:
+                                              (atual) =>
+                                                  _labelGrupoForma(atual) ==
+                                                  g.label,
+                                        );
+                                      },
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: tema.colorScheme.surfaceVariant.withOpacity(0.25),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: tema.colorScheme.primary
+                                            .withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Icon(
+                                        g.icon,
+                                        size: 18,
+                                        color: tema.colorScheme.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        g.label,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _currency.format(g.total),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.chevron_right, size: 18),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _pillResumo(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: color.withOpacity(0.10),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -912,6 +1324,191 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
       titulo: 'Demais gastos',
       subtitulo: _labelPeriodoAtual,
       baseLancamentos: _lancamentos.where((l) => !_ehCompraParcelada(l)).toList(),
+    );
+  }
+
+  void _mostrarResumoReceitas() {
+    final lista = [..._receitas]..sort((a, b) => b.dataHora.compareTo(a.dataHora));
+    if (lista.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há receitas neste período.')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final total = lista.fold<double>(0.0, (a, b) => a + b.valor);
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.78,
+          child: Column(
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green.withOpacity(0.12),
+                  child: Icon(Icons.arrow_upward, color: Colors.green.shade700),
+                ),
+                title: const Text('Receitas'),
+                subtitle: Text('$_labelPeriodoAtual • ${lista.length} item(ns)'),
+                trailing: Text(
+                  _currency.format(total),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: listViewPaddingWithBottomInset(
+                    ctx,
+                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  ),
+                  itemCount: lista.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final l = lista[i];
+                    return ListTile(
+                      title: Text(l.descricao.isEmpty ? '(Sem descrição)' : l.descricao),
+                      subtitle: Text(_dateHoraFormat.format(l.dataHora)),
+                      trailing: Text(
+                        _currency.format(l.valor),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _mostrarResumoDespesasFixas() {
+    final r = _resumoFixas;
+    if (r == null || r.linhas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há despesas fixas para detalhar.')),
+      );
+      return;
+    }
+
+    final linhas = [...r.linhas]
+      ..removeWhere((l) => l.situacao == DespesaFixaSituacaoMes.inativa);
+    linhas.sort((a, b) => b.valorReferencia.compareTo(a.valorReferencia));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.82,
+          child: Column(
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.deepOrange.withOpacity(0.12),
+                  child: Icon(
+                    Icons.push_pin_outlined,
+                    color: Colors.deepOrange.shade700,
+                  ),
+                ),
+                title: const Text('Despesas fixas'),
+                subtitle: Text(_labelPeriodoAtual),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Card(
+                  elevation: 0,
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        _linhaTot('Quitado', _currency.format(r.totalPago), Colors.green.shade700),
+                        const SizedBox(height: 6),
+                        _linhaTot('Pendente', _currency.format(r.totalPendente), Colors.orange.shade800),
+                        const Divider(height: 16),
+                        _linhaTot('Total', _currency.format(r.totalMes), cs.primary),
+                        if (_periodoSelecionadoEhMesAtual) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Obs.: no mês atual não soma no total, pois o lançamento é gerado quando você paga.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: listViewPaddingWithBottomInset(
+                    ctx,
+                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  ),
+                  itemCount: linhas.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final l = linhas[i];
+                    final corStatus = switch (l.situacao) {
+                      DespesaFixaSituacaoMes.quitado => Colors.green.shade700,
+                      DespesaFixaSituacaoMes.pendente => Colors.orange.shade800,
+                      DespesaFixaSituacaoMes.semLancamento => cs.onSurfaceVariant,
+                      DespesaFixaSituacaoMes.inativa => cs.onSurfaceVariant,
+                    };
+                    final statusTxt = switch (l.situacao) {
+                      DespesaFixaSituacaoMes.quitado => 'QUITADO',
+                      DespesaFixaSituacaoMes.pendente => 'PENDENTE',
+                      DespesaFixaSituacaoMes.semLancamento => 'SEM LANÇAMENTO',
+                      DespesaFixaSituacaoMes.inativa => 'INATIVA',
+                    };
+
+                    return ListTile(
+                      title: Text(l.fixa.descricao),
+                      subtitle: Text(statusTxt, style: TextStyle(color: corStatus, fontWeight: FontWeight.w800, fontSize: 12)),
+                      trailing: Text(
+                        _currency.format(l.valorReferencia),
+                        style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _linhaTot(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w900, color: color)),
+      ],
     );
   }
 
@@ -1351,13 +1948,15 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
   @override
   Widget build(BuildContext context) {
     final labelMesAno = _labelPeriodoAtual;
-    final totalMesFormatado = _currency.format(_totalMes);
+    final totalMesFormatado = _currency.format(_totalMesExibicaoComFixasFuturo);
     final parceladoMesFormatado = _currency.format(_totalMesParcelado);
     final demaisMesFormatado = _currency.format(_totalMesDemais);
     final mediaDiariaFormatada = _currency.format(_mediaDiariaMes);
     final mediaDiariaMesCalendarioFormatada = _currency.format(
       _mediaDiariaMesCalendario,
     );
+    final receitasFormatado = _currency.format(_totalReceitasPeriodo);
+    final fixasFormatado = _currency.format(_totalFixasPeriodo);
 
     final diaMaior = _diaMaiorGasto;
     final diaMenor = _diaMenorGasto;
@@ -1543,6 +2142,98 @@ class _GraficoPizzaComponentState extends State<GraficoPizzaComponent> {
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ====== RECEITAS (CLICÁVEL) ======
+                InkWell(
+                  onTap: _mostrarResumoReceitas,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.arrow_upward,
+                          color: Colors.green.shade700,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.periodo == PeriodoResumoPizza.mensal
+                              ? 'Receitas no mês'
+                              : 'Receitas na semana',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          receitasFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ====== DESPESAS FIXAS (CLICÁVEL, NÃO SOMA NO MÊS ATUAL) ======
+                InkWell(
+                  onTap: _mostrarResumoDespesasFixas,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.push_pin_outlined,
+                          color: Colors.deepOrange.shade700,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Despesas fixas',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          fixasFormatado,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepOrange.shade700,
                           ),
                         ),
                       ],

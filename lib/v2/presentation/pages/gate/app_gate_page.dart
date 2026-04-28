@@ -25,7 +25,10 @@ class _AppGatePageState extends State<AppGatePage> {
   bool _bootedOnce = false;
 
   Future<User?> _getFirebaseUserWithWarmup({
-    Duration timeout = const Duration(seconds: 2),
+    // Em alguns aparelhos, a restauração de sessão do Firebase no cold start
+    // leva alguns segundos a mais. Se o timeout for curto, o app cai no login
+    // mesmo com sessão válida.
+    Duration timeout = const Duration(seconds: 8),
   }) async {
     final auth = FirebaseAuth.instance;
     final cur = auth.currentUser;
@@ -78,6 +81,28 @@ class _AppGatePageState extends State<AppGatePage> {
   }
 
   Future<bool> _checkLogged() async {
+    final logged = await SessionService.instance.isLoggedIn();
+    final loginType = await SessionService.instance.getLoginType();
+
+    // Login local segue só por prefs
+    if (logged && loginType == 'local') return true;
+
+    // Login Firebase: aguarda restauração da sessão (pode demorar no cold start).
+    // Não depende apenas da flag em prefs, porque o Firebase precisa restaurar o usuário.
+    if (logged && loginType == 'firebase') {
+      final fbUser = await _getFirebaseUserWithWarmup();
+      if (fbUser != null) {
+        await SessionService.instance.saveLogin(
+          loginType: 'firebase',
+          uid: fbUser.uid,
+        );
+        return true;
+      }
+      // Se não restaurou, considera como não logado (vai para login).
+      return false;
+    }
+
+    // Caso padrão: tenta firebase também (ex.: migração/primeiro uso).
     final fbUser = await _getFirebaseUserWithWarmup();
     if (fbUser != null) {
       await SessionService.instance.saveLogin(
@@ -87,9 +112,7 @@ class _AppGatePageState extends State<AppGatePage> {
       return true;
     }
 
-    final logged = await SessionService.instance.isLoggedIn();
-    final loginType = await SessionService.instance.getLoginType();
-    return logged && loginType == 'local';
+    return false;
   }
 
   Future<void> _onLoginOk() async {

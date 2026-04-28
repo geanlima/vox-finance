@@ -1157,6 +1157,171 @@ class MigrationV2toV15 {
     }
 
     // =========================
+    // V56: Calendário do cartão (fechamento/vencimento por mês)
+    // =========================
+    if (oldVersion < 56) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS cartao_credito_calendario (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_cartao INTEGER NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          dia_fechamento INTEGER NOT NULL,
+          dia_vencimento INTEGER NOT NULL,
+          criado_em INTEGER NOT NULL,
+          atualizado_em INTEGER NOT NULL,
+          UNIQUE(id_cartao, ano, mes)
+        );
+      ''');
+
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_cartao_calendario_cartao_periodo
+          ON cartao_credito_calendario (id_cartao, ano, mes);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V57: layout CDI (faixas) por carteira
+    // =========================
+    if (oldVersion < 57) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_cdi_config (
+          id_carteira INTEGER PRIMARY KEY,
+          limite_faixa REAL NOT NULL DEFAULT 10000,
+          pct_ate_limite REAL NOT NULL DEFAULT 0,
+          pct_acima_limite REAL NOT NULL DEFAULT 0,
+          considerar_fim_semana INTEGER NOT NULL DEFAULT 0,
+          considerar_feriados INTEGER NOT NULL DEFAULT 0,
+          criado_em INTEGER NOT NULL
+        );
+      ''');
+
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_invest_cdi_cfg_carteira
+          ON investimento_cdi_config (id_carteira);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V58: CDI config + rendimentos (lançamentos automáticos)
+    // =========================
+    if (oldVersion < 58) {
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'id_conta_bancaria',
+        'INTEGER',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'cdi_anual',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'saldo_base',
+        'REAL NOT NULL DEFAULT 0',
+      );
+
+      // remove o conceito antigo (conta_corrente texto) apenas mantendo a coluna,
+      // pois SQLite não suporta DROP COLUMN sem rebuild. A aplicação passa a ignorar.
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS investimento_cdi_rendimentos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_carteira INTEGER NOT NULL,
+          data INTEGER NOT NULL,
+          base REAL NOT NULL DEFAULT 0,
+          pct_cdi REAL NOT NULL DEFAULT 0,
+          rendimento_valor REAL NOT NULL DEFAULT 0,
+          id_lancamento INTEGER,
+          criado_em INTEGER NOT NULL,
+          UNIQUE(id_carteira, data)
+        );
+      ''');
+
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_invest_cdi_rend_carteira_data
+          ON investimento_cdi_rendimentos (id_carteira, data);
+        ''');
+      } catch (_) {}
+    }
+
+    // =========================
+    // V59: CDI anual por faixa (até limite / acima)
+    // =========================
+    if (oldVersion < 59) {
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'cdi_anual_ate_limite',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'cdi_anual_acima_limite',
+        'REAL NOT NULL DEFAULT 0',
+      );
+    }
+
+    // =========================
+    // V60: CDI atual + percentual por faixa
+    // =========================
+    if (oldVersion < 60) {
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'cdi_base_anual',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'pct_ate_limite',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'pct_acima_limite',
+        'REAL NOT NULL DEFAULT 0',
+      );
+    }
+
+    // =========================
+    // V61: taxa fixa (calibrada) + aporte (recalcular)
+    // =========================
+    if (oldVersion < 61) {
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'usar_taxa_fixa',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'taxa_diaria_fixa',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnSafe(
+        db,
+        'investimento_cdi_config',
+        'aporte_fixo',
+        'REAL NOT NULL DEFAULT 0',
+      );
+    }
+
+
+    // =========================
     // PÓS-MIGRAÇÃO: garante colunas críticas
     // =========================
     await _addColumnSafe(
@@ -1468,6 +1633,62 @@ class MigrationV2toV15 {
       }
     } catch (_) {}
 
+    // INVESTIMENTO — CDI (faixas) por carteira
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_cdi_config (
+        id_carteira INTEGER PRIMARY KEY,
+        limite_faixa REAL NOT NULL DEFAULT 10000,
+        cdi_base_anual REAL NOT NULL DEFAULT 0,
+        pct_ate_limite REAL NOT NULL DEFAULT 0,
+        pct_acima_limite REAL NOT NULL DEFAULT 0,
+        id_conta_bancaria INTEGER,
+        cdi_anual REAL NOT NULL DEFAULT 0,
+        cdi_anual_ate_limite REAL NOT NULL DEFAULT 0,
+        cdi_anual_acima_limite REAL NOT NULL DEFAULT 0,
+        saldo_base REAL NOT NULL DEFAULT 0,
+        usar_taxa_fixa INTEGER NOT NULL DEFAULT 0,
+        taxa_diaria_fixa REAL NOT NULL DEFAULT 0,
+        aporte_fixo REAL NOT NULL DEFAULT 0,
+        considerar_fim_semana INTEGER NOT NULL DEFAULT 0,
+        considerar_feriados INTEGER NOT NULL DEFAULT 0,
+        criado_em INTEGER NOT NULL
+      );
+    ''');
+    await _addColumnSafe(
+      db,
+      'investimento_cdi_config',
+      'usar_taxa_fixa',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnSafe(
+      db,
+      'investimento_cdi_config',
+      'taxa_diaria_fixa',
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await _addColumnSafe(
+      db,
+      'investimento_cdi_config',
+      'aporte_fixo',
+      'REAL NOT NULL DEFAULT 0',
+    );
+
+    // INVESTIMENTO — CDI rendimentos lançados
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS investimento_cdi_rendimentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_carteira INTEGER NOT NULL,
+        data INTEGER NOT NULL,
+        base REAL NOT NULL DEFAULT 0,
+        pct_cdi REAL NOT NULL DEFAULT 0,
+        rendimento_valor REAL NOT NULL DEFAULT 0,
+        id_lancamento INTEGER,
+        criado_em INTEGER NOT NULL,
+        UNIQUE(id_carteira, data)
+      );
+    ''');
+
+
     // DESTINOS_RENDA
     await db.execute('''
       CREATE TABLE IF NOT EXISTS destinos_renda (
@@ -1519,6 +1740,27 @@ class MigrationV2toV15 {
         id_lancamento INTEGER NOT NULL
       );
     ''');
+
+    // CARTAO_CREDITO_CALENDARIO (fechamento/vencimento por mês)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cartao_credito_calendario (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_cartao INTEGER NOT NULL,
+        ano INTEGER NOT NULL,
+        mes INTEGER NOT NULL,
+        dia_fechamento INTEGER NOT NULL,
+        dia_vencimento INTEGER NOT NULL,
+        criado_em INTEGER NOT NULL,
+        atualizado_em INTEGER NOT NULL,
+        UNIQUE(id_cartao, ano, mes)
+      );
+    ''');
+    try {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_cartao_calendario_cartao_periodo
+        ON cartao_credito_calendario (id_cartao, ano, mes);
+      ''');
+    } catch (_) {}
 
     // Lancamentos / conta_pagar
     await _addColumnSafe(

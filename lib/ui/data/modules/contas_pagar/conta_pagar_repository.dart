@@ -10,6 +10,21 @@ import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.da
 class ContaPagarRepository {
   Future<Database> get _db async => DatabaseInitializer.initialize();
 
+  DateTime _garantirDataValida(int ano, int mes, int dia) {
+    while (mes > 12) {
+      mes -= 12;
+      ano += 1;
+    }
+    while (mes < 1) {
+      mes += 12;
+      ano -= 1;
+    }
+
+    final ultimoDia = DateTime(ano, mes + 1, 0).day;
+    final diaAjustado = dia.clamp(1, ultimoDia);
+    return DateTime(ano, mes, diaAjustado);
+  }
+
   // ============================================================
   //  C R U D   B Á S I C O
   // ============================================================
@@ -485,6 +500,98 @@ class ContaPagarRepository {
         contaAntesEdicao: antes,
       );
     }
+
+    return null;
+  }
+
+  /// Adiciona novas parcelas ao final de um grupo existente, **sem recalcular**
+  /// os valores das parcelas já existentes.
+  ///
+  /// Ex.: grupo está 10x e o correto seria 12x → adiciona +2 parcelas com
+  /// [valorNovaParcela], ajusta `parcela_total` em todas as linhas do grupo e
+  /// (quando existir) também nos lançamentos do mesmo `grupo_parcelas`.
+  ///
+  /// Retorna mensagem de erro ou `null` se ok.
+  Future<String?> adicionarParcelasAoGrupo({
+    required String grupoParcelas,
+    required int quantidadeAdicionar,
+    required double valorNovaParcela,
+  }) async {
+    if (grupoParcelas.isEmpty) return 'Grupo inválido.';
+    if (quantidadeAdicionar <= 0) {
+      return 'Informe uma quantidade de parcelas maior que zero.';
+    }
+    if (valorNovaParcela <= 0) return 'Informe um valor válido para a parcela.';
+
+    final db = await _db;
+    var parcelas = await getParcelasPorGrupo(grupoParcelas);
+    if (parcelas.isEmpty) return 'Grupo não encontrado.';
+
+    parcelas.sort((a, b) {
+      final pa = a.parcelaNumero ?? 0;
+      final pb = b.parcelaNumero ?? 0;
+      return pa.compareTo(pb);
+    });
+
+    final ref = parcelas.first;
+    final maxNumero = parcelas.fold<int>(
+      0,
+      (m, p) => (p.parcelaNumero ?? 0) > m ? (p.parcelaNumero ?? 0) : m,
+    );
+    final ultimoVencimento = parcelas
+        .map((p) => p.dataVencimento)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+
+    final totalAtual = maxNumero > 0 ? maxNumero : parcelas.length;
+    final novoTotal = totalAtual + quantidadeAdicionar;
+    final diaBase = ultimoVencimento.day;
+
+    await db.transaction((txn) async {
+      // 1) Atualiza parcela_total nas contas existentes
+      await txn.update(
+        'conta_pagar',
+        {'parcela_total': novoTotal},
+        where: 'grupo_parcelas = ?',
+        whereArgs: [grupoParcelas],
+      );
+
+      // 2) Atualiza parcela_total nos lançamentos existentes (se houver)
+      await txn.update(
+        'lancamentos',
+        {'parcela_total': novoTotal},
+        where: 'grupo_parcelas = ?',
+        whereArgs: [grupoParcelas],
+      );
+
+      // 3) Cria novas parcelas no fim
+      for (var i = 1; i <= quantidadeAdicionar; i++) {
+        final numero = totalAtual + i;
+        final venc = _garantirDataValida(
+          ultimoVencimento.year,
+          ultimoVencimento.month + i,
+          diaBase,
+        );
+
+        final nova = ContaPagar(
+          descricao: ref.descricao,
+          valor: valorNovaParcela,
+          dataVencimento: venc,
+          pago: false,
+          dataPagamento: null,
+          parcelaNumero: numero,
+          parcelaTotal: novoTotal,
+          grupoParcelas: grupoParcelas,
+          formaPagamento: ref.formaPagamento,
+          idCartao: ref.idCartao,
+          idConta: ref.idConta,
+          idLancamento: null,
+          dataCabecalho: ref.dataCabecalho,
+        );
+
+        final dados = nova.toMap()..remove('id');
+        await txn.insert('conta_pagar', dados);
+      }
+    });
 
     return null;
   }

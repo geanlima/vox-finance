@@ -65,7 +65,21 @@ class DespesaFixaRepository {
         whereArgs: [grupo],
         limit: 1,
       );
-      if (existe.isNotEmpty) continue;
+      // Se já existe conta gerada (ex.: valor antes era 0), mantém o grupo,
+      // mas sincroniza a parcela em aberto com o cadastro atual.
+      if (existe.isNotEmpty) {
+        await db.update(
+          'conta_pagar',
+          {
+            'descricao': fixa.descricao,
+            'valor': fixa.valor,
+            'forma_pagamento': fixa.formaPagamento?.index,
+          },
+          where: 'grupo_parcelas = ? AND pago = 0',
+          whereArgs: [grupo],
+        );
+        continue;
+      }
 
       final ultimoDia = DateTime(referencia.year, referencia.month + 1, 0).day;
       final dia = fixa.diaVencimento.clamp(1, ultimoDia);

@@ -467,16 +467,6 @@ class LancamentoRepository {
     final double valorParcela = base.valor / qtdParcelas;
     final DateTime dataCompra = base.dataHora;
 
-    // ⭐ Buscar diaVencimento do cartão (para contas a pagar)
-    int? diaVencimentoCartao = cartao?.diaVencimento;
-    int? diaFechamentoCartao = cartao?.diaFechamento;
-    if (diaVencimentoCartao == null && base.idCartao != null) {
-      final cartaoRepo = CartaoCreditoRepository();
-      final cartaoDb = await cartaoRepo.getCartaoCreditoById(base.idCartao!);
-      diaVencimentoCartao = cartaoDb?.diaVencimento;
-      diaFechamentoCartao = cartaoDb?.diaFechamento;
-    }
-
     // ✅ Melhor prática: transação (evita salvar metade se der erro)
     await db.transaction((txn) async {
       for (int i = 0; i < qtdParcelas; i++) {
@@ -490,18 +480,11 @@ class LancamentoRepository {
 
         // CONTA A PAGAR: vencimento no dia do cartão
         DateTime dataVencimentoConta;
-        if (diaVencimentoCartao != null && diaFechamentoCartao != null) {
-          dataVencimentoConta = _calcularVencimentoCartaoParaConta(
-            dataCompra: dataCompra,
-            diaFechamento: diaFechamentoCartao,
-            diaVencimento: diaVencimentoCartao,
-            numeroParcela: numeroParcela,
-          );
-
-          dataVencimentoConta = _garantirDataValida(
-            dataVencimentoConta.year,
-            dataVencimentoConta.month,
-            dataVencimentoConta.day,
+        if (base.formaPagamento == FormaPagamento.credito &&
+            base.idCartao != null) {
+          dataVencimentoConta = await _calcularVencimentoCartaoParaConta(
+            dataCompra: dataLancamento,
+            idCartao: base.idCartao!,
           );
         } else {
           dataVencimentoConta = dataCompra.add(
@@ -572,27 +555,31 @@ class LancamentoRepository {
     await _atualizarFaturaSeNecessario(base);
   }
 
-  DateTime _calcularVencimentoCartaoParaConta({
+  Future<DateTime> _calcularVencimentoCartaoParaConta({
     required DateTime dataCompra,
-    required int diaFechamento,
-    required int diaVencimento,
-    required int numeroParcela,
-  }) {
-    // Vencimento deve cair no dia configurado no cartão. Se o mês não tiver esse dia
-    // (ex.: 31 em fevereiro), ajusta para o último dia do mês.
-    final diaVenc = diaVencimento.clamp(1, 31);
+    required int idCartao,
+  }) async {
+    // 1) Usa fechamento do mês da compra para descobrir se vai para o mês seguinte
+    final diasCompraMes = await _cartaoRepo.getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: dataCompra.year,
+      mesReferencia: dataCompra.month,
+    );
+    if (diasCompraMes == null) {
+      return dataCompra.add(const Duration(days: 30));
+    }
 
-    // Determina o mês/ano de FECHAMENTO da fatura que contém a compra.
-    // - compra até o fechamento (inclusive) => fatura fecha no mesmo mês
-    // - compra após o fechamento => fatura fecha no mês seguinte
+    final diaFechCompraMes = diasCompraMes.$1.clamp(
+      1,
+      DateTime(dataCompra.year, dataCompra.month + 1, 0).day,
+    );
     final fechamentoEsteMesFim = _garantirDataValida(
       dataCompra.year,
       dataCompra.month,
-      diaFechamento.clamp(1, 31),
+      diaFechCompraMes,
     ).add(
       const Duration(hours: 23, minutes: 59, seconds: 59, milliseconds: 999),
     );
-
     final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMesFim);
     final DateTime refFech = DateTime(
       dataCompra.year,
@@ -600,21 +587,23 @@ class LancamentoRepository {
       1,
     );
 
-    // Regra do vencimento:
-    // - Se vencimento <= fechamento, vence no mês seguinte ao mês de fechamento.
-    // - Caso contrário, vence no mesmo mês do fechamento.
-    final bool vencNoMesSeguinte = diaVenc <= diaFechamento;
-    final int baseOffsetMes = (vencNoMesSeguinte ? 1 : 0);
+    // 2) Para o mês de referência encontrado, pega os dias do ciclo
+    final diasRef = await _cartaoRepo.getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: refFech.year,
+      mesReferencia: refFech.month,
+    );
+    final int diaFechRef = (diasRef?.$1 ?? diasCompraMes.$1).clamp(
+      1,
+      DateTime(refFech.year, refFech.month + 1, 0).day,
+    );
+    final int diaVenc = (diasRef?.$2 ?? diasCompraMes.$2).clamp(1, 31);
 
-    final int offsetParcela = numeroParcela - 1;
-    final int mesVenc = refFech.month + baseOffsetMes + offsetParcela;
+    final bool vencNoMesSeguinte = diaVenc <= diaFechRef;
+    final int mesVenc = refFech.month + (vencNoMesSeguinte ? 1 : 0);
     final int anoVenc = refFech.year;
 
-    return _garantirDataValida(
-      anoVenc,
-      mesVenc,
-      diaVenc,
-    );
+    return _garantirDataValida(anoVenc, mesVenc, diaVenc);
   }
 
   DateTime _calcularDataLancamento({

@@ -64,10 +64,29 @@ class MetricaLimiteRepository {
     int? semana,
   }) async {
     final db = await _db;
+    // sqflite não aceita null em whereArgs.
+    // Para filtrar nulos, usamos "IS NULL"; caso contrário, "=".
+    final whereParts = <String>['periodo_tipo = ?', 'ano = ?'];
+    final args = <Object?>[periodoTipo, ano];
+
+    if (mes == null) {
+      whereParts.add('mes IS NULL');
+    } else {
+      whereParts.add('mes = ?');
+      args.add(mes);
+    }
+
+    if (semana == null) {
+      whereParts.add('semana IS NULL');
+    } else {
+      whereParts.add('semana = ?');
+      args.add(semana);
+    }
+
     final rows = await db.query(
       'metricas_limites',
-      where: 'periodo_tipo = ? AND ano = ? AND mes IS ? AND semana IS ?',
-      whereArgs: [periodoTipo, ano, mes, semana],
+      where: whereParts.join(' AND '),
+      whereArgs: args,
       orderBy: 'id_categoria_personalizada, id_subcategoria_personalizada',
     );
     return rows.map((m) => MetricaLimite.fromMap(m)).toList();

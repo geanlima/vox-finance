@@ -5,6 +5,7 @@ import 'package:vox_finance/ui/data/models/investimento_carteira.dart';
 import 'package:vox_finance/ui/data/models/investimento_layout_catalog.dart';
 import 'package:vox_finance/ui/data/modules/investimentos/carteira_investimento_repository.dart';
 import 'package:vox_finance/ui/pages/investimentos/bluminers/bluminers_page.dart';
+import 'package:vox_finance/ui/pages/investimentos/cdi/cdi_carteira_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
@@ -50,6 +51,19 @@ class _CarteirasInvestimentoPageState extends State<CarteirasInvestimentoPage> {
           MaterialPageRoute<void>(
             builder:
                 (_) => BluminersPage(
+                  idCarteira: c.id!,
+                  nomeCarteira: c.nome,
+                ),
+          ),
+        );
+        await _load();
+        return;
+      case 'cdi_faixas':
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder:
+                (_) => CdiCarteiraPage(
                   idCarteira: c.id!,
                   nomeCarteira: c.nome,
                 ),
@@ -261,11 +275,9 @@ class _CarteirasInvestimentoPageState extends State<CarteirasInvestimentoPage> {
                           ),
                           CustomSlidableAction(
                             onPressed: (_) {
-                              if (c.id == 1) return;
                               _excluir(c);
                             },
-                            backgroundColor:
-                                c.id == 1 ? Colors.grey.shade400 : danger,
+                            backgroundColor: danger,
                             borderRadius: BorderRadius.circular(12),
                             child: Icon(
                               Icons.delete,
