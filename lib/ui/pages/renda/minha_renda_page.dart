@@ -265,9 +265,17 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
   // LISTA
   // =====================================
 
+  double get _totalAtivas =>
+      _fontes.where((f) => f.ativa).fold<double>(0, (s, f) => s + f.valorBase);
+
+  double get _totalRendaDiaria => _fontes
+      .where((f) => f.ativa && f.incluirNaRendaDiaria)
+      .fold<double>(0, (s, f) => s + f.valorBase);
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final danger = Colors.red.shade400;
 
     return Scaffold(
       appBar: AppBar(
@@ -293,9 +301,52 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                     horizontal: 12,
                     vertical: 8,
                   )),
-                  itemCount: _fontes.length,
+                  itemCount: _fontes.length + 1,
                   itemBuilder: (context, index) {
-                    final fonte = _fontes[index];
+                    if (index == 0) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6, bottom: 10),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Totalizador',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w900),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _MiniTile(
+                                        label: 'Ativas (mensal)',
+                                        value: _currency.format(_totalAtivas),
+                                        color: colors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _MiniTile(
+                                        label: 'Renda diária (base)',
+                                        value: _currency.format(_totalRendaDiaria),
+                                        color: Colors.green.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final fonte = _fontes[index - 1];
                     final valorLabel = _currency.format(fonte.valorBase);
 
                     String subtitulo =
@@ -313,23 +364,28 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
                       child: Slidable(
                         key: ValueKey(fonte.id ?? fonte.nome),
                         endActionPane: ActionPane(
-                          motion: const StretchMotion(),
-                          extentRatio: 0.35,
+                          motion: const DrawerMotion(),
+                          extentRatio: 0.40,
                           children: [
-                            SlidableAction(
-                              onPressed:
-                                  (_) async =>
-                                      await _abrirFormFonte(existente: fonte),
-                              icon: Icons.edit,
-                              backgroundColor: Colors.green.shade600,
-                              foregroundColor: Colors.white,
+                            CustomSlidableAction(
+                              onPressed: (_) => _abrirFormFonte(existente: fonte),
+                              backgroundColor: colors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Icon(
+                                Icons.edit,
+                                size: 28,
+                                color: colors.primary,
+                              ),
                             ),
-                            SlidableAction(
-                              onPressed:
-                                  (_) async => await _confirmarExcluir(fonte),
-                              icon: Icons.delete,
-                              backgroundColor: colors.error,
-                              foregroundColor: Colors.white,
+                            CustomSlidableAction(
+                              onPressed: (_) => _confirmarExcluir(fonte),
+                              backgroundColor: danger,
+                              borderRadius: BorderRadius.circular(12),
+                              child: const Icon(
+                                Icons.delete,
+                                size: 28,
+                                color: Colors.white,
+                              ),
                             ),
                           ],
                         ),
@@ -425,6 +481,53 @@ class _MinhaRendaPageState extends State<MinhaRendaPage> {
         onPressed: () => _abrirFormFonte(),
         backgroundColor: colors.primary,
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class _MiniTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MiniTile({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
