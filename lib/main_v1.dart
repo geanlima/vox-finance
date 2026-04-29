@@ -15,6 +15,7 @@ import 'package:vox_finance/ui/pages/metricas/metricas_analises_page.dart';
 import 'package:vox_finance/ui/pages/renda/minha_renda_page.dart';
 import 'package:vox_finance/ui/pages/cartao/cartao_credito_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_mes_page.dart';
+import 'package:vox_finance/ui/pages/comparativo/comparativo_ganhos_gastos_page.dart';
 import 'package:vox_finance/ui/pages/contas/contas_page.dart';
 import 'package:vox_finance/ui/pages/contas_pagar/contas_pagar_page.dart';
 import 'package:vox_finance/ui/pages/despesas_fixas/despesas_fixas_page.dart';
@@ -91,6 +92,8 @@ class VoxFinanceApp extends StatelessWidget {
       '/contas-bancarias': (_) => const ContasPage(),
       '/graficos': (_) => const GraficosPage(),
       '/comparativo-mes': (_) => const ComparativoMesPage(),
+      ComparativoGanhosGastosPage.routeName: (_) =>
+          const ComparativoGanhosGastosPage(),
       '/minha-renda': (_) => const MinhaRendaPage(),
       BackupRestoreCloudPage.routeName: (_) => const BackupRestoreCloudPage(),
 
