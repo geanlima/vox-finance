@@ -1,18 +1,24 @@
-// lib/ui/core/regras/regra_cartao_parcelado.dart
+// lib/ui/core/service/regra_cartao_parcelado_service.dart
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 
-// lib/ui/core/service/regra_cartao_parcelado_service.dart
-
+/// Regra para gravar compra **parcelada** no cartão de crédito.
+///
+/// Não exige mais `dia_vencimento` só no cadastro do cartão: o ciclo pode vir
+/// do calendário mensal (`cartao_credito_calendario`). O repositório já trata
+/// vencimento com fallback quando não há ciclo.
 class RegraCartaoParceladoService {
   final LancamentoRepository _lancRepo;
+  final CartaoCreditoRepository _cartaoRepo;
 
-  RegraCartaoParceladoService({LancamentoRepository? lancRepo})
-    : _lancRepo = lancRepo ?? LancamentoRepository();
+  RegraCartaoParceladoService({
+    LancamentoRepository? lancRepo,
+    CartaoCreditoRepository? cartaoRepo,
+  })  : _lancRepo = lancRepo ?? LancamentoRepository(),
+        _cartaoRepo = cartaoRepo ?? CartaoCreditoRepository();
 
   Future<void> processarCompraParcelada({
     required Lancamento compraBase,
@@ -23,40 +29,39 @@ class RegraCartaoParceladoService {
       return;
     }
 
-    // Buscar cartão para pegar diaVencimento
-    CartaoCredito? cartao;
-    if (compraBase.idCartao != null) {
-      final cartaoRepo = CartaoCreditoRepository();
-      cartao = await cartaoRepo.getCartaoCreditoById(compraBase.idCartao!);
-    }
-
-    // Se não tem cartão ou não tem diaVencimento, usa fallback
-    if (cartao == null || cartao.diaVencimento == null) {
-      // Fallback: salva como lançamento simples
+    final idCartao = compraBase.idCartao;
+    if (idCartao == null) {
       await _lancRepo.salvar(compraBase);
       return;
     }
 
-    final String grupo =
-        compraBase.grupoParcelas ??
-        DateTime.now().millisecondsSinceEpoch.toString();
+    if (await _cartaoRepo.getCartaoCreditoById(idCartao) == null) {
+      await _lancRepo.salvar(compraBase);
+      return;
+    }
 
-    // Base para as parcelas - NÃO PAGA
+    final g = compraBase.grupoParcelas?.trim();
+    final String grupo = (g != null && g.isNotEmpty)
+        ? g
+        : DateTime.now().millisecondsSinceEpoch.toString();
+
+    // Compras no cartão não são "contas a pagar". Quem fica pendente é a fatura.
+    // Então preserva o status de pagamento da base (normalmente "pago=true").
+    final bool pagoParcelamento = compraBase.pago;
+    final DateTime? dataPagParcelamento = pagoParcelamento
+        ? (compraBase.dataPagamento ?? DateTime.now())
+        : null;
+
     final Lancamento baseParcelas = compraBase.copyWith(
       id: null,
       grupoParcelas: grupo,
       parcelaNumero: null,
       parcelaTotal: null,
       pagamentoFatura: false,
-      pago: compraBase.pago,
-      dataPagamento: null,
+      pago: pagoParcelamento,
+      dataPagamento: dataPagParcelamento,
     );
 
-    // ⭐ CHAMA COM O CARTÃO (para cálculo correto do vencimento)
-    await _lancRepo.salvarParceladosFuturos(
-      baseParcelas,
-      qtdParcelas,
-      cartao: cartao, // ⭐ Passa o cartão!
-    );
+    await _lancRepo.salvarParceladosFuturos(baseParcelas, qtdParcelas);
   }
 }
