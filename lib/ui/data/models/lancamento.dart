@@ -3,6 +3,19 @@
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
 import 'package:vox_finance/ui/core/enum/categoria.dart';
 
+// Brasília (America/Sao_Paulo) hoje é UTC-3 fixo (sem DST).
+// Para manter consistência entre dispositivos com timezones diferentes,
+// interpretamos timestamps do banco sempre "ancorados" em Brasília.
+const Duration _brasiliaOffset = Duration(hours: -3);
+
+DateTime _fromEpochBrasilia(int ms) {
+  // Lê como UTC e aplica offset fixo para obter o "dia" em Brasília.
+  final utc = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+  final br = utc.add(_brasiliaOffset);
+  // Normaliza para meio-dia para evitar virada de dia por arredondamentos/fusos.
+  return DateTime(br.year, br.month, br.day, 12);
+}
+
 /// Tipo do movimento financeiro:
 /// - receita  -> entra dinheiro
 /// - despesa  -> sai dinheiro
@@ -287,14 +300,12 @@ class Lancamento {
       valor: (map['valor'] as num).toDouble(),
       descricao: (map['descricao'] ?? '') as String,
       formaPagamento: forma,
-      dataHora: DateTime.fromMillisecondsSinceEpoch(map['data_hora'] as int),
+      dataHora: _fromEpochBrasilia(map['data_hora'] as int),
       pagamentoFatura: (map['pagamento_fatura'] ?? 0) == 1,
       pago: (map['pago'] ?? 0) == 1,
       dataPagamento:
           map['data_pagamento'] != null
-              ? DateTime.fromMillisecondsSinceEpoch(
-                map['data_pagamento'] as int,
-              )
+              ? _fromEpochBrasilia(map['data_pagamento'] as int)
               : null,
       categoria: cat,
       idCartao: map['id_cartao'] as int?,

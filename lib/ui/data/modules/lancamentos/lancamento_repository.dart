@@ -122,6 +122,19 @@ class LancamentoRepository {
   Future<int> salvar(Lancamento lanc) async {
     final db = await _db;
 
+    // Normaliza datas para "dia civil" (sem depender de fuso do dispositivo).
+    // Usamos meio-dia para evitar virada de dia em restaurações/backup.
+    lanc.dataHora = DateTime(
+      lanc.dataHora.year,
+      lanc.dataHora.month,
+      lanc.dataHora.day,
+      12,
+    );
+    final dp = lanc.dataPagamento;
+    if (dp != null) {
+      lanc.dataPagamento = DateTime(dp.year, dp.month, dp.day, 12);
+    }
+
     if (lanc.id == null) {
       final dados = lanc.toMap()..remove('id');
       final id = await db.insert(
@@ -488,10 +501,12 @@ class LancamentoRepository {
 
     for (int i = 0; i < qtdParcelas; i++) {
       final numeroParcela = i + 1;
-      final dataLancamento = _calcularDataLancamento(
+      final d0 = _calcularDataLancamento(
         dataCompra: dataCompra,
         numeroParcela: numeroParcela,
       );
+      final dataLancamento =
+          DateTime(d0.year, d0.month, d0.day, 12); // normaliza
       dataLancamentos.add(dataLancamento);
 
       if (base.formaPagamento == FormaPagamento.credito &&
