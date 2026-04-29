@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vox_finance/ui/data/models/fonte_renda.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/modules/renda/renda_repository.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
@@ -84,11 +85,13 @@ class _ComparativoGanhosGastosPageState
         final inicioMes = DateTime(ref.year, ref.month, 1);
         final fimMes = DateTime(ref.year, ref.month + 1, 0, 23, 59, 59, 999);
 
-        final receitas = await _repo.getReceitasDoMes(ref.year, ref.month);
-        final despesas = await _repo.getDespesasByPeriodo(inicioMes, fimMes);
+        final receitasTodas = await _repo.getReceitasDoMes(ref.year, ref.month);
+        final receitas = receitasTodas.where((l) => l.pago == true).toList();
+        final despesasTodas = await _repo.getDespesasByPeriodo(inicioMes, fimMes);
+        final despesas = despesasTodas.where((l) => l.pagamentoFatura != true).toList();
 
         final totalReceitasLancadas =
-            receitas.fold<double>(0, (s, l) => s + (l.valor));
+            receitas.fold<double>(0, (s, l) => s + l.valor);
         final totalReceitas =
             totalReceitasLancadas + (_incluirReceitasCadastro ? totalCadastroMes : 0.0);
         final totalDespesas =
@@ -110,6 +113,275 @@ class _ComparativoGanhosGastosPageState
       if (!mounted) return;
       setState(() => _carregando = false);
     }
+  }
+
+  _ResumoMes? _resumoMesBase() {
+    for (final it in _itens.reversed) {
+      if (it.ano == _mesBase.year && it.mes == _mesBase.month) return it;
+    }
+    return null;
+  }
+
+  Future<void> _abrirDetalhesGanhos() async {
+    final receitasTodas =
+        await _repo.getReceitasDoMes(_mesBase.year, _mesBase.month);
+    final receitas = receitasTodas.where((l) => l.pago == true).toList();
+    final totalReceitasLancadas =
+        receitas.fold<double>(0, (s, l) => s + l.valor);
+
+    List<FonteRenda> fontesAtivas = const [];
+    double totalCadastro = 0;
+    if (_incluirReceitasCadastro) {
+      fontesAtivas = await _rendaRepo.listarFontes(apenasAtivas: true);
+      totalCadastro = fontesAtivas.fold<double>(0, (s, f) => s + f.valorBase);
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final tema = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Ganhos (${_nomeMes(_mesBase.month)} / ${_mesBase.year})',
+                  style: tema.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Total: ${_currency.format(totalReceitasLancadas + totalCadastro)}',
+                  style: tema.textTheme.titleSmall?.copyWith(
+                    color: _paleta[0],
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (receitas.isNotEmpty) ...[
+                  Text(
+                    'Receitas quitadas',
+                    style: tema.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: receitas.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final r = receitas[i];
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(r.descricao),
+                          subtitle: Text(DateFormat.yMMMd('pt_BR').format(r.dataHora)),
+                          trailing: Text(_currency.format(r.valor)),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (_incluirReceitasCadastro) ...[
+                  Text(
+                    'Receitas do cadastro (fontes ativas)',
+                    style: tema.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (fontesAtivas.isEmpty)
+                    Text(
+                      'Nenhuma fonte ativa cadastrada.',
+                      style: tema.textTheme.bodySmall?.copyWith(
+                        color: tema.colorScheme.onSurface.withOpacity(0.65),
+                      ),
+                    )
+                  else
+                    Column(
+                      children: [
+                        for (final f in fontesAtivas) ...[
+                          ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(f.nome),
+                            trailing: Text(_currency.format(f.valorBase)),
+                          ),
+                          const Divider(height: 1),
+                        ],
+                      ],
+                    ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _abrirDetalhesGastos() async {
+    final inicioMes = DateTime(_mesBase.year, _mesBase.month, 1);
+    final fimMes = DateTime(_mesBase.year, _mesBase.month + 1, 0, 23, 59, 59, 999);
+
+    final despesasTodas = await _repo.getDespesasByPeriodo(inicioMes, fimMes);
+    final despesas = despesasTodas.where((l) => l.pagamentoFatura != true).toList();
+    final total = despesas.fold<double>(0, (s, l) => s + l.valor);
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final tema = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Gastos (${_nomeMes(_mesBase.month)} / ${_mesBase.year})',
+                  style: tema.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Total: ${_currency.format(total)}',
+                  style: tema.textTheme.titleSmall?.copyWith(
+                    color: _paleta[1],
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (despesas.isEmpty)
+                  Text(
+                    'Sem gastos lançados neste mês.',
+                    style: tema.textTheme.bodySmall?.copyWith(
+                      color: tema.colorScheme.onSurface.withOpacity(0.65),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: despesas.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final d = despesas[i];
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(d.descricao),
+                          subtitle: Text(DateFormat.yMMMd('pt_BR').format(d.dataHora)),
+                          trailing: Text(_currency.format(d.valor)),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCardTotal({
+    required Color color,
+    required IconData icon,
+    required String title,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Toque para ver composição',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildLegenda() {
@@ -216,6 +488,7 @@ class _ComparativoGanhosGastosPageState
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final double chartHeight = isLandscape ? 220 : 280;
+    final resumoBase = _resumoMesBase();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Comparativo (Ganhos x Gastos)')),
@@ -281,6 +554,46 @@ class _ComparativoGanhosGastosPageState
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ===== CARDS TOTAIS (MÊS BASE) =====
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final twoCols = constraints.maxWidth >= 520;
+                        final ganhos = _buildCardTotal(
+                          color: _paleta[0],
+                          icon: Icons.trending_up,
+                          title: 'Total ganhos',
+                          value: _currency.format(resumoBase?.receitas ?? 0),
+                          onTap: _abrirDetalhesGanhos,
+                        );
+                        final gastos = _buildCardTotal(
+                          color: _paleta[1],
+                          icon: Icons.trending_down,
+                          title: 'Total gastos',
+                          value: _currency.format(resumoBase?.despesas ?? 0),
+                          onTap: _abrirDetalhesGastos,
+                        );
+
+                        if (!twoCols) {
+                          return Column(
+                            children: [
+                              ganhos,
+                              const SizedBox(height: 10),
+                              gastos,
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            Expanded(child: ganhos),
+                            const SizedBox(width: 10),
+                            Expanded(child: gastos),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
 

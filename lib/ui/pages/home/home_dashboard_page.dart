@@ -2,13 +2,17 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
+import 'package:vox_finance/ui/core/service/investimento_cdi_service.dart';
 
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/modules/contas_pagar/conta_pagar_repository.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/modules/investimentos/carteira_investimento_repository.dart';
+import 'package:vox_finance/ui/data/modules/investimentos/cdi/investimento_cdi_config_repository.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
 import 'package:vox_finance/ui/data/models/lembrete.dart';
 import 'package:vox_finance/ui/data/modules/lembretes/lembrete_repository.dart';
@@ -118,6 +122,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
   final _lembreteRepo = LembreteRepository();
   final _despesasFixasService = DespesasFixasService();
   final _metricaRepo = MetricaLimiteRepository();
+  final _carteiraInvRepo = CarteiraInvestimentoRepository();
+  final _cdiCfgRepo = InvestimentoCdiConfigRepository();
+  final _cdiSvc = InvestimentoCdiService();
   final _cartaoRepo = CartaoCreditoRepository();
   late final MetricaAlertaService _metricaAlertaService =
       MetricaAlertaService(_metricaRepo);
@@ -170,6 +177,9 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     });
 
     try {
+      // 🧾 CDI: processa uma vez ao dia ao entrar no app (se faltar lançar, cria).
+      await _processarCdiUmaVezPorDia();
+
       // 🔁 Gera métricas mensais recorrentes no mês atual (se necessário).
       final agora = DateTime.now();
       await _metricaRepo.gerarRecorrentesDoMesAtualSeNecessario(agora);
@@ -405,6 +415,48 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
     } finally {
       if (!mounted) return;
       setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _processarCdiUmaVezPorDia() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final hoje = DateTime.now();
+      final diaKey =
+          '${hoje.year}-${hoje.month.toString().padLeft(2, '0')}-${hoje.day.toString().padLeft(2, '0')}';
+      const prefKey = 'cdi_daily_job_last_run';
+      final last = sp.getString(prefKey);
+      if (last == diaKey) return;
+
+      final carteiras = await _carteiraInvRepo.listar();
+      final cdiCarteiras =
+          carteiras.where((c) => c.layout == 'cdi_faixas' && c.id != null);
+
+      for (final c in cdiCarteiras) {
+        final idCarteira = c.id!;
+        final cfg = await _cdiCfgRepo.porCarteira(idCarteira);
+        if (cfg == null) continue;
+        if (cfg.idContaBancaria == null) continue;
+        if (cfg.saldoBase <= 0) continue;
+
+        if (cfg.usarTaxaFixa == true) {
+          await _cdiSvc.processarAteHoje(
+            idCarteira: idCarteira,
+            nomeCarteira: c.nome,
+            taxaDiariaFixa: cfg.taxaDiariaFixa,
+            aporteFixo: cfg.aporteFixo,
+          );
+        } else {
+          await _cdiSvc.processarAteHoje(
+            idCarteira: idCarteira,
+            nomeCarteira: c.nome,
+          );
+        }
+      }
+
+      await sp.setString(prefKey, diaKey);
+    } catch (_) {
+      // Não deixa falha do CDI travar a Home.
     }
   }
 
