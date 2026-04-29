@@ -141,6 +141,49 @@ class CartaoCreditoRepository {
     return (ini.millisecondsSinceEpoch, fim.millisecondsSinceEpoch);
   }
 
+  /// Garante que exista no máximo 1 lançamento de fatura (pagamento_fatura=1)
+  /// para um cartão em um vencimento (dia).
+  ///
+  /// Retorna o id do lançamento "principal" (o que será usado/atualizado), ou null se não existir.
+  Future<int?> _dedupeLancamentoFaturaPorVencimento({
+    required Database db,
+    required int idCartao,
+    required DateTime dataVencimento,
+  }) async {
+    final (iniMs, fimMs) = _rangeDiaMs(dataVencimento);
+    final rows = await db.query(
+      'lancamentos',
+      columns: const ['id'],
+      where:
+          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, iniMs, fimMs],
+      orderBy: 'id ASC',
+    );
+    if (rows.isEmpty) return null;
+
+    final ids =
+        rows.map<int>((r) => (r['id'] as num).toInt()).toList(growable: false);
+    final int keepId = ids.first;
+    if (ids.length == 1) return keepId;
+
+    final idsToDelete = ids.skip(1).toList();
+    final placeholders = List.filled(idsToDelete.length, '?').join(',');
+
+    // Apaga conta_pagar vinculada e o lançamento duplicado.
+    await db.delete(
+      'conta_pagar',
+      where: 'id_lancamento IN ($placeholders)',
+      whereArgs: idsToDelete,
+    );
+    await db.delete(
+      'lancamentos',
+      where: 'id IN ($placeholders)',
+      whereArgs: idsToDelete,
+    );
+
+    return keepId;
+  }
+
   /// Regra do vencimento:
   /// - Se o dia de vencimento for menor/igual ao dia de fechamento, o vencimento cai no mês seguinte.
   /// - Caso contrário, cai no mesmo mês do fechamento.
@@ -168,19 +211,18 @@ class CartaoCreditoRepository {
     );
     final diaVenc = diaVencimento.clamp(1, 31);
 
-    final fechamentoEsteMesFim = _dataValida(
+    // Regra do ciclo: o dia do fechamento pertence ao PRÓXIMO ciclo.
+    // Ex.: fechamento 28 -> compras em 28/04 entram no ciclo que fecha 28/05.
+    final fechamentoEsteMesInicio = _dataValida(
       dataCompra.year,
       dataCompra.month,
       diaFech,
-      23,
-      59,
-      59,
-      999,
     );
-    final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMesFim);
+    final bool aposOuNoFechamento =
+        !dataCompra.isBefore(fechamentoEsteMesInicio);
     final DateTime refFech = DateTime(
       dataCompra.year,
-      dataCompra.month + (aposFechamento ? 1 : 0),
+      dataCompra.month + (aposOuNoFechamento ? 1 : 0),
       1,
     );
 
@@ -610,8 +652,10 @@ class CartaoCreditoRepository {
     int mesAtual = hoje.month;
 
     // 2) Período de compras que entram na fatura
-    // Regra correta: do dia SEGUINTE ao fechamento anterior até o dia do fechamento (inclusive).
-    // Ex.: fechamento 08/05 => período 09/04..08/05 e vencimento 15/05.
+    // Regra do ciclo (ajustada):
+    // - o dia do fechamento pertence ao PRÓXIMO ciclo
+    // - período: do dia do fechamento anterior (00:00) até o dia ANTERIOR ao fechamento do mês (23:59:59.999)
+    // Ex.: fechamento 08/05 => período 08/04..07/05 e vencimento 15/05.
     int mesAnterior = mesAtual - 1;
     int anoAnterior = anoAtual;
     if (mesAnterior == 0) {
@@ -619,9 +663,11 @@ class CartaoCreditoRepository {
       anoAnterior--;
     }
 
-    final fechamentoAnterior = _dataValida(anoAnterior, mesAnterior, diaFechamento);
-    final inicioPeriodo = fechamentoAnterior.add(const Duration(days: 1));
-    final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFechamento, 23, 59, 59, 999);
+    final fechamentoAnterior =
+        _dataValida(anoAnterior, mesAnterior, diaFechamento);
+    final inicioPeriodo = fechamentoAnterior;
+    final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFechamento)
+        .subtract(const Duration(milliseconds: 1));
 
     final inicioMs = inicioPeriodo.millisecondsSinceEpoch;
     final fimMs = fimPeriodo.millisecondsSinceEpoch;
@@ -676,19 +722,29 @@ class CartaoCreditoRepository {
 
     int idLancamentoFatura;
 
-    // Verifica se já existe lançamento de fatura para esse vencimento
-    final (vencIniMs, vencFimMs) = _rangeDiaMs(dataVencimento);
-    final faturaExistente = await database.query(
-      'lancamentos',
-      where:
-          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
-      whereArgs: [idCartao, vencIniMs, vencFimMs],
-      limit: 1,
+    // Dedup: garante 1 lançamento de fatura por vencimento (dia)
+    final idExistente = await _dedupeLancamentoFaturaPorVencimento(
+      db: database,
+      idCartao: idCartao,
+      dataVencimento: dataVencimento,
     );
 
-    if (faturaExistente.isNotEmpty) {
+    if (idExistente != null) {
       // Atualiza o lançamento já existente
-      idLancamentoFatura = faturaExistente.first['id'] as int;
+      idLancamentoFatura = idExistente;
+
+      final faturaExistente = await database.query(
+        'lancamentos',
+        columns: const ['pago', 'valor', 'data_pagamento'],
+        where: 'id = ?',
+        whereArgs: [idLancamentoFatura],
+        limit: 1,
+      );
+      final row = faturaExistente.isNotEmpty ? faturaExistente.first : <String, Object?>{};
+
+      final bool pagoAntes = (row['pago'] as int? ?? 0) == 1;
+      final double valorAntes = (row['valor'] as num?)?.toDouble() ?? total;
+      final bool mudouValor = (valorAntes - total).abs() > 0.00001;
 
       await database.update(
         'lancamentos',
@@ -701,8 +757,11 @@ class CartaoCreditoRepository {
             dataVencimento.month,
             dataVencimento.day,
           ).millisecondsSinceEpoch,
-          'pago': 0, // volta a ser pendente
-          'data_pagamento': null,
+          // Se já estava pago, só reabre se o valor mudou.
+          'pago': (pagoAntes && !mudouValor) ? 1 : 0,
+          'data_pagamento': (pagoAntes && !mudouValor)
+              ? (row['data_pagamento'] as int?)
+              : null,
         },
         where: 'id = ?',
         whereArgs: [idLancamentoFatura],
@@ -809,20 +868,17 @@ class CartaoCreditoRepository {
     );
 
     // Determina o mês/ano de fechamento da fatura que contém esta compra.
-    // Regra correta: se a compra acontecer após o dia do fechamento (fim do dia),
+    // Regra do ciclo (ajustada): se a compra acontecer NO dia do fechamento (ou após),
     // ela entra no mês de fechamento seguinte.
-    final fechamentoEsteMesFim = _dataValida(
+    final fechamentoEsteMesInicio = _dataValida(
       compra.year,
       compra.month,
       diaFech,
-      23,
-      59,
-      59,
-      999,
     );
-    final bool aposFechamento = compra.isAfter(fechamentoEsteMesFim);
+    final bool aposOuNoFechamento =
+        !compra.isBefore(fechamentoEsteMesInicio);
     final DateTime referenciaFechamento =
-        aposFechamento
+        aposOuNoFechamento
             ? DateTime(compra.year, compra.month + 1, 1)
             : DateTime(compra.year, compra.month, 1);
 
@@ -846,8 +902,9 @@ class CartaoCreditoRepository {
     }
 
     final fechamentoAnterior = _dataValida(anoAnterior, mesAnterior, diaFech);
-    final inicioPeriodo = fechamentoAnterior.add(const Duration(days: 1));
-    final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFech, 23, 59, 59, 999);
+    final inicioPeriodo = fechamentoAnterior;
+    final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFech)
+        .subtract(const Duration(milliseconds: 1));
     final inicioMs = inicioPeriodo.millisecondsSinceEpoch;
     final fimMs = fimPeriodo.millisecondsSinceEpoch;
 
@@ -893,17 +950,27 @@ class CartaoCreditoRepository {
         'Fatura ${cartao.descricao} ${mesAtual.toString().padLeft(2, '0')}/$anoAtual';
 
     int idLancamentoFatura;
-    final (vencIniMs2, vencFimMs2) = _rangeDiaMs(dataVencimento);
-    final faturaExistente = await database.query(
-      'lancamentos',
-      where:
-          'id_cartao = ? AND pagamento_fatura = 1 AND data_hora >= ? AND data_hora <= ?',
-      whereArgs: [idCartao, vencIniMs2, vencFimMs2],
-      limit: 1,
+    final idExistente = await _dedupeLancamentoFaturaPorVencimento(
+      db: database,
+      idCartao: idCartao,
+      dataVencimento: dataVencimento,
     );
 
-    if (faturaExistente.isNotEmpty) {
-      idLancamentoFatura = faturaExistente.first['id'] as int;
+    if (idExistente != null) {
+      idLancamentoFatura = idExistente;
+
+      final faturaExistente = await database.query(
+        'lancamentos',
+        columns: const ['pago', 'valor', 'data_pagamento'],
+        where: 'id = ?',
+        whereArgs: [idLancamentoFatura],
+        limit: 1,
+      );
+      final row = faturaExistente.isNotEmpty ? faturaExistente.first : <String, Object?>{};
+
+      final bool pagoAntes = (row['pago'] as int? ?? 0) == 1;
+      final double valorAntes = (row['valor'] as num?)?.toDouble() ?? total;
+      final bool mudouValor = (valorAntes - total).abs() > 0.00001;
       await database.update(
         'lancamentos',
         {
@@ -914,8 +981,10 @@ class CartaoCreditoRepository {
             dataVencimento.month,
             dataVencimento.day,
           ).millisecondsSinceEpoch,
-          'pago': 0,
-          'data_pagamento': null,
+          'pago': (pagoAntes && !mudouValor) ? 1 : 0,
+          'data_pagamento': (pagoAntes && !mudouValor)
+              ? (row['data_pagamento'] as int?)
+              : null,
         },
         where: 'id = ?',
         whereArgs: [idLancamentoFatura],
@@ -1017,18 +1086,15 @@ class CartaoCreditoRepository {
     );
 
     // Determina o mês de fechamento do ciclo que contém a compra.
-    final fechamentoEsteMesFim = _dataValida(
+    final fechamentoEsteMesInicio = _dataValida(
       compra.year,
       compra.month,
       diaFech,
-      23,
-      59,
-      59,
-      999,
     );
-    final bool aposFechamento = compra.isAfter(fechamentoEsteMesFim);
+    final bool aposOuNoFechamento =
+        !compra.isBefore(fechamentoEsteMesInicio);
     final DateTime refFechamentoBase =
-        aposFechamento
+        aposOuNoFechamento
             ? DateTime(compra.year, compra.month + 1, 1)
             : DateTime(compra.year, compra.month, 1);
 
@@ -1058,9 +1124,9 @@ class CartaoCreditoRepository {
       }
       final fechamentoAnterior =
           _dataValida(anoAnterior, mesAnterior, diaFechRef);
-      final inicioPeriodo = fechamentoAnterior.add(const Duration(days: 1));
-      final fimPeriodo =
-          _dataValida(anoAtual, mesAtual, diaFechRef, 23, 59, 59, 999);
+      final inicioPeriodo = fechamentoAnterior;
+      final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFechRef)
+          .subtract(const Duration(milliseconds: 1));
 
       final compras = await db.query(
         'lancamentos',
@@ -1374,18 +1440,11 @@ AND data_hora <= ?
         final compra = DateTime.fromMillisecondsSinceEpoch(ms);
         final ultimoDiaMes = DateTime(compra.year, compra.month + 1, 0).day;
         final fechDia = diaFech.clamp(1, ultimoDiaMes);
-        final fechamentoFim = DateTime(
-          compra.year,
-          compra.month,
-          fechDia,
-          23,
-          59,
-          59,
-          999,
-        );
-        final bool aposFechamento = compra.isAfter(fechamentoFim);
+        final fechamentoInicio = DateTime(compra.year, compra.month, fechDia);
+        final bool aposOuNoFechamento =
+            !compra.isBefore(fechamentoInicio);
         final ref =
-            aposFechamento
+            aposOuNoFechamento
                 ? DateTime(compra.year, compra.month + 1, 1)
                 : DateTime(compra.year, compra.month, 1);
 
@@ -1421,7 +1480,8 @@ AND data_hora <= ?
 
   Future<int> gerarFaturasSelecionadas({
     required List<FaturaGeracaoOpcao> selecionadas,
-    bool overwrite = true,
+    // Por padrão, NÃO apaga/recria: se já existe fatura, apenas recalcula/atualiza e adiciona vínculos.
+    bool overwrite = false,
   }) async {
     if (selecionadas.isEmpty) return 0;
     final db = await _dbService.db;
@@ -1625,9 +1685,10 @@ AND data_hora <= ?
 
     final existing = await database.query(
       'fatura_cartao',
+      columns: const ['id'],
       where: 'id_cartao = ? AND ano = ? AND mes = ?',
       whereArgs: [idCartao, anoReferencia, mesReferencia],
-      limit: 1,
+      orderBy: 'id ASC',
     );
 
     final dados = <String, Object?>{
@@ -1649,7 +1710,27 @@ AND data_hora <= ?
       );
       return id;
     } else {
-      final idFatura = existing.first['id'] as int;
+      final ids = existing
+          .map<int>((r) => (r['id'] as num).toInt())
+          .toList(growable: false);
+      final int idFatura = ids.first;
+
+      // Se houver duplicadas (por bug/condição de corrida antiga), remove e mantém apenas a primeira.
+      if (ids.length > 1) {
+        final idsToDelete = ids.skip(1).toList();
+        final placeholders = List.filled(idsToDelete.length, '?').join(',');
+        await database.delete(
+          'fatura_cartao_lancamento',
+          where: 'id_fatura IN ($placeholders)',
+          whereArgs: idsToDelete,
+        );
+        await database.delete(
+          'fatura_cartao',
+          where: 'id IN ($placeholders)',
+          whereArgs: idsToDelete,
+        );
+      }
+
       await database.update(
         'fatura_cartao',
         dados,

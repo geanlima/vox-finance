@@ -1,8 +1,10 @@
 // lib/ui/data/modules/lancamentos/lancamento_repository.dart
+import 'dart:async';
+import 'dart:developer' as dev;
+
 import 'package:sqflite/sqflite.dart';
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
-import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/conta_pagar.dart';
 import 'package:vox_finance/ui/data/models/lancamento.dart';
 import 'package:vox_finance/ui/data/models/renda_mensal_resumo.dart';
@@ -456,44 +458,62 @@ class LancamentoRepository {
 
   Future<void> salvarParceladosFuturos(
     Lancamento base,
-    int qtdParcelas, {
-    CartaoCredito? cartao,
-  }) async {
+    int qtdParcelas,
+  ) async {
     final db = await _db;
 
-    final String grupo =
-        base.grupoParcelas ?? DateTime.now().millisecondsSinceEpoch.toString();
+    final g = base.grupoParcelas?.trim();
+    final String grupo = (g != null && g.isNotEmpty)
+        ? g
+        : DateTime.now().millisecondsSinceEpoch.toString();
 
     final double valorParcela = base.valor / qtdParcelas;
     final DateTime dataCompra = base.dataHora;
 
-    // ✅ Melhor prática: transação (evita salvar metade se der erro)
+    // ⚠️ Não chamar await com outro acesso ao mesmo Database dentro de
+    // db.transaction — no sqflite isso pode travar (espera infinita).
+    // Pré-calcula datas de lançamento e vencimento **fora** da transação.
+    final dataLancamentos = <DateTime>[];
+    final dataVencimentosConta = <DateTime>[];
+
+    // Para cartão parcelado: 1ª parcela deve vencer no vencimento da fatura
+    // em que a compra entrou; demais parcelas +1 mês a partir daí.
+    DateTime? vencimentoBaseCartao;
+    if (base.formaPagamento == FormaPagamento.credito && base.idCartao != null) {
+      vencimentoBaseCartao = await _calcularVencimentoCartaoParaConta(
+        dataCompra: dataCompra,
+        idCartao: base.idCartao!,
+      );
+    }
+
+    for (int i = 0; i < qtdParcelas; i++) {
+      final numeroParcela = i + 1;
+      final dataLancamento = _calcularDataLancamento(
+        dataCompra: dataCompra,
+        numeroParcela: numeroParcela,
+      );
+      dataLancamentos.add(dataLancamento);
+
+      if (base.formaPagamento == FormaPagamento.credito &&
+          base.idCartao != null) {
+        final vb = vencimentoBaseCartao ?? dataLancamento.add(const Duration(days: 30));
+        dataVencimentosConta.add(
+          _garantirDataValida(vb.year, vb.month + i, vb.day),
+        );
+      } else {
+        dataVencimentosConta.add(
+          dataCompra.add(Duration(days: 30 * numeroParcela)),
+        );
+      }
+    }
+
     await db.transaction((txn) async {
       for (int i = 0; i < qtdParcelas; i++) {
         final numeroParcela = i + 1;
+        final dataLancamento = dataLancamentos[i];
+        final dataVencimentoConta = dataVencimentosConta[i];
 
-        // LANÇAMENTO: data compra + (n-1) meses
-        DateTime dataLancamento = _calcularDataLancamento(
-          dataCompra: dataCompra,
-          numeroParcela: numeroParcela,
-        );
-
-        // CONTA A PAGAR: vencimento no dia do cartão
-        DateTime dataVencimentoConta;
-        if (base.formaPagamento == FormaPagamento.credito &&
-            base.idCartao != null) {
-          dataVencimentoConta = await _calcularVencimentoCartaoParaConta(
-            dataCompra: dataLancamento,
-            idCartao: base.idCartao!,
-          );
-        } else {
-          dataVencimentoConta = dataCompra.add(
-            Duration(days: 30 * numeroParcela),
-          );
-        }
-
-        // 1) Lancamento
-        final bool pagoParcela = base.pago; // vem da tela
+        final bool pagoParcela = base.pago;
         final DateTime? dataPg =
             pagoParcela ? (base.dataPagamento ?? DateTime.now()) : null;
 
@@ -511,7 +531,6 @@ class LancamentoRepository {
         final dadosLanc = lancParcela.toMap()..remove('id');
         final int idLancamento = await txn.insert('lancamentos', dadosLanc);
 
-        // 2) conta a pagar (espelha forma/conta/cartão do lançamento)
         final conta = ContaPagar(
           id: null,
           descricao: lancParcela.descricao,
@@ -533,26 +552,41 @@ class LancamentoRepository {
       }
     });
 
-    // Após salvar parcelas no crédito, garante a fatura atualizada para TODOS os meses
-    // que receberam parcelas (cada parcela entra em um ciclo de fechamento diferente).
+    // Recalcular faturas pode ser pesado; roda em segundo plano para não
+    // travar a UI nem segurar a transação. Os lançamentos já estão gravados.
     if (base.formaPagamento == FormaPagamento.credito &&
         base.idCartao != null &&
         grupo.isNotEmpty) {
+      unawaited(_regenerarFaturasAposParcelasCredito(grupo));
+      return;
+    }
+
+    await _atualizarFaturaSeNecessario(base);
+  }
+
+  Future<void> _regenerarFaturasAposParcelasCredito(String grupo) async {
+    try {
       final parcelas = await getParcelasPorGrupo(grupo);
+      final visto = <String>{};
       for (final p in parcelas) {
         if (p.pagamentoFatura) continue;
         if (p.formaPagamento != FormaPagamento.credito) continue;
         if (p.idCartao == null) continue;
+        final key = '${p.idCartao}:${p.dataHora.year}-${p.dataHora.month}';
+        if (!visto.add(key)) continue;
         await _cartaoRepo.gerarFaturaDoCartaoParaCompra(
           idCartao: p.idCartao!,
           dataCompra: p.dataHora,
         );
       }
-      return;
+    } catch (e, st) {
+      dev.log(
+        'Falha ao regenerar faturas após parcelas no crédito',
+        name: 'LancamentoRepository',
+        error: e,
+        stackTrace: st,
+      );
     }
-
-    // Fallback: parcela única / outras formas
-    await _atualizarFaturaSeNecessario(base);
   }
 
   Future<DateTime> _calcularVencimentoCartaoParaConta({
@@ -573,17 +607,16 @@ class LancamentoRepository {
       1,
       DateTime(dataCompra.year, dataCompra.month + 1, 0).day,
     );
-    final fechamentoEsteMesFim = _garantirDataValida(
+    // Regra do ciclo: o dia do fechamento pertence ao PRÓXIMO ciclo.
+    final fechamentoEsteMesInicio = _garantirDataValida(
       dataCompra.year,
       dataCompra.month,
       diaFechCompraMes,
-    ).add(
-      const Duration(hours: 23, minutes: 59, seconds: 59, milliseconds: 999),
     );
-    final bool aposFechamento = dataCompra.isAfter(fechamentoEsteMesFim);
+    final bool aposOuNoFechamento = !dataCompra.isBefore(fechamentoEsteMesInicio);
     final DateTime refFech = DateTime(
       dataCompra.year,
-      dataCompra.month + (aposFechamento ? 1 : 0),
+      dataCompra.month + (aposOuNoFechamento ? 1 : 0),
       1,
     );
 

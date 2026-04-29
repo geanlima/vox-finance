@@ -73,7 +73,9 @@ class ContaPagarRepository {
   }) async {
     final db = await _db;
 
-    final vencimentoMs = dataVencimento.millisecondsSinceEpoch;
+    // Normaliza para dia civil (evita "escapar" por horário/timezone e garante consistência com a fatura).
+    final vencDia = DateTime(dataVencimento.year, dataVencimento.month, dataVencimento.day);
+    final vencimentoMs = vencDia.millisecondsSinceEpoch;
 
     // 🔹 grupo único para esta fatura (idCartao + ano + mês)
     final ano = dataVencimento.year.toString().padLeft(4, '0');
@@ -92,6 +94,8 @@ class ContaPagarRepository {
       'descricao': descricao,
       'valor': valor,
       'data_vencimento': vencimentoMs,
+      // Para fatura, o cabeçalho deve acompanhar o mesmo dia do vencimento.
+      'data_cabecalho': vencimentoMs,
       'pago': 0,
       'data_pagamento': null,
       'id_lancamento': idLancamento,

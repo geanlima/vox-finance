@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import 'package:vox_finance/ui/core/utils/currency_input_formatter.dart';
 import 'package:vox_finance/ui/core/service/investimento_cdi_service.dart';
@@ -7,6 +8,7 @@ import 'package:vox_finance/ui/data/models/conta_bancaria.dart';
 import 'package:vox_finance/ui/data/modules/contas_bancarias/conta_bancaria_repository.dart';
 import 'package:vox_finance/ui/data/modules/investimentos/cdi/investimento_cdi_config_repository.dart';
 import 'package:vox_finance/ui/data/modules/investimentos/cdi/investimento_cdi_rendimentos_repository.dart';
+import 'package:vox_finance/ui/data/modules/investimentos/cdi/investimento_cdi_movimentos_repository.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 import 'package:vox_finance/ui/pages/investimentos/cdi/cdi_movimentacoes_page.dart';
 import 'package:vox_finance/ui/data/modules/lancamentos/lancamento_repository.dart';
@@ -30,6 +32,7 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
   final _contasRepo = ContaBancariaRepository();
   final _svc = InvestimentoCdiService();
   final _rendRepo = InvestimentoCdiRendimentosRepository();
+  final _movRepo = InvestimentoCdiMovimentosRepository();
   final _lancRepo = LancamentoRepository();
   final _currency = NumberFormat.simpleCurrency(locale: 'pt_BR');
   final _dateFmt = DateFormat('dd/MM/yyyy', 'pt_BR');
@@ -40,6 +43,8 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
   bool _recalculando = false;
   List<InvestimentoCdiRendimentoRow> _rendimentos = const [];
   List<({int ano, int mes, double total})> _rendimentosPorMes = const [];
+  List<InvestimentoCdiMovimentoRow> _movimentos = const [];
+  double _saldoBaseAtual = 0;
 
   final _limiteCtrl = TextEditingController();
   final _saldoBaseCtrl = TextEditingController();
@@ -126,10 +131,12 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
 
     final rend = await _rendRepo.listarPorCarteira(widget.idCarteira);
     final porMes = await _rendRepo.totalPorMes(widget.idCarteira);
+    final movs = await _movRepo.listarPorCarteira(widget.idCarteira);
     if (!mounted) return;
     setState(() {
       _rendimentos = rend;
       _rendimentosPorMes = porMes;
+      _movimentos = movs;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Rendimento do dia atualizado.')),
@@ -165,9 +172,11 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
     final contas = await _contasRepo.getContasBancarias(apenasAtivas: true);
     final rend = await _rendRepo.listarPorCarteira(widget.idCarteira);
     final porMes = await _rendRepo.totalPorMes(widget.idCarteira);
+    final movs = await _movRepo.listarPorCarteira(widget.idCarteira);
     if (!mounted) return;
 
     final limite = cfg?.limiteFaixa ?? 10000;
+    _saldoBaseAtual = cfg?.saldoBase ?? 0;
     _limiteCtrl.text = NumberFormat('#,##0.00', 'pt_BR').format(limite);
     _saldoBaseCtrl.text = NumberFormat('#,##0.00', 'pt_BR').format(
       cfg?.saldoBase ?? 0,
@@ -196,6 +205,7 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
       _contas = contas;
       _rendimentos = rend;
       _rendimentosPorMes = porMes;
+      _movimentos = movs;
       _loading = false;
     });
 
@@ -252,6 +262,7 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
 
     setState(() => _saving = true);
     try {
+      _saldoBaseAtual = saldoBase;
       await _repo.upsert(
         InvestimentoCdiConfig(
           idCarteira: widget.idCarteira,
@@ -319,13 +330,238 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
 
       final rend = await _rendRepo.listarPorCarteira(widget.idCarteira);
       final porMes = await _rendRepo.totalPorMes(widget.idCarteira);
+      final movs = await _movRepo.listarPorCarteira(widget.idCarteira);
       if (!mounted) return;
       setState(() {
         _rendimentos = rend;
         _rendimentosPorMes = porMes;
+        _movimentos = movs;
       });
     } finally {
       if (mounted) setState(() => _recalculando = false);
+    }
+  }
+
+  Future<void> _registrarSaque() async {
+    if (_loading || _saving || _recalculando) return;
+
+    final ctrl = TextEditingController(text: '0,00');
+    final saque = await showDialog<double?>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Registrar saque'),
+          content: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Valor do saque (R\$)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final v = CurrencyInputFormatter.parse(ctrl.text);
+                Navigator.pop(ctx, v);
+              },
+              child: const Text('Aplicar'),
+            ),
+          ],
+        );
+      },
+    );
+    // Não damos dispose aqui para evitar "used after disposed" durante
+    // o teardown do dialog (pode rebuildar 1 frame após pop).
+    if (saque == null) return;
+    if (saque <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe um valor de saque válido.')),
+      );
+      return;
+    }
+
+    final saldoAtual = CurrencyInputFormatter.parse(_saldoBaseCtrl.text);
+    final novoSaldo = (saldoAtual - saque);
+    if (novoSaldo < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saque maior que o saldo base.')),
+      );
+      return;
+    }
+
+    // Atualiza o campo e persiste, depois recalcula para refletir juros compostos
+    _saldoBaseCtrl.text = NumberFormat('#,##0.00', 'pt_BR').format(novoSaldo);
+    _saldoBaseAtual = novoSaldo;
+    if (mounted) setState(() {});
+
+    final limite = CurrencyInputFormatter.parse(_limiteCtrl.text);
+    final cdiBase = CurrencyInputFormatter.parse(_cdiBaseCtrl.text);
+    final pctAte = CurrencyInputFormatter.parse(_pctAteCtrl.text);
+    final pctAcima = CurrencyInputFormatter.parse(_pctAcimaCtrl.text);
+    final taxaDiariaFixa = _parseNumberPt(_taxaDiariaCtrl.text);
+    final aporteFixo = CurrencyInputFormatter.parse(_aporteCtrl.text);
+
+    setState(() => _saving = true);
+    try {
+      await _repo.upsert(
+        InvestimentoCdiConfig(
+          idCarteira: widget.idCarteira,
+          limiteFaixa: limite,
+          cdiBaseAnual: cdiBase,
+          pctAteLimite: pctAte,
+          pctAcimaLimite: pctAcima,
+          idContaBancaria: _idContaSelecionada,
+          saldoBase: novoSaldo,
+          usarTaxaFixa: _usarTaxaFixa,
+          taxaDiariaFixa: taxaDiariaFixa,
+          aporteFixo: aporteFixo,
+          considerarFimSemana: _considerarFds,
+          considerarFeriados: _considerarFeriados,
+          criadoEm: DateTime.now(),
+        ),
+      );
+
+      await _movRepo.inserir(
+        idCarteira: widget.idCarteira,
+        data: DateTime.now(),
+        tipo: InvestimentoCdiMovimentoTipo.saque,
+        valor: saque,
+      );
+
+      await _recalcularAoSalvar(
+        usarTaxaFixa: _usarTaxaFixa,
+        taxaDiariaFixa: taxaDiariaFixa,
+        aporteFixo: aporteFixo,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saque aplicado: ${_currency.format(saque)}'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _confirmarExcluirMovimento(int? idMov, String tipo) async {
+    if (idMov == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Excluir movimentação'),
+          content: Text(
+            'Isso vai excluir este ${tipo == 'saque' ? 'saque' : 'aporte'} e recalcular o histórico.\n\nContinuar?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true) return;
+
+    // desfaz o efeito no saldo base (undo)
+    final cfg = await _repo.porCarteira(widget.idCarteira);
+    if (cfg == null) return;
+
+    final mov = _movimentos.firstWhere((m) => m.id == idMov);
+    final novoSaldo = mov.tipo == InvestimentoCdiMovimentoTipo.saque
+        ? (cfg.saldoBase + mov.valor)
+        : (cfg.saldoBase - mov.valor);
+
+    _saldoBaseAtual = novoSaldo;
+    _saldoBaseCtrl.text = NumberFormat('#,##0.00', 'pt_BR').format(novoSaldo);
+
+    setState(() => _saving = true);
+    try {
+      await _movRepo.deletar(idMov);
+      await _repo.upsert(
+        InvestimentoCdiConfig(
+          idCarteira: cfg.idCarteira,
+          limiteFaixa: cfg.limiteFaixa,
+          cdiBaseAnual: cfg.cdiBaseAnual,
+          pctAteLimite: cfg.pctAteLimite,
+          pctAcimaLimite: cfg.pctAcimaLimite,
+          idContaBancaria: cfg.idContaBancaria,
+          saldoBase: novoSaldo,
+          usarTaxaFixa: cfg.usarTaxaFixa,
+          taxaDiariaFixa: cfg.taxaDiariaFixa,
+          aporteFixo: cfg.aporteFixo,
+          considerarFimSemana: cfg.considerarFimSemana,
+          considerarFeriados: cfg.considerarFeriados,
+          criadoEm: DateTime.now(),
+        ),
+      );
+
+      await _recalcularAoSalvar(
+        usarTaxaFixa: cfg.usarTaxaFixa,
+        taxaDiariaFixa: cfg.taxaDiariaFixa,
+        aporteFixo: cfg.aporteFixo,
+      );
+      if (mounted) setState(() {});
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _confirmarExcluirRendimento(InvestimentoCdiRendimentoRow r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Excluir rendimento'),
+          content: Text(
+            'Excluir o rendimento de ${_dateFmt.format(r.data)} e o lançamento vinculado.\n\nContinuar?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true) return;
+
+    setState(() => _saving = true);
+    try {
+      final idLanc = r.idLancamento;
+      if (idLanc != null) {
+        await _lancRepo.deletar(idLanc);
+      }
+      await _rendRepo.deletar(r.id);
+
+      final rend = await _rendRepo.listarPorCarteira(widget.idCarteira);
+      final porMes = await _rendRepo.totalPorMes(widget.idCarteira);
+      final movs = await _movRepo.listarPorCarteira(widget.idCarteira);
+      if (!mounted) return;
+      setState(() {
+        _rendimentos = rend;
+        _rendimentosPorMes = porMes;
+        _movimentos = movs;
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -340,10 +576,12 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
       if (!mounted) return;
       final rend = await _rendRepo.listarPorCarteira(widget.idCarteira);
       final porMes = await _rendRepo.totalPorMes(widget.idCarteira);
+      final movs = await _movRepo.listarPorCarteira(widget.idCarteira);
       if (!mounted) return;
       setState(() {
         _rendimentos = rend;
         _rendimentosPorMes = porMes;
+        _movimentos = movs;
       });
       if (n > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -381,40 +619,16 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
     );
     if (ok != true) return;
 
-    setState(() => _recalculando = true);
-    try {
-      // 1) Apaga lançamentos gerados
-      final idsLanc = await _rendRepo.listarIdsLancamentoPorCarteira(
-        widget.idCarteira,
-      );
-      for (final id in idsLanc) {
-        await _lancRepo.deletar(id);
-      }
-
-      // 2) Apaga o histórico (tabela de controle)
-      await _rendRepo.deletarPorCarteira(widget.idCarteira);
-
-      // 3) Reprocessa usando fórmula calibrada:
-      // rendimento_dia = (saldo + aporte) * taxaDiariaFixa
-      final taxaDiariaFixa = _parseNumberPt(_taxaDiariaCtrl.text);
-      final aporteFixo = CurrencyInputFormatter.parse(_aporteCtrl.text);
-      await _svc.processarAteHoje(
-        idCarteira: widget.idCarteira,
-        nomeCarteira: widget.nomeCarteira,
-        taxaDiariaFixa: taxaDiariaFixa,
-        aporteFixo: aporteFixo,
-      );
-
-      final rend = await _rendRepo.listarPorCarteira(widget.idCarteira);
-      final porMes = await _rendRepo.totalPorMes(widget.idCarteira);
-      if (!mounted) return;
-      setState(() {
-        _rendimentos = rend;
-        _rendimentosPorMes = porMes;
-      });
-    } finally {
-      if (mounted) setState(() => _recalculando = false);
-    }
+    // Reusa o mesmo fluxo que apaga lançamentos + histórico + recalcula,
+    // garantindo que os lançamentos fiquem sempre consistentes com o cálculo atual.
+    final taxaDiariaFixa = _parseNumberPt(_taxaDiariaCtrl.text);
+    final aporteFixo = CurrencyInputFormatter.parse(_aporteCtrl.text);
+    await _recalcularAoSalvar(
+      usarTaxaFixa: _usarTaxaFixa,
+      taxaDiariaFixa: taxaDiariaFixa,
+      aporteFixo: aporteFixo,
+    );
+    if (mounted) setState(() {});
   }
 
   @override
@@ -424,6 +638,11 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
       appBar: AppBar(
         title: Text('CDI — ${widget.nomeCarteira}'),
         actions: [
+          IconButton(
+            tooltip: 'Registrar saque (abate do saldo base)',
+            onPressed: _loading ? null : _registrarSaque,
+            icon: const Icon(Icons.outbox_outlined),
+          ),
           IconButton(
             tooltip: 'Recalcular histórico',
             onPressed: _loading ? null : _recalcularHistorico,
@@ -473,11 +692,11 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
                     (s, r) => s + r.rendimentoValor,
                   ),
                   saldoAtual:
-                      CurrencyInputFormatter.parse(_saldoBaseCtrl.text) +
+                      _saldoBaseAtual +
                       _rendimentos.fold<double>(0, (s, r) => s + r.rendimentoValor),
                   onTap: () async {
                     final saldoInicial =
-                        CurrencyInputFormatter.parse(_saldoBaseCtrl.text);
+                        _saldoBaseAtual;
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -743,53 +962,145 @@ class _CdiCarteiraPageState extends State<CdiCarteiraPage> {
 
   List<Widget> _buildHistoricoCards(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // `_rendimentos` vem DESC. Para calcular saldo acumulado, precisamos ASC.
-    final asc = List<InvestimentoCdiRendimentoRow>.from(_rendimentos)
-      ..sort((a, b) => a.data.compareTo(b.data));
+    final events = <({DateTime data, String tipo, double valor, int? idRend, int? idMov})>[];
 
-    double saldo = CurrencyInputFormatter.parse(_saldoBaseCtrl.text);
-    final saldoPorId = <int, double>{};
-    for (final r in asc) {
-      // `r.base` é o saldo antes daquele dia; mas recalculamos usando saldo acumulado do app.
-      saldo += r.rendimentoValor;
-      saldoPorId[r.id] = saldo;
+    for (final r in _rendimentos) {
+      events.add((
+        data: r.data,
+        tipo: 'rendimento',
+        valor: r.rendimentoValor,
+        idRend: r.id,
+        idMov: null,
+      ));
+    }
+    for (final m in _movimentos) {
+      final tipo =
+          (m.tipo == InvestimentoCdiMovimentoTipo.saque) ? 'saque' : 'aporte';
+      final valor =
+          (m.tipo == InvestimentoCdiMovimentoTipo.saque) ? -m.valor : m.valor;
+      events.add((data: m.data, tipo: tipo, valor: valor, idRend: null, idMov: m.id));
     }
 
+    // Saldo após o dia: mantém o mesmo comportamento antigo (só rendimentos),
+    // para evitar dupla-contagem quando houver "saque" (o saldoBase já foi abatido).
+    final ascRend = List<InvestimentoCdiRendimentoRow>.from(_rendimentos)
+      ..sort((a, b) => a.data.compareTo(b.data));
+    double saldo = CurrencyInputFormatter.parse(_saldoBaseCtrl.text);
+    final saldoAposPorRendId = <int, double>{};
+    for (final r in ascRend) {
+      saldo += r.rendimentoValor;
+      saldoAposPorRendId[r.id] = saldo;
+    }
+
+    // Render como lista DESC (mais recente no topo).
+    final desc = List.of(events)..sort((a, b) => b.data.compareTo(a.data));
     final out = <Widget>[];
-    for (final r in _rendimentos) {
-      final saldoApos = saldoPorId[r.id] ?? (r.base + r.rendimentoValor);
-      out.add(
-        Card(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          child: ListTile(
-            dense: true,
-            title: Text(_dateFmt.format(r.data)),
-            subtitle: Text(
-              'Taxa aplicada: ${r.pctCdi.toStringAsFixed(4).replaceAll('.', ',')}%',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
-            onLongPress: () => _editarRendimentoDia(r),
-            trailing: Column(
+    for (final e in desc) {
+      final isRendimento = e.tipo == 'rendimento';
+      final titulo = _dateFmt.format(e.data);
+
+      Text? subtitle;
+      VoidCallback? onLongPress;
+
+      if (!isRendimento) {
+        subtitle = Text(
+          e.tipo == 'saque' ? 'Saque' : 'Aporte',
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      } else {
+        final r = _rendimentos.firstWhere((x) => x.id == e.idRend);
+        subtitle = Text(
+          'Taxa aplicada: ${r.pctCdi.toStringAsFixed(4).replaceAll('.', ',')}%',
+          style: TextStyle(color: cs.onSurfaceVariant),
+        );
+        onLongPress = () => _editarRendimentoDia(r); // fallback
+      }
+
+      final saldoApos =
+          isRendimento ? (saldoAposPorRendId[e.idRend!] ?? 0) : null;
+
+      final Widget tile = Card(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        child: ListTile(
+          dense: true,
+          title: Text(titulo),
+          subtitle: subtitle,
+          onLongPress: onLongPress,
+          trailing: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  _currency.format(r.rendimentoValor),
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Saldo: ${_currency.format(saldoApos)}',
+                  _currency.format(e.valor),
                   style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w900,
+                    color: e.valor < 0 ? Colors.red.shade700 : null,
                   ),
                 ),
+                if (saldoApos != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Saldo: ${_currency.format(saldoApos)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
             ),
-          ),
         ),
+      );
+
+      final actions = <Widget>[];
+      if (isRendimento && e.idRend != null) {
+        final r = _rendimentos.firstWhere((x) => x.id == e.idRend);
+        actions.addAll([
+          CustomSlidableAction(
+            onPressed: (_) => _editarRendimentoDia(r),
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            child: Icon(
+              Icons.edit,
+              size: 28,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          CustomSlidableAction(
+            onPressed: (_) => _confirmarExcluirRendimento(r),
+            backgroundColor: Colors.red.shade400,
+            borderRadius: BorderRadius.circular(12),
+            child: const Icon(Icons.delete, size: 28, color: Colors.white),
+          ),
+        ]);
+      } else if (!isRendimento && e.idMov != null) {
+        actions.addAll([
+          CustomSlidableAction(
+            onPressed: (_) => _confirmarExcluirMovimento(e.idMov, e.tipo),
+            backgroundColor: Colors.red.shade400,
+            borderRadius: BorderRadius.circular(12),
+            child: const Icon(Icons.delete, size: 28, color: Colors.white),
+          ),
+        ]);
+      }
+
+      out.add(
+        actions.isEmpty
+            ? tile
+            : Slidable(
+                key: ValueKey('cdi_hist_${e.tipo}_${e.idRend ?? e.idMov ?? titulo}'),
+                endActionPane: ActionPane(
+                  motion: const DrawerMotion(),
+                  extentRatio: actions.length == 1 ? 0.22 : 0.40,
+                  children: actions,
+                ),
+                child: tile,
+              ),
       );
     }
     return out;

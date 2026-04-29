@@ -937,6 +937,12 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
     final int? idSubcategoriaPersonalizada = _subcategoriaSelecionada?.id;
 
     // 6) Monta o objeto Lancamento
+    // Regra: compras no cartão (pagamento_fatura=false) não são "contas a pagar",
+    // então devem ficar como pagas. Quem fica pendente é a própria fatura (pagamento_fatura=true).
+    final bool pagoEfetivo = _formaSelecionada == FormaPagamento.credito &&
+            _pagamentoFatura == false
+        ? true
+        : _pago;
     final Lancamento lanc;
     if (_existente != null) {
       lanc = _existente!.copyWith(
@@ -946,9 +952,11 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         dataHora: _dataLancamento,
         pagamentoFatura: _pagamentoFatura,
         categoria: categoriaEnum,
-        pago: _pago,
+        pago: pagoEfetivo,
         dataPagamento:
-            _pago ? (_existente!.dataPagamento ?? DateTime.now()) : null,
+            pagoEfetivo
+                ? (_existente!.dataPagamento ?? DateTime.now())
+                : null,
         idCartao: _cartaoSelecionado?.id,
         idConta: _contaSelecionada?.id,
         tipoMovimento: _tipoMovimento,
@@ -963,8 +971,8 @@ class _LancamentoFormBottomSheetState extends State<LancamentoFormBottomSheet> {
         dataHora: _dataLancamento,
         pagamentoFatura: _pagamentoFatura,
         categoria: categoriaEnum,
-        pago: _pago,
-        dataPagamento: _pago ? DateTime.now() : null,
+        pago: pagoEfetivo,
+        dataPagamento: pagoEfetivo ? DateTime.now() : null,
         idCartao: _cartaoSelecionado?.id,
         idConta: _contaSelecionada?.id,
         tipoMovimento: _tipoMovimento,
