@@ -977,6 +977,11 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
       appBar: AppBar(
         title: const Text('Home'),
         actions: [
+          IconButton(
+            tooltip: 'Abrir lançamentos',
+            icon: const Icon(Icons.table_rows),
+            onPressed: () => _goMain('/lancamentos'),
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
@@ -1138,14 +1143,6 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
                     ctaText: 'Ver',
                     onCta: () => _goMain('/lembretes'),
                     accent: Theme.of(context).colorScheme.tertiary,
-                  ),
-                  const SizedBox(height: 12),
-                  _actionCard(
-                    context: context,
-                    icon: Icons.table_rows,
-                    title: 'Ir para lançamentos',
-                    subtitle: 'Abrir tela de gastos/lançamentos',
-                    onTap: () => _goMain('/lancamentos'),
                   ),
                   const SizedBox(height: 12),
                   _actionCard(

@@ -122,6 +122,74 @@ class _ComparativoGanhosGastosPageState
     return null;
   }
 
+  Future<void> _abrirDetalhesDiferenca() async {
+    final r = _resumoMesBase();
+    final ganhos = r?.receitas ?? 0.0;
+    final gastos = r?.despesas ?? 0.0;
+    final saldo = ganhos - gastos;
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final tema = Theme.of(context);
+        final cor = saldo >= 0 ? _paleta[0] : _paleta[1];
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Diferença (${_nomeMes(_mesBase.month)} / ${_mesBase.year})',
+                  style: tema.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Saldo: ${_currency.format(saldo)}',
+                  style: tema.textTheme.titleSmall?.copyWith(
+                    color: cor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Ganhos'),
+                  trailing: Text(_currency.format(ganhos)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _abrirDetalhesGanhos();
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Gastos'),
+                  trailing: Text(_currency.format(gastos)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _abrirDetalhesGastos();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _abrirDetalhesGanhos() async {
     final receitasTodas =
         await _repo.getReceitasDoMes(_mesBase.year, _mesBase.month);
@@ -558,40 +626,41 @@ class _ComparativoGanhosGastosPageState
                     const SizedBox(height: 12),
 
                     // ===== CARDS TOTAIS (MÊS BASE) =====
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final twoCols = constraints.maxWidth >= 520;
-                        final ganhos = _buildCardTotal(
-                          color: _paleta[0],
-                          icon: Icons.trending_up,
-                          title: 'Total ganhos',
-                          value: _currency.format(resumoBase?.receitas ?? 0),
-                          onTap: _abrirDetalhesGanhos,
-                        );
-                        final gastos = _buildCardTotal(
-                          color: _paleta[1],
-                          icon: Icons.trending_down,
-                          title: 'Total gastos',
-                          value: _currency.format(resumoBase?.despesas ?? 0),
-                          onTap: _abrirDetalhesGastos,
-                        );
-
-                        if (!twoCols) {
-                          return Column(
-                            children: [
-                              ganhos,
-                              const SizedBox(height: 10),
-                              gastos,
-                            ],
-                          );
-                        }
-
-                        return Row(
-                          children: [
-                            Expanded(child: ganhos),
-                            const SizedBox(width: 10),
-                            Expanded(child: gastos),
-                          ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildCardTotal(
+                            color: _paleta[0],
+                            icon: Icons.trending_up,
+                            title: 'Total ganhos',
+                            value: _currency.format(resumoBase?.receitas ?? 0),
+                            onTap: _abrirDetalhesGanhos,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildCardTotal(
+                            color: _paleta[1],
+                            icon: Icons.trending_down,
+                            title: 'Total gastos',
+                            value: _currency.format(resumoBase?.despesas ?? 0),
+                            onTap: _abrirDetalhesGastos,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Builder(
+                      builder: (context) {
+                        final saldo = (resumoBase?.receitas ?? 0) -
+                            (resumoBase?.despesas ?? 0);
+                        final corSaldo = saldo >= 0 ? _paleta[0] : _paleta[1];
+                        return _buildCardTotal(
+                          color: corSaldo,
+                          icon: Icons.compare_arrows,
+                          title: 'Diferença (saldo)',
+                          value: _currency.format(saldo),
+                          onTap: _abrirDetalhesDiferenca,
                         );
                       },
                     ),
