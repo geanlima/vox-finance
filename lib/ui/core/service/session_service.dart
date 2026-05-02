@@ -7,6 +7,8 @@ class SessionService {
   static const _kIsLoggedIn = 'isLoggedIn';
   static const _kLoginType = 'loginType'; // 'local' | 'firebase'
   static const _kUid = 'uid'; // firebase uid (quando loginType=firebase)
+  /// Preferência da UI "Manter conectado" (login local e Google).
+  static const _kRememberMePref = 'loginRememberMePref';
 
   Future<void> saveLogin({required String loginType, String? uid}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,5 +41,15 @@ class SessionService {
   Future<String?> getUid() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_kUid);
+  }
+
+  Future<bool> getRememberMePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kRememberMePref) ?? false;
+  }
+
+  Future<void> setRememberMePreference(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kRememberMePref, value);
   }
 }

@@ -70,8 +70,10 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
     }
   }
 
-  void _toggleRememberMe(bool? value) {
-    setState(() => _rememberMe = value ?? false);
+  Future<void> _toggleRememberMe(bool? value) async {
+    final v = value ?? false;
+    setState(() => _rememberMe = v);
+    await SessionService.instance.setRememberMePreference(v);
   }
 
   Future<void> _loginLocal() async {
@@ -140,8 +142,9 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
     setState(() => _isLoading = true);
 
     try {
-      // dica: garantir seletor de conta
-      await FirebaseAuthService.instance.signOut();
+      // O seletor de conta é forçado via GoogleSignIn.signOut dentro do serviço.
+      // Não chamar FirebaseAuth.signOut aqui: limpa a persistência e, se o
+      // usuário cancelar o fluxo, fica deslogado sem necessidade.
 
       final user = await FirebaseAuthService.instance.signInWithGoogle();
 
@@ -173,10 +176,22 @@ class _LoginUnificadoPageState extends State<LoginUnificadoPage> {
     }
   }
 
+  Future<void> _loadRememberMePreference() async {
+    final v = await SessionService.instance.getRememberMePreference();
+    if (!mounted) return;
+    setState(() => _rememberMe = v);
+  }
+
+  Future<void> _bootstrapLoginScreen() async {
+    await _loadRememberMePreference();
+    if (!mounted) return;
+    await _checkAlreadyLogged();
+  }
+
   @override
   void initState() {
     super.initState();
-    _checkAlreadyLogged();
+    _bootstrapLoginScreen();
   }
 
   @override

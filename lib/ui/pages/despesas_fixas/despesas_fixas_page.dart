@@ -70,7 +70,7 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
       case DespesaFixaSituacaoMes.inativa:
         return '$mes: Inativa (não entra no fechamento)';
       case DespesaFixaSituacaoMes.quitado:
-        return '$mes: Quitado';
+        return '$mes: Quitado · deslize o card à direita para reabrir';
       case DespesaFixaSituacaoMes.pendente:
         return '$mes: Não quitado';
       case DespesaFixaSituacaoMes.semLancamento:
@@ -376,6 +376,47 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
     );
   }
 
+  /// Desfaz o pagamento do mês (conta FIXA_* + lançamento gerado na quitação).
+  Future<void> _reabrirMes(DespesaFixaMesLinha linha) async {
+    final conta = linha.conta;
+    if (conta == null || !conta.pago) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Reabrir este mês?'),
+          content: Text(
+            '${linha.fixa.descricao}\n\n'
+            'O pagamento será desfeito: a conta volta a ficar em aberto e o '
+            'lançamento desta quitação será removido ou ajustado.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reabrir'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true) return;
+
+    await _pagamentoService.reabrirPagamento(conta);
+    await _load();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Mês reaberto. Você pode registrar o pagamento de novo quando quiser.'),
+      ),
+    );
+  }
+
   List<CartaoCredito> _filtrarCartoesParaForma(
     List<CartaoCredito> todos,
     FormaPagamento forma,
@@ -659,22 +700,35 @@ class _DespesasFixasPageState extends State<DespesasFixasPage> {
                 final theme = Theme.of(context);
                 final primary = theme.colorScheme.primary;
                 final danger = Colors.red.shade400;
+                final podeReabrir = linha.conta?.pago == true;
                 return Slidable(
                   key: ValueKey(d.id ?? i),
                   startActionPane: ActionPane(
                     motion: const DrawerMotion(),
                     extentRatio: 0.22,
                     children: [
-                      CustomSlidableAction(
-                        onPressed: (_) => _pagarMes(d),
-                        backgroundColor: Colors.green.shade600,
-                        borderRadius: BorderRadius.circular(12),
-                        child: const Icon(
-                          Icons.check_circle,
-                          size: 28,
-                          color: Colors.white,
+                      if (podeReabrir)
+                        CustomSlidableAction(
+                          onPressed: (_) => _reabrirMes(linha),
+                          backgroundColor: Colors.orange.shade800,
+                          borderRadius: BorderRadius.circular(12),
+                          child: const Icon(
+                            Icons.undo,
+                            size: 28,
+                            color: Colors.white,
+                          ),
+                        )
+                      else
+                        CustomSlidableAction(
+                          onPressed: (_) => _pagarMes(d),
+                          backgroundColor: Colors.green.shade600,
+                          borderRadius: BorderRadius.circular(12),
+                          child: const Icon(
+                            Icons.check_circle,
+                            size: 28,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   endActionPane: ActionPane(
