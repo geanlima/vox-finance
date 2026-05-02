@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:vox_finance/v2/presentation/pages/calendario_vencimentos/calendario_vencimentos_page.dart';
 import 'package:vox_finance/v2/presentation/pages/categorias/categorias_page.dart';
 import 'package:vox_finance/v2/presentation/pages/dividas/minhas_dividas_page.dart';
+import 'package:vox_finance/v2/presentation/pages/ia_chat/ia_chat_page.dart';
 import 'package:vox_finance/v2/presentation/pages/pessoas_devedoras/pessoas_que_me_devem_page.dart';
 
 import '../../presentation/pages/home/home_page.dart';
@@ -46,6 +47,7 @@ class AppRouterV2 {
 
   static const calendarioVencimentos = '/calendario-vencimentos';
   static const categorias = '/categorias';
+  static const iaChat = IaChatPage.routeName;
 
   static final routes = <String, WidgetBuilder>{
     home: (_) => const HomePageV2(),
@@ -72,5 +74,7 @@ class AppRouterV2 {
     desafioFinanceiro: (_) => const DesafioFinanceiroPage(),
 
     investimentos: (_) => const InvestimentosPage(),
+
+    iaChat: (_) => const IaChatPage(),
   };
 }
