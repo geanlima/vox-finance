@@ -11,6 +11,11 @@ class AppParametrosService {
 
   static const _kDataInicioUsoMs = 'app_data_inicio_uso_ms';
   static const _kApiBaseUrl = 'app_api_base_url';
+  static const _kIaChatApiBaseUrl = 'app_ia_chat_api_base_url';
+
+  /// URL pública padrão do backend FinTrack AI (Azure).
+  static const String defaultIaChatApiBaseUrl =
+      'https://fintrackai-backend.azurewebsites.net';
 
   /// Primeiro dia em que o uso “oficial” começa (hora zerada, data local).
   Future<DateTime?> getDataInicioUso() async {
@@ -49,6 +54,35 @@ class AppParametrosService {
   Future<void> limparApiBaseUrl() async {
     final p = await SharedPreferences.getInstance();
     await p.remove(_kApiBaseUrl);
+  }
+
+  /// URL base usada pelo chat (`POST /api/Chat`). Se não houver valor salvo,
+  /// retorna [defaultIaChatApiBaseUrl].
+  Future<String> getIaChatApiBaseUrl() async {
+    final custom = await getIaChatApiBaseUrlOverride();
+    return (custom != null && custom.isNotEmpty)
+        ? custom
+        : defaultIaChatApiBaseUrl;
+  }
+
+  /// Valor salvo pelo usuário, ou `null` quando vale o padrão.
+  Future<String?> getIaChatApiBaseUrlOverride() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getString(_kIaChatApiBaseUrl);
+    if (raw == null) return null;
+    final v = raw.trim();
+    return v.isEmpty ? null : v;
+  }
+
+  Future<void> setIaChatApiBaseUrl(String url) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kIaChatApiBaseUrl, url.trim());
+  }
+
+  /// Remove override; o app volta a usar [defaultIaChatApiBaseUrl].
+  Future<void> limparIaChatApiBaseUrl() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kIaChatApiBaseUrl);
   }
 
   /// O mês de [referencia] (esperado dia 1) termina antes da data de início.

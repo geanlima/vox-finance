@@ -25,6 +25,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
   DateTime? _dataInicio;
   String? _apiBaseUrl;
   final _apiCtrl = TextEditingController();
+  final _iaChatCtrl = TextEditingController();
   bool _testandoApi = false;
 
   bool _backupAutoEnabled = false;
@@ -44,6 +45,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
   Future<void> _load() async {
     final d = await AppParametrosService.instance.getDataInicioUso();
     final api = await AppParametrosService.instance.getApiBaseUrl();
+    final iaChatUrl = await AppParametrosService.instance.getIaChatApiBaseUrl();
     final enabled = await BackupAutoCloudService.instance.isEnabled();
     final mins = await BackupAutoCloudService.instance.timeMinutes();
     final (lastRun, lastOk, lastErr) =
@@ -53,6 +55,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
       _dataInicio = d;
       _apiBaseUrl = api;
       _apiCtrl.text = api ?? '';
+      _iaChatCtrl.text = iaChatUrl;
       _backupAutoEnabled = enabled;
       if (mins != null) {
         _backupAutoTime = TimeOfDay(hour: mins ~/ 60, minute: mins % 60);
@@ -67,7 +70,46 @@ class _ParametrosPageState extends State<ParametrosPage> {
   @override
   void dispose() {
     _apiCtrl.dispose();
+    _iaChatCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _salvarIaChatUrl() async {
+    final raw = _iaChatCtrl.text;
+    if (!_apiUrlValida(raw) || raw.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe uma URL válida (http/https).'),
+        ),
+      );
+      return;
+    }
+    final v = raw.trim().replaceAll(RegExp(r'/+$'), '');
+    if (v == AppParametrosService.defaultIaChatApiBaseUrl) {
+      await AppParametrosService.instance.limparIaChatApiBaseUrl();
+    } else {
+      await AppParametrosService.instance.setIaChatApiBaseUrl(v);
+    }
+    if (!mounted) return;
+    final resolved = await AppParametrosService.instance.getIaChatApiBaseUrl();
+    if (!mounted) return;
+    setState(() => _iaChatCtrl.text = resolved);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('URL do FinTrack IA salva.')),
+    );
+  }
+
+  Future<void> _restaurarPadraoIaChat() async {
+    await AppParametrosService.instance.limparIaChatApiBaseUrl();
+    if (!mounted) return;
+    setState(() {
+      _iaChatCtrl.text = AppParametrosService.defaultIaChatApiBaseUrl;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Endereço padrão (Azure) restaurado.'),
+      ),
+    );
   }
 
   Future<void> _escolherData() async {
@@ -563,6 +605,62 @@ class _ParametrosPageState extends State<ParametrosPage> {
                                   onPressed: _limpar,
                                   child: const Text('Remover'),
                                 ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'FinTrack IA — chat',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'URL base da API usada pelo chat (rota POST /api/Chat). '
+                            'O padrão é o backend no Azure; altere só se usar outro ambiente.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _iaChatCtrl,
+                            keyboardType: TextInputType.url,
+                            textInputAction: TextInputAction.done,
+                            decoration: InputDecoration(
+                              labelText: 'URL base do FinTrack IA',
+                              hintText: AppParametrosService.defaultIaChatApiBaseUrl,
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _restaurarPadraoIaChat,
+                                  child: const Text('Usar padrão Azure'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _salvarIaChatUrl,
+                                  icon: const Icon(Icons.save_outlined, size: 20),
+                                  label: const Text('Salvar'),
+                                ),
+                              ),
                             ],
                           ),
                         ],
