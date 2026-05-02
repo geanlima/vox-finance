@@ -1,5 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -7,10 +9,9 @@ import 'package:vox_finance/ui/core/service/session_service.dart';
 import 'package:vox_finance/ui/pages/auth/login_unificado_page.dart';
 import 'package:vox_finance/main_v1.dart' show VoxFinanceApp;
 
-import 'package:vox_finance/v2/app/di/injector.dart' as v2;
-import 'package:vox_finance/v2/app/vox_finance_v2_app.dart';
 import 'package:vox_finance/ui/core/service/app_version_service.dart';
 
+/// Ponto único de entrada após login: sempre a app V1 (`lib/ui`, `main_v1.dart`).
 class AppGatePage extends StatefulWidget {
   const AppGatePage({super.key});
 
@@ -21,25 +22,34 @@ class AppGatePage extends StatefulWidget {
 class _AppGatePageState extends State<AppGatePage> {
   bool _loading = true;
   bool _isLogged = false;
-  String? _version; // v1 | v2 | null
-  bool _bootedOnce = false;
 
   Future<User?> _getFirebaseUserWithWarmup({
-    // Em alguns aparelhos, a restauração de sessão do Firebase no cold start
-    // leva alguns segundos a mais. Se o timeout for curto, o app cai no login
-    // mesmo com sessão válida.
-    Duration timeout = const Duration(seconds: 8),
+    // No cold start, o primeiro evento de authStateChanges pode ser null antes
+    // da persistência nativa terminar de restaurar o usuário — especialmente em
+    // aparelhos físicos. Não basta usar .first: isso "congela" como deslogado.
+    Duration streamTimeout = const Duration(seconds: 12),
+    Duration graceAfterNullEvent = const Duration(seconds: 2),
   }) async {
     final auth = FirebaseAuth.instance;
-    final cur = auth.currentUser;
-    if (cur != null) return cur;
+    if (auth.currentUser != null) return auth.currentUser;
 
+    User? firstEvent;
     try {
-      // Em cold start, o Firebase pode demorar um pouco para restaurar a sessão.
-      return await auth.authStateChanges().first.timeout(timeout);
-    } catch (_) {
+      firstEvent = await auth.authStateChanges().first.timeout(streamTimeout);
+    } on TimeoutException {
       return auth.currentUser;
     }
+
+    if (firstEvent != null) return firstEvent;
+
+    // firstEvent == null: ainda pode estar restaurando OU sessão inexistente.
+    final until = DateTime.now().add(graceAfterNullEvent);
+    while (DateTime.now().isBefore(until)) {
+      final u = auth.currentUser;
+      if (u != null) return u;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+    return auth.currentUser;
   }
 
   @override
@@ -48,34 +58,19 @@ class _AppGatePageState extends State<AppGatePage> {
     _boot();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    // ✅ garante que ao voltar para /gate (após trocar versão) ele recarrega tudo
-    if (_bootedOnce) {
-      _boot();
-    }
-    _bootedOnce = true;
-  }
-
   Future<void> _boot() async {
     if (!mounted) return;
     setState(() => _loading = true);
 
     final logged = await _checkLogged();
-    var version = logged ? await AppVersionService.getSelectedVersion() : null;
-
-    // ✅ padrão: entra direto na V1 (Home) sem pedir escolha
-    if (logged && version == null) {
-      version = 'v1';
+    if (logged) {
+      // Sempre V1: normaliza prefs antigas (v2 / null).
       await AppVersionService.setSelectedVersion('v1');
     }
 
     if (!mounted) return;
     setState(() {
       _isLogged = logged;
-      _version = version; // null => vai escolher
       _loading = false;
     });
   }
@@ -125,16 +120,10 @@ class _AppGatePageState extends State<AppGatePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // 1) não está logado => login
     if (!_isLogged) {
       return LoginUnificadoPage(onLoginOk: _onLoginOk);
     }
 
-    // 2) logado e sem versão => por segurança, entra na V1
-    if (_version == null) return const _V1Entry();
-
-    // 3) abre app escolhido
-    if (_version == 'v2') return const _V2Entry();
     return const _V1Entry();
   }
 }
@@ -144,30 +133,4 @@ class _V1Entry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const VoxFinanceApp();
-}
-
-class _V2Entry extends StatelessWidget {
-  const _V2Entry();
-
-  static final Future<void> _initFuture = v2.InjectorV2.init();
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _initFuture,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snap.hasError) {
-          return Scaffold(
-            body: Center(child: Text('Erro init V2: ${snap.error}')),
-          );
-        }
-        return const VoxFinanceV2App();
-      },
-    );
-  }
 }

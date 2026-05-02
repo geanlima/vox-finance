@@ -8,8 +8,11 @@ import 'package:vox_finance/ui/core/service/app_version_service.dart';
 import 'package:vox_finance/ui/core/service/firebase_auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
+import 'package:path/path.dart' as p;
+import 'package:share_plus/share_plus.dart';
 
 // ✅ ajuste o path conforme seu projeto
+import 'package:vox_finance/ui/data/database/database_backup_service.dart';
 import 'package:vox_finance/ui/data/service/backup/backup_manager.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
 
@@ -146,6 +149,48 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
     }
   }
 
+  Future<void> _exportarBancoECompartilhar() async {
+    setState(() => _loading = true);
+    try {
+      final file = await DatabaseBackupService.exportarParaCompartilhamento();
+      if (!mounted) return;
+      if (file == null) {
+        _snack(
+          'Não foi possível gerar o backup. Verifique se o banco existe e tente de novo.',
+        );
+        return;
+      }
+
+      // Nome explícito com `.db` — alguns apps (ex.: WhatsApp) somem com a extensão
+      // se o MIME for muito específico; `octet-stream` costuma preservar o nome.
+      var nome = p.basename(file.path);
+      if (!nome.toLowerCase().endsWith('.db')) {
+        nome = '$nome.db';
+      }
+      // O Google Drive (e outros destinos "Salvar em…") costumam usar [subject]
+      // como nome do arquivo no diálogo — precisa ser o mesmo basename com `.db`.
+      await Share.shareXFiles(
+        [
+          XFile(
+            file.path,
+            mimeType: 'application/octet-stream',
+            name: nome,
+          ),
+        ],
+        subject: nome,
+        text:
+            'Backup Vox Finance — cópia completa do banco (.db).\n'
+            'Use apenas para restaurar no app.',
+      );
+    } catch (e) {
+      if (mounted) {
+        _snack('Erro ao exportar ou compartilhar: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _fazerBackup() async {
     if (_uid.isEmpty) {
       _snack('Você precisa estar logado para usar backup na nuvem.');
@@ -274,6 +319,42 @@ class _BackupRestoreCloudPageState extends State<BackupRestoreCloudPage> {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Backup local (arquivo .db)',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Inclui todo o SQLite do app (lançamentos e cadastros: categorias, '
+                      'contas, cartões, despesas fixas, etc.). O arquivo sai como '
+                      'vox_finance_AAAA-MM-DD_HH-mm-ss.db. Cópia segura (checkpoint + VACUUM), '
+                      'validada antes de compartilhar; o app reabre o banco na sequência.',
+                      style: TextStyle(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.75),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _loading ? null : _exportarBancoECompartilhar,
+                      icon: const Icon(Icons.share),
+                      label: const Text('Exportar e compartilhar (ex.: WhatsApp)'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             const SizedBox(height: 12),
 
             Card(

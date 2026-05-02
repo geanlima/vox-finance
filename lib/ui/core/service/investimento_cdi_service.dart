@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:vox_finance/ui/core/enum/forma_pagamento.dart';
@@ -11,6 +12,24 @@ class InvestimentoCdiService {
   final InvestimentoCdiRendimentosRepository _rendRepo =
       InvestimentoCdiRendimentosRepository();
   final LancamentoRepository _lancRepo = LancamentoRepository();
+
+  /// Evita corrida (ex.: Home + tela CDI): dois fluxos não processam o mesmo dia em paralelo.
+  static final Map<int, Future<void>> _filaPorCarteira = {};
+
+  Future<T> _executarEmSequenciaPorCarteira<T>(
+    int idCarteira,
+    Future<T> Function() fn,
+  ) async {
+    final anterior = _filaPorCarteira[idCarteira] ?? Future<void>.value();
+    final liberado = Completer<void>();
+    _filaPorCarteira[idCarteira] = liberado.future;
+    try {
+      await anterior;
+      return await fn();
+    } finally {
+      liberado.complete();
+    }
+  }
 
   bool _ehFimDeSemana(DateTime d) =>
       d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
@@ -30,11 +49,29 @@ class InvestimentoCdiService {
   }
 
   /// Processa rendimentos diários até hoje (inclusive), gerando lançamentos
-  /// na conta bancária configurada. Não duplica dias.
+  /// na conta bancária configurada. Idempotente por dia ([UNIQUE] em
+  /// `investimento_cdi_rendimentos`): não cria segundo lançamento se o dia
+  /// já constar no histórico (inclui conflito de insert ignorado).
   ///
   /// Observação: feriados ainda dependem de um calendário; por enquanto, a flag
   /// é persistida, mas não filtra dias além de fim de semana.
   Future<int> processarAteHoje({
+    required int idCarteira,
+    required String nomeCarteira,
+    double? taxaDiariaFixa,
+    double aporteFixo = 0,
+  }) {
+    return _executarEmSequenciaPorCarteira(idCarteira, () async {
+      return _processarAteHojeImpl(
+        idCarteira: idCarteira,
+        nomeCarteira: nomeCarteira,
+        taxaDiariaFixa: taxaDiariaFixa,
+        aporteFixo: aporteFixo,
+      );
+    });
+  }
+
+  Future<int> _processarAteHojeImpl({
     required int idCarteira,
     required String nomeCarteira,
     double? taxaDiariaFixa,
@@ -65,6 +102,16 @@ class InvestimentoCdiService {
 
     while (!dia.isAfter(diaHoje)) {
       final diaRef = DateTime(dia.year, dia.month, dia.day);
+
+      final jaNoHistorico = await _rendRepo.obterPorCarteiraEData(
+        idCarteira,
+        diaRef,
+      );
+      if (jaNoHistorico != null) {
+        saldo += jaNoHistorico.rendimentoValor;
+        dia = dia.add(const Duration(days: 1));
+        continue;
+      }
 
       // CDI rende apenas em dias úteis. No fim de semana:
       // - se "considerar fim de semana" estiver desligado → pula o dia

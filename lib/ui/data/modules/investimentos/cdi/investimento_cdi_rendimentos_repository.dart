@@ -116,6 +116,35 @@ class InvestimentoCdiRendimentosRepository {
     return DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
+  /// Mesmo critério de [inserir]: dia civil local em ms (00:00).
+  Future<InvestimentoCdiRendimentoRow?> obterPorCarteiraEData(
+    int idCarteira,
+    DateTime data,
+  ) async {
+    final db = await _db;
+    final dia = DateTime(data.year, data.month, data.day);
+    final rows = await db.query(
+      _tbl,
+      where: 'id_carteira = ? AND data = ?',
+      whereArgs: [idCarteira, dia.millisecondsSinceEpoch],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+
+    double d(Object? v) => (v as num?)?.toDouble() ?? 0.0;
+    int i(Object? v) => (v as num?)?.toInt() ?? 0;
+    final m = rows.first;
+    return InvestimentoCdiRendimentoRow(
+      id: i(m['id']),
+      idCarteira: i(m['id_carteira']),
+      data: DateTime.fromMillisecondsSinceEpoch(i(m['data'])),
+      base: d(m['base']),
+      pctCdi: d(m['pct_cdi']),
+      rendimentoValor: d(m['rendimento_valor']),
+      idLancamento: m['id_lancamento'] as int?,
+    );
+  }
+
   Future<void> inserir({
     required int idCarteira,
     required DateTime data,

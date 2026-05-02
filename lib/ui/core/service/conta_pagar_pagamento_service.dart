@@ -30,12 +30,15 @@ class ContaPagarPagamentoService {
   }) async {
     final agora = dataPagamento ?? DateTime.now();
 
-    // 0) Cartão de crédito → só marca conta a pagar como paga
+    final bool ehDespesaFixa = parcela.grupoParcelas.startsWith('FIXA_');
+
+    // 0) Cartão de crédito (conta “de fatura” / avulsa) → só marca paga, sem lançamento.
+    // Despesas fixas no crédito precisam de lançamento (compra no cartão), como débito/pix.
     final bool ehCartao =
         parcela.formaPagamento == FormaPagamento.credito &&
         parcela.idCartao != null;
 
-    if (ehCartao) {
+    if (ehCartao && !ehDespesaFixa) {
       if (parcela.id != null) {
         await _contaRepo.marcarParcelaComoPaga(parcela.id!, true);
       }
@@ -78,7 +81,6 @@ class ContaPagarPagamentoService {
     }
 
     // 3) Categoria/flags para despesas fixas (geradas)
-    final bool ehDespesaFixa = parcela.grupoParcelas.startsWith('FIXA_');
     final catDespesaFixa =
         ehDespesaFixa
             ? await _catPersRepo.getOrCreate(
@@ -123,15 +125,18 @@ class ContaPagarPagamentoService {
   /// Reabre uma parcela que foi marcada como paga.
   ///
   /// Regra:
-  /// - Cartão de crédito (fatura): **não mexe em lançamentos**, apenas reabre a conta a pagar.
+  /// - Cartão de crédito (fatura / conta avulsa): **não mexe em lançamentos**, apenas reabre a conta a pagar.
+  /// - Despesa fixa no crédito: segue o fluxo comum (remove lançamento pago, etc.).
   /// - Outras formas: remove o lançamento "pago" criado no momento do pagamento e recria
   ///   o lançamento futuro na data de vencimento, depois reabre a conta a pagar.
   Future<void> reabrirPagamento(ContaPagar parcela) async {
-    // 0) Cartão de crédito → só reabre conta a pagar
+    final bool ehDespesaFixa = parcela.grupoParcelas.startsWith('FIXA_');
+
+    // 0) Cartão de crédito (não fixa) → só reabre conta a pagar
     final bool ehCartao =
         parcela.formaPagamento == FormaPagamento.credito &&
         parcela.idCartao != null;
-    if (ehCartao) {
+    if (ehCartao && !ehDespesaFixa) {
       if (parcela.id != null) {
         await _contaRepo.marcarParcelaComoPaga(parcela.id!, false);
       }
