@@ -28,6 +28,7 @@ import 'package:vox_finance/ui/pages/monitoramento_precos/monitoramento_precos_p
 import 'package:vox_finance/ui/pages/planejamentos/planejamentos_despesa_list_page.dart';
 import 'package:vox_finance/ui/pages/pessoas_me_devem/pessoas_me_devem_page.dart';
 import 'package:vox_finance/ui/pages/comparativo/comparativo_ganhos_gastos_page.dart';
+import 'package:vox_finance/v2/presentation/pages/ia_chat/ia_chat_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final String currentRoute;
@@ -495,6 +496,11 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.tune_outlined,
                   title: 'Parâmetros',
                   route: ParametrosPage.routeName,
+                ),
+                _subItem(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'FinTrack IA',
+                  route: IaChatPage.routeName,
                 ),
               ],
             ),

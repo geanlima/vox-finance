@@ -31,6 +31,7 @@ import 'package:vox_finance/ui/pages/metricas/metricas_page.dart';
 import 'package:vox_finance/ui/pages/metricas/metricas_analises_page.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
+import 'package:vox_finance/v2/presentation/pages/ia_chat/ia_chat_page.dart';
 
 class _FaturaCartaoHomeItem {
   final int idCartao;
@@ -981,6 +982,11 @@ class _HomeDashboardPageState extends State<HomeDashboardPage> {
             tooltip: 'Abrir lançamentos',
             icon: const Icon(Icons.table_rows),
             onPressed: () => _goMain('/lancamentos'),
+          ),
+          IconButton(
+            tooltip: 'FinTrack IA',
+            icon: const Icon(Icons.auto_awesome_outlined),
+            onPressed: () => _goMain(IaChatPage.routeName),
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],

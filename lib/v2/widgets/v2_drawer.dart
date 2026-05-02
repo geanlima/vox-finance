@@ -314,6 +314,12 @@ class _V2DrawerState extends State<V2Drawer> {
                     icon: Icons.settings_outlined,
                     title: '⚙️ Configurações',
                     children: [
+                      _subItem(
+                        context,
+                        icon: Icons.auto_awesome_outlined,
+                        title: 'FinTrack IA',
+                        route: AppRouterV2.iaChat,
+                      ),
                     ],
                   ),
 
