@@ -574,10 +574,10 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
     }
 
     final resumos = <ParcelamentoResumo>[];
-    final finalizandoMesPorOrigem = <String, double>{};
     final finalizandoUltimaParcelaPorMes = <int, double>{};
     final finalizandoUltimaParcelaPorMesPorOrigem = <int, Map<String, double>>{};
     final ultimoVencPorGrupo = <String, DateTime>{};
+    final chaveHojeMes = _chaveAnoMes(DateTime(agora.year, agora.month, 1));
 
     for (final entry in mapa.entries) {
       final grupo = entry.key;
@@ -592,44 +592,39 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
       final primeiro = itens.first.dataVencimento;
       final ultimo = itens.last.dataVencimento;
       ultimoVencPorGrupo[grupo] = ultimo;
+      final chaveFinaliza = _chaveAnoMes(DateTime(ultimo.year, ultimo.month, 1));
 
-      // Filtros (aplicados por GRUPO)
-      if (_filtro == ParcelamentosFiltro.emAberto && pendente <= 0) continue;
+      // Totais do card "finalizando" + colunas dos próximos meses: qualquer grupo
+      // com pendência e último vencimento neste mês ou depois (última parcela ainda não paga).
       if (_filtro == ParcelamentosFiltro.finalizandoMes) {
-        final chaveFinaliza = _chaveAnoMes(DateTime(ultimo.year, ultimo.month, 1));
-        final chaveAgora = _chaveAnoMes(DateTime(agora.year, agora.month, 1));
         final temPendente = pendente > 0.009;
-        if (!temPendente) continue;
-        // inclui o mês atual e os próximos meses (para ver o que termina em cada mês)
-        if (chaveFinaliza < chaveAgora) continue;
+        if (temPendente && chaveFinaliza >= chaveHojeMes) {
+          final ultimaParcela = itens.last;
+          if (!ultimaParcela.pago) {
+            final idL = ultimaParcela.idLancamento;
+            final k = _chaveOrigem(
+              ultimaParcela,
+              idL != null ? lancPorId[idL] : null,
+            );
+            finalizandoUltimaParcelaPorMes[chaveFinaliza] =
+                (finalizandoUltimaParcelaPorMes[chaveFinaliza] ?? 0.0) +
+                    ultimaParcela.valor;
+            finalizandoUltimaParcelaPorMesPorOrigem.putIfAbsent(
+              chaveFinaliza,
+              () => <String, double>{},
+            );
+            final bucket = finalizandoUltimaParcelaPorMesPorOrigem[chaveFinaliza]!;
+            bucket[k] = (bucket[k] ?? 0.0) + ultimaParcela.valor;
+          }
+        }
       }
 
-      // Se o filtro ativo for "finalizando este mês", o detalhamento por origem
-      // precisa refletir somente os grupos exibidos.
+      // Lista: no filtro "finalizando", só compras cujo **término** é o mês civil
+      // atual — alinhado ao "Total finalizando este mês" do topo.
+      if (_filtro == ParcelamentosFiltro.emAberto && pendente <= 0) continue;
       if (_filtro == ParcelamentosFiltro.finalizandoMes) {
-        // "Finalizando" = somente a ÚLTIMA parcela do grupo no mês de término.
-        final ultimaParcela = itens.last;
-        if (!ultimaParcela.pago) {
-          final chaveFinaliza =
-              _chaveAnoMes(DateTime(ultimo.year, ultimo.month, 1));
-          final idL = ultimaParcela.idLancamento;
-          final k = _chaveOrigem(
-            ultimaParcela,
-            idL != null ? lancPorId[idL] : null,
-          );
-          finalizandoMesPorOrigem[k] =
-              (finalizandoMesPorOrigem[k] ?? 0.0) + ultimaParcela.valor;
-
-          finalizandoUltimaParcelaPorMes[chaveFinaliza] =
-              (finalizandoUltimaParcelaPorMes[chaveFinaliza] ?? 0.0) +
-                  ultimaParcela.valor;
-          finalizandoUltimaParcelaPorMesPorOrigem.putIfAbsent(
-            chaveFinaliza,
-            () => <String, double>{},
-          );
-          final bucket = finalizandoUltimaParcelaPorMesPorOrigem[chaveFinaliza]!;
-          bucket[k] = (bucket[k] ?? 0.0) + ultimaParcela.valor;
-        }
+        if (pendente <= 0.009) continue;
+        if (chaveFinaliza != chaveHojeMes) continue;
       }
 
       resumos.add(
@@ -1057,7 +1052,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
             tooltip: switch (_filtro) {
               ParcelamentosFiltro.emAberto => 'Mostrando: em aberto',
               ParcelamentosFiltro.finalizandoMes =>
-                'Mostrando: finalizando (próximos meses)',
+                'Lista: compras que terminam neste mês (valores dos próximos meses no card)',
               ParcelamentosFiltro.todos => 'Mostrando: todos',
             },
             onPressed:
@@ -1724,7 +1719,7 @@ class _ParcelamentosPageState extends State<ParcelamentosPage> {
                                 ParcelamentosFiltro.emAberto =>
                                   'Nenhum parcelamento em aberto.',
                                 ParcelamentosFiltro.finalizandoMes =>
-                                  'Nenhuma compra finalizando nos próximos meses.',
+                                  'Nenhuma compra com última parcela neste mês.',
                                 ParcelamentosFiltro.todos =>
                                   'Nenhum parcelamento encontrado.',
                               },
