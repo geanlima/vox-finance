@@ -5,6 +5,7 @@ import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
 import 'package:vox_finance/ui/core/service/backup_auto_cloud_service.dart';
 import 'package:vox_finance/ui/core/service/notifications_service.dart';
 import 'package:vox_finance/ui/data/modules/cartoes_credito/cartao_credito_repository.dart';
+import 'package:vox_finance/ui/data/models/cartao_credito.dart';
 import 'package:vox_finance/ui/data/models/fatura_geracao_opcao.dart';
 import 'package:vox_finance/ui/widgets/app_drawer.dart';
 import 'package:vox_finance/ui/core/layout/list_scroll_padding.dart';
@@ -25,6 +26,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
   DateTime? _dataInicio;
   String? _apiBaseUrl;
   final _apiCtrl = TextEditingController();
+  final _iaChatCtrl = TextEditingController();
   bool _testandoApi = false;
 
   bool _backupAutoEnabled = false;
@@ -44,6 +46,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
   Future<void> _load() async {
     final d = await AppParametrosService.instance.getDataInicioUso();
     final api = await AppParametrosService.instance.getApiBaseUrl();
+    final iaChatUrl = await AppParametrosService.instance.getIaChatApiBaseUrl();
     final enabled = await BackupAutoCloudService.instance.isEnabled();
     final mins = await BackupAutoCloudService.instance.timeMinutes();
     final (lastRun, lastOk, lastErr) =
@@ -53,6 +56,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
       _dataInicio = d;
       _apiBaseUrl = api;
       _apiCtrl.text = api ?? '';
+      _iaChatCtrl.text = iaChatUrl;
       _backupAutoEnabled = enabled;
       if (mins != null) {
         _backupAutoTime = TimeOfDay(hour: mins ~/ 60, minute: mins % 60);
@@ -67,7 +71,46 @@ class _ParametrosPageState extends State<ParametrosPage> {
   @override
   void dispose() {
     _apiCtrl.dispose();
+    _iaChatCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _salvarIaChatUrl() async {
+    final raw = _iaChatCtrl.text;
+    if (!_apiUrlValida(raw) || raw.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe uma URL válida (http/https).'),
+        ),
+      );
+      return;
+    }
+    final v = raw.trim().replaceAll(RegExp(r'/+$'), '');
+    if (v == AppParametrosService.defaultIaChatApiBaseUrl) {
+      await AppParametrosService.instance.limparIaChatApiBaseUrl();
+    } else {
+      await AppParametrosService.instance.setIaChatApiBaseUrl(v);
+    }
+    if (!mounted) return;
+    final resolved = await AppParametrosService.instance.getIaChatApiBaseUrl();
+    if (!mounted) return;
+    setState(() => _iaChatCtrl.text = resolved);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('URL do FinTrack IA salva.')),
+    );
+  }
+
+  Future<void> _restaurarPadraoIaChat() async {
+    await AppParametrosService.instance.limparIaChatApiBaseUrl();
+    if (!mounted) return;
+    setState(() {
+      _iaChatCtrl.text = AppParametrosService.defaultIaChatApiBaseUrl;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Endereço padrão (Azure) restaurado.'),
+      ),
+    );
   }
 
   Future<void> _escolherData() async {
@@ -199,122 +242,16 @@ class _ParametrosPageState extends State<ParametrosPage> {
   }
 
   Future<void> _gerarFaturasExistentes() async {
-    setState(() => _gerandoFaturas = true);
     try {
-      final opcoes = await _cartaoRepo.listarOpcoesGeracaoFaturas();
-      if (!mounted) return;
-      if (opcoes.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nenhuma fatura encontrada para gerar.')),
-        );
-        return;
-      }
-
-      final selecionadas = <String>{for (final o in opcoes) o.key};
-
-      final confirmar = await showDialog<bool>(
+      final selecionadas = await showDialog<List<FaturaGeracaoOpcao>>(
         context: context,
-        builder: (ctx) {
-          return StatefulBuilder(
-            builder: (ctx, setModal) {
-              return AlertDialog(
-                title: const Text('Gerar faturas por período'),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => setModal(() {
-                                selecionadas
-                                  ..clear()
-                                  ..addAll(opcoes.map((e) => e.key));
-                              }),
-                              child: const Text('Marcar tudo'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => setModal(() {
-                                selecionadas.clear();
-                              }),
-                              child: const Text('Limpar'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: ListView.separated(
-      padding: EdgeInsets.only(bottom: listScrollBottomInset(context)),
-                          shrinkWrap: true,
-                          itemCount: opcoes.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (ctx, i) {
-                            final o = opcoes[i];
-                            final checked = selecionadas.contains(o.key);
-                            return CheckboxListTile(
-                              value: checked,
-                              onChanged: (v) => setModal(() {
-                                if (v == true) {
-                                  selecionadas.add(o.key);
-                                } else {
-                                  selecionadas.remove(o.key);
-                                }
-                              }),
-                              title: Text('${o.referenciaLabel} · ${o.cartaoLabel}'),
-                              subtitle: Text('Vencimento: ${o.vencimentoLabel}'),
-                              controlAffinity: ListTileControlAffinity.leading,
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Se já existir fatura salva para o período, ela será apagada e gerada novamente.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancelar'),
-                  ),
-                  FilledButton(
-                    onPressed:
-                        selecionadas.isEmpty
-                            ? null
-                            : () => Navigator.pop(ctx, true),
-                    child: Text('Gerar (${selecionadas.length})'),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+        builder: (ctx) => _GerarFaturasExistentesDialog(repo: _cartaoRepo),
       );
+      if (selecionadas == null || selecionadas.isEmpty) return;
 
-      if (confirmar != true) return;
-
-      final selecionadasObjs = <FaturaGeracaoOpcao>[
-        for (final o in opcoes)
-          if (selecionadas.contains(o.key)) o,
-      ];
-
+      setState(() => _gerandoFaturas = true);
       final qtd = await _cartaoRepo.gerarFaturasSelecionadas(
-        selecionadas: selecionadasObjs,
+        selecionadas: selecionadas,
         overwrite: true,
       );
       if (!mounted) return;
@@ -577,6 +514,62 @@ class _ParametrosPageState extends State<ParametrosPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
+                            'FinTrack IA — chat',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'URL base da API usada pelo chat (rota POST /api/Chat). '
+                            'O padrão é o backend no Azure; altere só se usar outro ambiente.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _iaChatCtrl,
+                            keyboardType: TextInputType.url,
+                            textInputAction: TextInputAction.done,
+                            decoration: InputDecoration(
+                              labelText: 'URL base do FinTrack IA',
+                              hintText: AppParametrosService.defaultIaChatApiBaseUrl,
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _restaurarPadraoIaChat,
+                                  child: const Text('Usar padrão Azure'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _salvarIaChatUrl,
+                                  icon: const Icon(Icons.save_outlined, size: 20),
+                                  label: const Text('Salvar'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
                             'Acesso à integração',
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
@@ -656,6 +649,350 @@ class _ParametrosPageState extends State<ParametrosPage> {
                   ),
                 ],
               ),
+    );
+  }
+}
+
+class _GerarFaturasExistentesDialog extends StatefulWidget {
+  const _GerarFaturasExistentesDialog({required this.repo});
+
+  final CartaoCreditoRepository repo;
+
+  @override
+  State<_GerarFaturasExistentesDialog> createState() =>
+      _GerarFaturasExistentesDialogState();
+}
+
+class _GerarFaturasExistentesDialogState
+    extends State<_GerarFaturasExistentesDialog> {
+  List<FaturaGeracaoOpcao> _opcoes = [];
+  final Set<String> _selecionadas = {};
+  bool _carregando = true;
+  bool _incluirPagas = false;
+  int? _filtroCartaoId;
+  int? _filtroMes;
+  int? _filtroAno;
+  List<CartaoCredito> _cartoesFiltro = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final todos = await widget.repo.getCartoesCredito();
+    if (!mounted) return;
+    setState(() {
+      _cartoesFiltro =
+          todos.where((c) {
+            if (c.id == null) return false;
+            if (!(c.tipo == TipoCartao.credito || c.tipo == TipoCartao.ambos)) {
+              return false;
+            }
+            if (!c.controlaFatura) return false;
+            if (c.diaFechamento == null || c.diaVencimento == null) {
+              return false;
+            }
+            return true;
+          }).toList();
+    });
+    await _recarregarOpcoes();
+  }
+
+  Future<void> _recarregarOpcoes() async {
+    setState(() => _carregando = true);
+    final op = await widget.repo.listarOpcoesGeracaoFaturas(
+      somenteEmAberto: !_incluirPagas,
+      filtroIdCartao: _filtroCartaoId,
+      anoReferencia: _filtroAno,
+      mesReferencia: _filtroMes,
+    );
+    if (!mounted) return;
+    setState(() {
+      _opcoes = op;
+      _carregando = false;
+      _selecionadas
+        ..clear()
+        ..addAll(
+          op.where((e) => !e.faturaConstaComoPaga).map((e) => e.key),
+        );
+    });
+  }
+
+  Widget _filtroCartaoDropdown() {
+    return InputDecorator(
+      decoration: const InputDecoration(
+        labelText: 'Cartão',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int?>(
+          isExpanded: true,
+          value: _filtroCartaoId,
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('Todos'),
+            ),
+            ..._cartoesFiltro.map(
+              (c) => DropdownMenuItem<int?>(
+                value: c.id,
+                child: Text(c.label),
+              ),
+            ),
+          ],
+          onChanged: _carregando
+              ? null
+              : (v) async {
+                  setState(() => _filtroCartaoId = v);
+                  await _recarregarOpcoes();
+                },
+        ),
+      ),
+    );
+  }
+
+  Widget _filtroMesDropdown() {
+    return InputDecorator(
+      decoration: const InputDecoration(
+        labelText: 'Mês ref.',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int?>(
+          isExpanded: true,
+          value: _filtroMes,
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('Todos'),
+            ),
+            ...List.generate(
+              12,
+              (i) => DropdownMenuItem<int?>(
+                value: i + 1,
+                child: Text((i + 1).toString().padLeft(2, '0')),
+              ),
+            ),
+          ],
+          onChanged: _carregando
+              ? null
+              : (v) async {
+                  setState(() => _filtroMes = v);
+                  await _recarregarOpcoes();
+                },
+        ),
+      ),
+    );
+  }
+
+  Widget _filtroAnoDropdown(List<int> anos) {
+    return InputDecorator(
+      decoration: const InputDecoration(
+        labelText: 'Ano ref.',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int?>(
+          isExpanded: true,
+          value: _filtroAno,
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('Todos'),
+            ),
+            ...anos.map(
+              (y) => DropdownMenuItem<int?>(
+                value: y,
+                child: Text(y.toString()),
+              ),
+            ),
+          ],
+          onChanged: _carregando
+              ? null
+              : (v) async {
+                  setState(() => _filtroAno = v);
+                  await _recarregarOpcoes();
+                },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final agora = DateTime.now();
+    final anos = [for (var y = agora.year - 6; y <= agora.year + 2; y++) y];
+    final maxH = MediaQuery.sizeOf(context).height * 0.78;
+    final narrow = MediaQuery.sizeOf(context).width < 520;
+
+    return AlertDialog(
+      title: const Text('Gerar faturas por período'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Incluir faturas pagas na lista'),
+                  subtitle: const Text(
+                    'Só para consulta: períodos pagos não podem ser regerados.',
+                  ),
+                  value: _incluirPagas,
+                  onChanged: _carregando
+                      ? null
+                      : (v) async {
+                          setState(() => _incluirPagas = v);
+                          await _recarregarOpcoes();
+                        },
+                ),
+                const SizedBox(height: 8),
+                if (narrow) ...[
+                  _filtroCartaoDropdown(),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _filtroMesDropdown()),
+                      const SizedBox(width: 8),
+                      Expanded(child: _filtroAnoDropdown(anos)),
+                    ],
+                  ),
+                ] else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 2, child: _filtroCartaoDropdown()),
+                      const SizedBox(width: 8),
+                      Expanded(child: _filtroMesDropdown()),
+                      const SizedBox(width: 8),
+                      Expanded(child: _filtroAnoDropdown(anos)),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _carregando || _opcoes.isEmpty
+                            ? null
+                            : () => setState(() {
+                                  _selecionadas
+                                    ..clear()
+                                    ..addAll(
+                                      _opcoes
+                                          .where((e) => !e.faturaConstaComoPaga)
+                                          .map((e) => e.key),
+                                    );
+                                }),
+                        child: const Text('Marcar tudo'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _carregando
+                            ? null
+                            : () => setState(() => _selecionadas.clear()),
+                        child: const Text('Limpar'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (_carregando)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_opcoes.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'Nenhum período encontrado com os filtros. Faturas já pagas '
+                      'ficam ocultas até você ligar “Incluir faturas pagas”.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.only(
+                      bottom: listScrollBottomInset(context),
+                    ),
+                    itemCount: _opcoes.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final o = _opcoes[i];
+                      final checked = _selecionadas.contains(o.key);
+                      return CheckboxListTile(
+                        value: checked,
+                        onChanged: o.faturaConstaComoPaga
+                            ? null
+                            : (v) {
+                                setState(() {
+                                  if (v == true) {
+                                    _selecionadas.add(o.key);
+                                  } else {
+                                    _selecionadas.remove(o.key);
+                                  }
+                                });
+                              },
+                        title: Text('${o.referenciaLabel} · ${o.cartaoLabel}'),
+                        subtitle: Text(
+                          'Venc. ${o.vencimentoLabel}'
+                          '${o.faturaConstaComoPaga ? ' • Fatura paga' : ''}',
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                      );
+                    },
+                  ),
+                const SizedBox(height: 8),
+                Text(
+                  'Por padrão só faturas em aberto. Períodos já pagos não são regerados.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _selecionadas.isEmpty
+              ? null
+              : () {
+                  final out = <FaturaGeracaoOpcao>[
+                    for (final o in _opcoes)
+                      if (_selecionadas.contains(o.key)) o,
+                  ];
+                  Navigator.pop(context, out);
+                },
+          child: Text('Gerar (${_selecionadas.length})'),
+        ),
+      ],
     );
   }
 }

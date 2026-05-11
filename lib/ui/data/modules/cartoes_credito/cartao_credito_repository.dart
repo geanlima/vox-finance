@@ -141,6 +141,74 @@ class CartaoCreditoRepository {
     return (ini.millisecondsSinceEpoch, fim.millisecondsSinceEpoch);
   }
 
+  /// Alinha ao [Lancamento.fromMap]: instante em UTC + offset fixo BRT (-3) para o dia civil.
+  (int y, int m, int d) _ymdBrasiliaFromEpochMs(int ms) {
+    final utc = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+    final br = utc.add(const Duration(hours: -3));
+    return (br.year, br.month, br.day);
+  }
+
+  /// Ex.: descrição "Fatura Nome 04/2026 ..." → mês/ano de referência da fatura.
+  (int ano, int mes)? _parseMesAnoReferenciaNaDescricao(String descricao) {
+    final re = RegExp(r'\b(\d{2})/(\d{4})\b');
+    final matches = re.allMatches(descricao).toList();
+    if (matches.isEmpty) return null;
+    final match = matches.last;
+    final mes = int.tryParse(match.group(1) ?? '');
+    final ano = int.tryParse(match.group(2) ?? '');
+    if (mes == null || ano == null || mes < 1 || mes > 12) return null;
+    return (ano, mes);
+  }
+
+  /// Compras a crédito que compõem a fatura do ciclo (mesma regra de [gerarFaturaDoCartao]).
+  Future<List<Lancamento>> _listarComprasCompondoFaturaCiclo({
+    required int idCartao,
+    required int anoReferencia,
+    required int mesReferencia,
+  }) async {
+    final database = await _dbService.db;
+    final diasCiclo = await getDiasCicloPorReferencia(
+      idCartao: idCartao,
+      anoReferencia: anoReferencia,
+      mesReferencia: mesReferencia,
+    );
+    if (diasCiclo == null) return [];
+
+    final ref = DateTime(anoReferencia, mesReferencia, 1);
+    final int diaFechamento = diasCiclo.$1.clamp(
+      1,
+      DateTime(ref.year, ref.month + 1, 0).day,
+    );
+
+    int anoAtual = ref.year;
+    int mesAtual = ref.month;
+
+    int mesAnterior = mesAtual - 1;
+    int anoAnterior = anoAtual;
+    if (mesAnterior == 0) {
+      mesAnterior = 12;
+      anoAnterior--;
+    }
+
+    final fechamentoAnterior =
+        _dataValida(anoAnterior, mesAnterior, diaFechamento);
+    final inicioPeriodo = fechamentoAnterior;
+    final fimPeriodo = _dataValida(anoAtual, mesAtual, diaFechamento)
+        .subtract(const Duration(milliseconds: 1));
+
+    final inicioMs = inicioPeriodo.millisecondsSinceEpoch;
+    final fimMs = fimPeriodo.millisecondsSinceEpoch;
+
+    final compras = await database.query(
+      'lancamentos',
+      where:
+          'id_cartao = ? AND forma_pagamento = ? AND pagamento_fatura = 0 AND data_hora >= ? AND data_hora <= ?',
+      whereArgs: [idCartao, FormaPagamento.credito.index, inicioMs, fimMs],
+      orderBy: 'data_hora ASC',
+    );
+    return compras.map(Lancamento.fromMap).toList();
+  }
+
   /// Garante que exista no máximo 1 lançamento de fatura (pagamento_fatura=1)
   /// para um cartão em um vencimento (dia).
   ///
@@ -1403,7 +1471,33 @@ AND data_hora <= ?
     return geradas;
   }
 
-  Future<List<FaturaGeracaoOpcao>> listarOpcoesGeracaoFaturas() async {
+  Future<bool> _faturaPeriodoEstaPaga(
+    Database db,
+    int idCartao,
+    int anoReferencia,
+    int mesReferencia,
+  ) async {
+    final rows = await db.query(
+      'fatura_cartao',
+      columns: const ['pago'],
+      where: 'id_cartao = ? AND ano = ? AND mes = ?',
+      whereArgs: [idCartao, anoReferencia, mesReferencia],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    return (rows.first['pago'] as int? ?? 0) == 1;
+  }
+
+  /// Opções de período para gerar fatura a partir de compras já lançadas.
+  ///
+  /// [somenteEmAberto]: quando `true` (padrão), omite períodos cuja fatura já
+  /// está paga em `fatura_cartao` (evita regerar o que estava fechado).
+  Future<List<FaturaGeracaoOpcao>> listarOpcoesGeracaoFaturas({
+    bool somenteEmAberto = true,
+    int? filtroIdCartao,
+    int? anoReferencia,
+    int? mesReferencia,
+  }) async {
     final db = await _dbService.db;
 
     final cartoes = await getCartoesCredito();
@@ -1454,7 +1548,7 @@ AND data_hora <= ?
           diaFechamento: diaFech,
           diaVencimento: c.diaVencimento!.clamp(1, 31),
         );
-        final opt = FaturaGeracaoOpcao(
+        final optSemPago = FaturaGeracaoOpcao(
           idCartao: idCartao,
           cartaoLabel: c.label,
           anoReferencia: ref.year,
@@ -1462,7 +1556,37 @@ AND data_hora <= ?
           anoVencimento: venc.year,
           mesVencimento: venc.month,
         );
-        if (seen.contains(opt.key)) continue;
+        if (filtroIdCartao != null &&
+            optSemPago.idCartao != filtroIdCartao) {
+          continue;
+        }
+        if (anoReferencia != null &&
+            optSemPago.anoReferencia != anoReferencia) {
+          continue;
+        }
+        if (mesReferencia != null &&
+            optSemPago.mesReferencia != mesReferencia) {
+          continue;
+        }
+        if (seen.contains(optSemPago.key)) continue;
+
+        final jaPaga = await _faturaPeriodoEstaPaga(
+          db,
+          optSemPago.idCartao,
+          optSemPago.anoReferencia,
+          optSemPago.mesReferencia,
+        );
+        if (somenteEmAberto && jaPaga) continue;
+
+        final opt = FaturaGeracaoOpcao(
+          idCartao: optSemPago.idCartao,
+          cartaoLabel: optSemPago.cartaoLabel,
+          anoReferencia: optSemPago.anoReferencia,
+          mesReferencia: optSemPago.mesReferencia,
+          anoVencimento: optSemPago.anoVencimento,
+          mesVencimento: optSemPago.mesVencimento,
+          faturaConstaComoPaga: jaPaga,
+        );
         seen.add(opt.key);
         opcoes.add(opt);
       }
@@ -1489,6 +1613,15 @@ AND data_hora <= ?
     int geradas = 0;
     for (final opt in selecionadas) {
       if (overwrite) {
+        final jaPaga = await _faturaPeriodoEstaPaga(
+          db,
+          opt.idCartao,
+          opt.anoReferencia,
+          opt.mesReferencia,
+        );
+        if (jaPaga) {
+          continue;
+        }
         await _apagarFaturaPeriodo(
           db: db,
           idCartao: opt.idCartao,
@@ -1787,32 +1920,78 @@ AND data_hora <= ?
   ) async {
     final db = await _dbService.db;
 
-    // Precisa ter cartão e data (vencimento da fatura)
-    if (faturaLancamento.idCartao == null ||
-        faturaLancamento.dataHora == null) {
+    if (faturaLancamento.idCartao == null) {
       return [];
     }
 
     final int idCartao = faturaLancamento.idCartao!;
-    final DateTime venc = faturaLancamento.dataHora;
-    final (vencIniMs, vencFimMs) = _rangeDiaMs(venc);
+    final ty = faturaLancamento.dataHora.year;
+    final tm = faturaLancamento.dataHora.month;
+    final td = faturaLancamento.dataHora.day;
 
-    // 1) Localizar a fatura na tabela fatura_cartao pelo vencimento.
-    // Importante: o "mês de referência" pode ser o mês de fechamento (ex.: 04/2026),
-    // enquanto o lançamento de fatura cai no mês seguinte (vencimento, ex.: 15/05/2026).
-    // Portanto, não é confiável bater por (ano, mes) a partir da data do lançamento.
-    final faturaRows = await db.query(
+    // 1) Localizar fatura_cartao: mesmo dia de vencimento em Brasília (igual ao [Lancamento]).
+    // Evita falha quando o app roda em fuso ≠ BRT: o intervalo [_rangeDiaMs] local não batia com data_vencimento gravada em outro fuso.
+    final candidatas = await db.query(
       'fatura_cartao',
-      where: 'id_cartao = ? AND data_vencimento >= ? AND data_vencimento <= ?',
-      whereArgs: [idCartao, vencIniMs, vencFimMs],
-      limit: 1,
+      where: 'id_cartao = ?',
+      whereArgs: [idCartao],
+      orderBy: 'id DESC',
     );
 
-    if (faturaRows.isEmpty) {
+    Map<String, Object?>? linhaFatura;
+    for (final r in candidatas) {
+      final vms = r['data_vencimento'] as int;
+      final (fy, fm, fd) = _ymdBrasiliaFromEpochMs(vms);
+      if (fy == ty && fm == tm && fd == td) {
+        linhaFatura = r;
+        break;
+      }
+    }
+
+    // 2) Fallback: MM/AAAA na descrição do lançamento de fatura (ex.: 04/2026).
+    if (linhaFatura == null) {
+      final ref = _parseMesAnoReferenciaNaDescricao(faturaLancamento.descricao);
+      if (ref != null) {
+        final rows = await db.query(
+          'fatura_cartao',
+          where: 'id_cartao = ? AND ano = ? AND mes = ?',
+          whereArgs: [idCartao, ref.$1, ref.$2],
+          orderBy: 'id DESC',
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          linhaFatura = rows.first;
+        }
+      }
+    }
+
+    if (linhaFatura == null) {
       return [];
     }
 
-    final int idFatura = faturaRows.first['id'] as int;
-    return getLancamentosPorIdFatura(idFatura);
+    final int idFatura = linhaFatura['id'] as int;
+    final int anoRef = linhaFatura['ano'] as int;
+    final int mesRef = linhaFatura['mes'] as int;
+
+    var itens = await getLancamentosPorIdFatura(idFatura);
+
+    // 3) Bases antigas ou falha ao gravar vínculos: recalcula o ciclo e persiste.
+    if (itens.isEmpty) {
+      itens = await _listarComprasCompondoFaturaCiclo(
+        idCartao: idCartao,
+        anoReferencia: anoRef,
+        mesReferencia: mesRef,
+      );
+      final ids = itens.map((e) => e.id).whereType<int>().toList();
+      if (ids.isNotEmpty) {
+        await salvarFaturaCartaoLancamentos(
+          idFatura: idFatura,
+          idsLancamentos: ids,
+          substituirVinculos: true,
+        );
+      }
+    }
+
+    return itens;
   }
 }

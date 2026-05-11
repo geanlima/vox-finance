@@ -4,19 +4,18 @@ import 'package:http/http.dart' as http;
 
 /// Chat com backend FinTrack AI (SSE).
 ///
-/// **Emulador Android:** `10.0.2.2` aponta para o localhost da máquina host.
-/// **Celular na mesma rede:** use o IPv4 do PC (ex.: `192.168.1.100`), não use
-/// `localhost` no dispositivo físico.
+/// A URL base é configurada em **Parâmetros → FinTrack IA** e passada em [apiBaseUrl].
 class IaChatService {
-  /// Ajuste conforme seu ambiente (ipconfig / ifconfig).
-  static const String baseUrl = 'http://10.0.2.2:5000';
-
   /// Envia mensagem e retorna stream de tokens via SSE.
+  ///
+  /// [apiBaseUrl] URL sem path (ex.: `https://fintrackai-backend.azurewebsites.net`).
   Stream<String> enviarMensagem(
     String mensagem,
-    List<Map<String, String>> historico,
-  ) async* {
-    final uri = Uri.parse('$baseUrl/api/Chat');
+    List<Map<String, String>> historico, {
+    required String apiBaseUrl,
+  }) async* {
+    final base = apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final uri = Uri.parse('$base/api/Chat');
 
     final request = http.Request('POST', uri);
     request.headers['Content-Type'] = 'application/json';

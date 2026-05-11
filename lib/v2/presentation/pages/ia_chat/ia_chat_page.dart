@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
 import 'package:vox_finance/v2/infrastructure/services/ia_chat_service.dart';
 import 'package:vox_finance/v2/presentation/pages/ia_chat/ia_chat_models.dart';
 import 'package:vox_finance/v2/presentation/pages/ia_chat/widgets/chat_bubble.dart';
@@ -90,26 +91,30 @@ class _IaChatPageState extends State<IaChatPage> {
         children: [
           Text(
             'Sugestões:',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: sugestoes.map((s) {
-              return ActionChip(
-                label: Text(s),
-                onPressed: _enviando
-                    ? null
-                    : () {
-                        _controller.text =
-                            s.replaceAll(RegExp(r'^[^\s]+\s*'), '');
-                        _enviarMensagem();
-                      },
-              );
-            }).toList(),
+            children:
+                sugestoes.map((s) {
+                  return ActionChip(
+                    label: Text(s),
+                    onPressed:
+                        _enviando
+                            ? null
+                            : () {
+                              _controller.text = s.replaceAll(
+                                RegExp(r'^[^\s]+\s*'),
+                                '',
+                              );
+                              _enviarMensagem();
+                            },
+                  );
+                }).toList(),
           ),
         ],
       ),
@@ -127,28 +132,33 @@ class _IaChatPageState extends State<IaChatPage> {
       _enviando = true;
       _controller.clear();
 
-      _mensagens.add(MensagemChat(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        tipo: TipoMensagem.usuario,
-        conteudo: texto,
-        timestamp: DateTime.now(),
-      ));
+      _mensagens.add(
+        MensagemChat(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          tipo: TipoMensagem.usuario,
+          conteudo: texto,
+          timestamp: DateTime.now(),
+        ),
+      );
 
-      _mensagens.add(MensagemChat(
-        id: 'loading',
-        tipo: TipoMensagem.assistente,
-        conteudo: '',
-        timestamp: DateTime.now(),
-        carregando: true,
-      ));
+      _mensagens.add(
+        MensagemChat(
+          id: 'loading',
+          tipo: TipoMensagem.assistente,
+          conteudo: '',
+          timestamp: DateTime.now(),
+          carregando: true,
+        ),
+      );
     });
 
     _scrollToBottom();
 
-    final historico = _mensagens
-        .where((m) => !m.carregando && m.conteudo.isNotEmpty)
-        .map((m) => m.toHistoricoMap())
-        .toList();
+    final historico =
+        _mensagens
+            .where((m) => !m.carregando && m.conteudo.isNotEmpty)
+            .map((m) => m.toHistoricoMap())
+            .toList();
 
     var respostaAcumulada = '';
     var streamFinalizado = false;
@@ -190,29 +200,34 @@ class _IaChatPageState extends State<IaChatPage> {
       _scrollToBottom();
     }
 
-    _subscription = _service.enviarMensagem(texto, historico).listen(
-      (token) {
-        respostaAcumulada += token;
-        if (!mounted) return;
-        setState(() {
-          final idx = _mensagens.indexWhere((m) => m.id == 'loading');
-          if (idx >= 0) {
-            _mensagens[idx] = _mensagens[idx].copyWith(
-              conteudo: respostaAcumulada,
-              carregando: true,
+    final chatApiBase =
+        await AppParametrosService.instance.getIaChatApiBaseUrl();
+
+    _subscription = _service
+        .enviarMensagem(texto, historico, apiBaseUrl: chatApiBase)
+        .listen(
+          (token) {
+            respostaAcumulada += token;
+            if (!mounted) return;
+            setState(() {
+              final idx = _mensagens.indexWhere((m) => m.id == 'loading');
+              if (idx >= 0) {
+                _mensagens[idx] = _mensagens[idx].copyWith(
+                  conteudo: respostaAcumulada,
+                  carregando: true,
+                );
+              }
+            });
+            _scrollToBottom();
+          },
+          onDone: finalizarComSucesso,
+          onError: (Object e, StackTrace st) {
+            finalizarComErro(
+              'Erro ao conectar com a IA. Verifique o servidor ($chatApiBase) e a rede.',
             );
-          }
-        });
-        _scrollToBottom();
-      },
-      onDone: finalizarComSucesso,
-      onError: (Object e, StackTrace st) {
-        finalizarComErro(
-          'Erro ao conectar com a IA. Verifique o servidor (${IaChatService.baseUrl}) e a rede.',
+          },
+          cancelOnError: false,
         );
-      },
-      cancelOnError: false,
-    );
   }
 
   @override

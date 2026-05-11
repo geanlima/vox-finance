@@ -7,6 +7,8 @@ class FaturaGeracaoOpcao {
   final int mesReferencia; // mês de fechamento (referência)
   final int anoVencimento;
   final int mesVencimento;
+  /// Indica se já existe `fatura_cartao` marcada como paga para o período.
+  final bool faturaConstaComoPaga;
 
   const FaturaGeracaoOpcao({
     required this.idCartao,
@@ -15,6 +17,7 @@ class FaturaGeracaoOpcao {
     required this.mesReferencia,
     required this.anoVencimento,
     required this.mesVencimento,
+    this.faturaConstaComoPaga = false,
   });
 
   String get referenciaLabel => '${mesReferencia.toString().padLeft(2, '0')}/$anoReferencia';
