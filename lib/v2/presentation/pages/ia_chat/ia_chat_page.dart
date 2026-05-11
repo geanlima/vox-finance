@@ -5,6 +5,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:vox_finance/ui/core/service/app_parametros_service.dart';
+import 'package:vox_finance/ui/core/service/manutencao_sqlite_upload_service.dart';
+import 'package:vox_finance/ui/core/service/sincronizacao_banco_api_lembrete_service.dart';
+import 'package:vox_finance/ui/widgets/sqlite_importacao_resultado_dialog.dart';
 import 'package:vox_finance/v2/infrastructure/services/ia_chat_service.dart';
 import 'package:vox_finance/v2/presentation/pages/ia_chat/ia_chat_models.dart';
 import 'package:vox_finance/v2/presentation/pages/ia_chat/widgets/chat_bubble.dart';
@@ -30,7 +33,20 @@ class _IaChatPageState extends State<IaChatPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _enviando = false;
+  bool _sincronizandoBanco = false;
   StreamSubscription<String>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        SincronizacaoBancoApiLembreteService.instance
+            .verificarENotificarSeNecessario(),
+      );
+    });
+  }
 
   @override
   void dispose() {
@@ -121,6 +137,29 @@ class _IaChatPageState extends State<IaChatPage> {
     );
   }
 
+  Future<void> _sincronizarBancoNaApi() async {
+    if (_sincronizandoBanco || _enviando) return;
+    setState(() => _sincronizandoBanco = true);
+    try {
+      final resultado =
+          await ManutencaoSqliteUploadService.instance.importarSqliteParaApi();
+      if (!mounted) return;
+      await mostrarSqliteImportacaoResultadoDialog(context, resultado);
+    } catch (e, st) {
+      debugPrint('Sincronizar banco: $e\n$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is StateError ? e.message : 'Falha ao sincronizar: $e',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sincronizandoBanco = false);
+    }
+  }
+
   Future<void> _enviarMensagem() async {
     final texto = _controller.text.trim();
     if (texto.isEmpty || _enviando) return;
@@ -202,6 +241,12 @@ class _IaChatPageState extends State<IaChatPage> {
 
     final chatApiBase =
         await AppParametrosService.instance.getIaChatApiBaseUrl();
+    if (chatApiBase == null || chatApiBase.isEmpty) {
+      finalizarComErro(
+        'Configure a URL do FinTrack IA em Configuração → Parâmetros.',
+      );
+      return;
+    }
 
     _subscription = _service
         .enviarMensagem(texto, historico, apiBaseUrl: chatApiBase)
@@ -245,6 +290,21 @@ class _IaChatPageState extends State<IaChatPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Sincronizar banco com a API',
+            onPressed:
+                (_enviando || _sincronizandoBanco)
+                    ? null
+                    : _sincronizarBancoNaApi,
+            icon:
+                _sincronizandoBanco
+                    ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Icon(Icons.cloud_upload_outlined),
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Limpar conversa',

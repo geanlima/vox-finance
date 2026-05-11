@@ -46,7 +46,8 @@ class _ParametrosPageState extends State<ParametrosPage> {
   Future<void> _load() async {
     final d = await AppParametrosService.instance.getDataInicioUso();
     final api = await AppParametrosService.instance.getApiBaseUrl();
-    final iaChatUrl = await AppParametrosService.instance.getIaChatApiBaseUrl();
+    final iaChatUrl =
+        await AppParametrosService.instance.getIaChatApiBaseUrl() ?? '';
     final enabled = await BackupAutoCloudService.instance.isEnabled();
     final mins = await BackupAutoCloudService.instance.timeMinutes();
     final (lastRun, lastOk, lastErr) =
@@ -86,13 +87,10 @@ class _ParametrosPageState extends State<ParametrosPage> {
       return;
     }
     final v = raw.trim().replaceAll(RegExp(r'/+$'), '');
-    if (v == AppParametrosService.defaultIaChatApiBaseUrl) {
-      await AppParametrosService.instance.limparIaChatApiBaseUrl();
-    } else {
-      await AppParametrosService.instance.setIaChatApiBaseUrl(v);
-    }
+    await AppParametrosService.instance.setIaChatApiBaseUrl(v);
     if (!mounted) return;
-    final resolved = await AppParametrosService.instance.getIaChatApiBaseUrl();
+    final resolved =
+        await AppParametrosService.instance.getIaChatApiBaseUrl() ?? '';
     if (!mounted) return;
     setState(() => _iaChatCtrl.text = resolved);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -100,15 +98,13 @@ class _ParametrosPageState extends State<ParametrosPage> {
     );
   }
 
-  Future<void> _restaurarPadraoIaChat() async {
+  Future<void> _limparUrlIaChat() async {
     await AppParametrosService.instance.limparIaChatApiBaseUrl();
     if (!mounted) return;
-    setState(() {
-      _iaChatCtrl.text = AppParametrosService.defaultIaChatApiBaseUrl;
-    });
+    setState(() => _iaChatCtrl.clear());
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Endereço padrão (Azure) restaurado.'),
+        content: Text('URL do FinTrack IA removida.'),
       ),
     );
   }
@@ -521,7 +517,7 @@ class _ParametrosPageState extends State<ParametrosPage> {
                           const SizedBox(height: 8),
                           Text(
                             'URL base da API usada pelo chat (rota POST /api/Chat). '
-                            'O padrão é o backend no Azure; altere só se usar outro ambiente.',
+                            'Obrigatório para usar o FinTrack IA.',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: Theme.of(context)
                                       .colorScheme
@@ -533,10 +529,10 @@ class _ParametrosPageState extends State<ParametrosPage> {
                             controller: _iaChatCtrl,
                             keyboardType: TextInputType.url,
                             textInputAction: TextInputAction.done,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'URL base do FinTrack IA',
-                              hintText: AppParametrosService.defaultIaChatApiBaseUrl,
-                              border: const OutlineInputBorder(),
+                              hintText: 'https://...',
+                              border: OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -544,8 +540,8 @@ class _ParametrosPageState extends State<ParametrosPage> {
                             children: [
                               Expanded(
                                 child: OutlinedButton(
-                                  onPressed: _restaurarPadraoIaChat,
-                                  child: const Text('Usar padrão Azure'),
+                                  onPressed: _limparUrlIaChat,
+                                  child: const Text('Limpar URL'),
                                 ),
                               ),
                               const SizedBox(width: 8),

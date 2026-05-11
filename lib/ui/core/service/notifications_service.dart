@@ -15,6 +15,7 @@ class NotificationService {
   static const int idBackupProgress = 9201;
   static const int idBackupResult = 9202;
   static const int idBackupPending = 9203;
+  static const int idSyncBancoApiLembrete = 9205;
 
   static Future<void> init() async {
     if (_initialized) return;
@@ -38,6 +39,24 @@ class NotificationService {
   }
 
   /// Notificação simples imediata
+  /// Lembrete: mais de 24h sem enviar o banco à API (integração).
+  static Future<void> showSyncBancoApiAtrasado() async {
+    await init();
+    const androidDetails = AndroidNotificationDetails(
+      _defaultChannelId,
+      'Notificações VoxFinance',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    await _plugin.show(
+      idSyncBancoApiLembrete,
+      'Sincronização com a API',
+      'Faz mais de 24 horas que o banco não foi enviado. Abra o FinTrack IA e '
+          'toque em Sincronizar.',
+      const NotificationDetails(android: androidDetails),
+    );
+  }
+
   static Future<void> showNow({
     required String title,
     required String body,

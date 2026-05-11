@@ -38,4 +38,19 @@ class IntegracaoApiUrls {
     }
     return Uri.parse('${u.origin}/api/faturas').replace(queryParameters: q);
   }
+
+  /// POST multipart: `.../api/Manutencao/importar-sqlite` (campo `arquivo`).
+  static Uri manutencaoImportarSqlite(Uri base) {
+    final s = _semBarraFinal(base.toString());
+    final u = Uri.parse(s);
+    final p = u.path;
+    const pathRest = '/Manutencao/importar-sqlite';
+    if (p.isEmpty || p == '/') {
+      return Uri.parse('${u.origin}/api$pathRest');
+    }
+    if (p == '/api' || p.endsWith('/api')) {
+      return Uri.parse('$s$pathRest');
+    }
+    return Uri.parse('${u.origin}/api$pathRest');
+  }
 }

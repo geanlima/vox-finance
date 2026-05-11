@@ -51,13 +51,9 @@ class IaChatService {
             if (dados == '[DONE]') return;
             if (dados.isEmpty) continue;
 
-            try {
-              final texto = dados.startsWith('"')
-                  ? jsonDecode(dados) as String
-                  : dados;
+            final texto = _textoDoPayloadSse(dados);
+            if (texto != null && texto.isNotEmpty) {
               yield texto;
-            } catch (_) {
-              yield dados;
             }
           }
         }
@@ -65,6 +61,38 @@ class IaChatService {
     } finally {
       client.close();
     }
+  }
+
+  /// Converte `data:` do SSE em texto para o chat.
+  ///
+  /// O backend pode enviar:
+  /// - string JSON (`"olá"`),
+  /// - objeto `{"tipo":"token"|"agente","conteudo":"..."}` (só [token] vira texto),
+  /// - texto puro (compatível com outros backends).
+  static String? _textoDoPayloadSse(String dados) {
+    if (dados.startsWith('"')) {
+      try {
+        final v = jsonDecode(dados);
+        if (v is String) return v;
+      } catch (_) {}
+    }
+    if (dados.startsWith('{')) {
+      try {
+        final v = jsonDecode(dados);
+        if (v is! Map) return null;
+        final m = Map<String, dynamic>.from(v);
+        final tipo = m['tipo']?.toString().toLowerCase();
+        final conteudo = m['conteudo'];
+        if (conteudo == null) return null;
+        final s = conteudo.toString();
+        if (tipo == 'agente') return null;
+        if (tipo == 'token' || tipo == null) return s;
+        return null;
+      } catch (_) {
+        return null;
+      }
+    }
+    return dados;
   }
 }
 
